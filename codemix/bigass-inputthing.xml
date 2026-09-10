@@ -1,0 +1,762 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+The content has been processed where content has been compressed (code blocks are separated by ⋮---- delimiter).
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: src/input/*
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+src/
+  input/
+    KeyboardManager.cpp
+    KeyboardManager.h
+    KeyCodes.h
+    KeyMatrix.cpp
+    KeyMatrix.h
+    KeySemanticResolver.cpp
+    KeySemanticResolver.h
+    LvglKeypad.cpp
+    LvglKeypad.h
+    NumosSerialBackend.h
+    ProductionKeypadScanner.cpp
+    ProductionKeypadScanner.h
+    SerialBridge.cpp
+    SerialBridge.h
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/input/KeyMatrix.cpp">
+/*
+ * NeoCalculator - NumOS
+ * Copyright (C) 2026 Juan Ramon
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+⋮----
+/**
+ * KeyMatrix.cpp
+ */
+⋮----
+KeyMatrix::KeyMatrix() {
+// Reset state
+⋮----
+// --- Define Layout Map ---
+// Row 0
+⋮----
+// Row 1
+⋮----
+// Row 2
+⋮----
+// Row 3
+⋮----
+// Row 4
+⋮----
+// Row 5
+⋮----
+void KeyMatrix::begin() {
+// Rows as Inputs with Pullup
+⋮----
+// Cols as Outputs, default HIGH (inactive)
+⋮----
+void KeyMatrix::update() {
+⋮----
+// Iterate Columns
+⋮----
+// Activate Column (LOW)
+⋮----
+// Short delay for signal settling? usually not needed on ESP32 ~microsecs
+// delayMicroseconds(2);
+⋮----
+// Read Rows
+⋮----
+// LOW means pressed because of Pull-Up
+⋮----
+// Debounce
+⋮----
+// Deactivate Column (HIGH)
+⋮----
+bool KeyMatrix::pollEvent(KeyEvent &outEvent) {
+if (_head == _tail) return false; // Empty
+⋮----
+void KeyMatrix::pushEvent(KeyEvent ev) {
+⋮----
+if (next != _tail) { // Not full
+</file>
+
+<file path="src/input/KeyMatrix.h">
+/*
+ * NeoCalculator - NumOS
+ * Copyright (C) 2026 Juan Ramon
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+⋮----
+/**
+ * KeyMatrix.h
+ * Driver for 6x8 Keypad Matrix.
+ * Rows are Inputs with Pull-Up. Columns are Outputs (Active Low scan).
+ */
+⋮----
+#include "KeyCodes.h"   // KeyCode, KeyAction, KeyEvent
+⋮----
+void begin();
+void update(); // Call this frequently (e.g. in loop)
+⋮----
+// Returns true if there was an event
+bool pollEvent(KeyEvent &outEvent);
+⋮----
+// 6 Rows (Inputs)
+⋮----
+// 8 Cols (Outputs)
+⋮----
+// State
+⋮----
+// Mapping table
+⋮----
+// Event Buffer
+⋮----
+void pushEvent(KeyEvent ev);
+</file>
+
+<file path="src/input/NumosSerialBackend.h">
+// WHY: On ESP32-S3 Arduino, enabling USB CDC on boot makes Serial the USB
+// endpoint and exposes UART0 as Serial0. The CH343 board uses UART0.
+</file>
+
+<file path="src/input/KeyboardManager.cpp">
+KeyboardManager& KeyboardManager::instance() {
+⋮----
+KeyboardManager::KeyboardManager()
+⋮----
+ModifierPhase nextShortPress(const ModifierPhase phase) {
+⋮----
+ModifierPhase nextLongPress(const ModifierPhase phase) {
+⋮----
+} // namespace
+⋮----
+void KeyboardManager::pressShift() {
+⋮----
+void KeyboardManager::longPressShift() {
+⋮----
+void KeyboardManager::pressAlpha() {
+⋮----
+void KeyboardManager::longPressAlpha() {
+⋮----
+void KeyboardManager::pressStore() {
+⋮----
+void KeyboardManager::consumeModifier() {
+⋮----
+void KeyboardManager::consumeForPlane(const bool usesShift,
+⋮----
+void KeyboardManager::reset() {
+⋮----
+ModifierState KeyboardManager::state() const {
+⋮----
+const char* KeyboardManager::indicatorText() const {
+⋮----
+} // namespace vpam
+</file>
+
+<file path="src/input/KeyboardManager.h">
+/*
+ * NumOS logical modifier state.
+ *
+ * SHIFT and ALPHA are independent three-state machines. Keeping them
+ * independent is what makes the Revision-C SHIFT+ALPHA plane representable.
+ */
+⋮----
+enum class ModifierPhase : uint8_t {
+⋮----
+// Compatibility summary for existing status/debug callers.
+enum class ModifierState : uint8_t {
+⋮----
+static KeyboardManager& instance();
+⋮----
+ModifierState state() const;
+ModifierPhase shiftPhase() const { return _shift; }
+ModifierPhase alphaPhase() const { return _alpha; }
+⋮----
+bool isShift() const { return _shift != ModifierPhase::Off; }
+bool isAlpha() const { return _alpha != ModifierPhase::Off; }
+bool isLocked() const {
+⋮----
+bool isStore() const { return _store; }
+⋮----
+void pressShift();
+void longPressShift();
+void pressAlpha();
+void longPressAlpha();
+void pressStore();
+⋮----
+// Compatibility behavior: consume all active one-shot modifiers.
+void consumeModifier();
+⋮----
+// Revision-C behavior: consume only one-shot modifiers used by the plane.
+void consumeForPlane(bool usesShift, bool usesAlpha);
+⋮----
+void reset();
+const char* indicatorText() const;
+⋮----
+} // namespace vpam
+</file>
+
+<file path="src/input/KeySemanticResolver.cpp">
+KeyPlane activePlane(const vpam::KeyboardManager& modifiers) {
+⋮----
+bool clearsModifiers(const SemanticId semantic) {
+⋮----
+} // namespace
+⋮----
+std::size_t KeySemanticResolver::mappingIndex(const KeyCode physicalCode) {
+⋮----
+const KeyPlaneDefinition& KeySemanticResolver::definition(
+⋮----
+ResolvedKey KeySemanticResolver::resolve(const KeyCode physicalCode,
+⋮----
+// WHY: an implemented semantic with no legacy KeyCode must remain a
+// semantic-only event. Falling back to the physical primary code would
+// turn unimplemented SHIFT actions into the wrong primary operation
+// (for example OFF into AC or summation into addition).
+⋮----
+void KeySemanticResolver::reset() {
+⋮----
+} // namespace numos::input
+</file>
+
+<file path="src/input/KeySemanticResolver.h">
+static ResolvedKey resolve(KeyCode physicalCode,
+⋮----
+static void reset();
+⋮----
+static std::size_t mappingIndex(KeyCode physicalCode);
+static const KeyPlaneDefinition& definition(InputContext context,
+⋮----
+} // namespace numos::input
+</file>
+
+<file path="src/input/LvglKeypad.cpp">
+/*
+ * NeoCalculator - NumOS
+ * Copyright (C) 2026 Juan Ramon
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+⋮----
+/**
+ * LvglKeypad.cpp
+ * Implementación del driver de teclado para LVGL 9.x
+ */
+⋮----
+// ── Definición de estáticos ─────────────────────────────────────────────────
+⋮----
+// ── init() ──────────────────────────────────────────────────────────────────
+void LvglKeypad::init() {
+⋮----
+// ── pushKey() ───────────────────────────────────────────────────────────────
+void LvglKeypad::pushKey(KeyCode code, bool pressed) {
+⋮----
+void LvglKeypad::forceReleaseAll() {
+⋮----
+// ── readCb() ────────────────────────────────────────────────────────────────
+/**
+ * LVGL llama a esta función en cada tick de su timer handler.
+ * Devuelve la tecla actual y su estado. Si hay eventos en la cola, los consume
+ * uno a uno. Si la cola está vacía, reporta RELEASED con la última tecla.
+ */
+void LvglKeypad::readCb(lv_indev_t* /*indev*/, lv_indev_data_t* data) {
+⋮----
+// Hay al menos un evento nuevo: consúmelo
+⋮----
+// Sin eventos nuevos → tecla liberada (para evitar repetición no deseada)
+⋮----
+// Si todavía hay más eventos pendientes, LVGL nos llamará de nuevo
+// en el mismo tick hasta que la cola se vacíe.
+⋮----
+// ── toLvKey() ───────────────────────────────────────────────────────────────
+uint32_t LvglKeypad::toLvKey(KeyCode code) {
+⋮----
+// Navegación → mapeo directo a LV_KEY de LVGL
+⋮----
+// Confirmación / Cancelación
+⋮----
+// Función: avanzar al siguiente / anterior elemento del grupo
+⋮----
+// El resto de teclas no tienen mapping LVGL → 0 = ignorar
+</file>
+
+<file path="src/input/LvglKeypad.h">
+/*
+ * NeoCalculator - NumOS
+ * Copyright (C) 2026 Juan Ramon
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+⋮----
+/**
+ * LvglKeypad.h
+ * Driver de entrada de teclado para LVGL 9.x  (tipo KEYPAD)
+ *
+ * Conecta el KeyMatrix físico con el sistema de grupos/foco de LVGL.
+ * Actúa como un anillo de eventos: SystemApp (o cualquier otro módulo)
+ * encola pulsaciones con pushKey(); LVGL las consume en su tick via
+ * el read_cb estático.
+ *
+ * Uso:
+ *   1. Llamar LvglKeypad::init() después de lv_init().
+ *   2. Asignar el indev al grupo de la pantalla activa:
+ *        lv_indev_set_group(LvglKeypad::indev(), myGroup);
+ *   3. Cuando se detecta una tecla, llamar:
+ *        LvglKeypad::pushKey(code, pressed);
+ */
+⋮----
+// ── API pública ──────────────────────────────────────────────────────
+⋮----
+/** Inicializa el indev LVGL. Llamar después de lv_init(). */
+static void init();
+⋮----
+/**
+     * Encola un evento de tecla para que LVGL lo procese en su próximo tick.
+     * Llamar desde SystemApp::handleKeyMenu() (o similar) cuando el modo
+     * activo es MENU.
+     *
+     * @param code     KeyCode físico de la tecla
+     * @param pressed  true = tecla pulsada, false = tecla liberada
+     */
+static void pushKey(KeyCode code, bool pressed);
+⋮----
+/** Clear queued presses/repeats and publish a released state. */
+static void forceReleaseAll();
+⋮----
+/** Devuelve el lv_indev_t creado por init(), útil para asignarlo a grupos */
+static lv_indev_t* indev() { return _indev; }
+⋮----
+// ── Implementación ───────────────────────────────────────────────────
+⋮----
+/** Callback que LVGL invoca en cada tick para leer el estado del teclado */
+static void readCb(lv_indev_t* indev, lv_indev_data_t* data);
+⋮----
+/** Traduce un KeyCode a la constante LV_KEY_xxx correspondiente */
+static uint32_t toLvKey(KeyCode code);
+⋮----
+// ── Estado interno ───────────────────────────────────────────────────
+⋮----
+/** Ring buffer de eventos pendientes (tamaño potencia de 2) */
+⋮----
+struct KeyEvent {
+⋮----
+static volatile uint8_t _head;   // Índice de escritura (productor)
+static volatile uint8_t _tail;   // Índice de lectura  (consumidor)
+⋮----
+/** Clave y estado que LVGL leyó la última vez */
+</file>
+
+<file path="src/input/ProductionKeypadScanner.h">
+struct ProductionKeyState {
+⋮----
+// A full 50-key down burst fits without losing a PRESS. This is bounded
+// static DRAM, but leaves enough headroom to preserve releases while the
+// UI drains the queue.
+⋮----
+explicit ProductionKeypadScanner(
+⋮----
+// One call supplies all ten samples for one electrical row. Bit c set
+// means the switch at (row,c) is electrically pressed.
+void ingestRow(uint8_t row, uint16_t pressedColumns, uint32_t nowMs);
+⋮----
+bool pollEvent(KeyEvent& event);
+void forceReleaseAll(uint32_t nowMs);
+void reset();
+⋮----
+const ProductionKeyState& state(uint8_t row, uint8_t column) const;
+uint16_t activeColumns(uint8_t row) const;
+uint32_t overflowCount() const { return _overflowCount; }
+std::size_t queuedEventCount() const { return _queueCount; }
+const ProductionScannerConfig& config() const { return _config; }
+⋮----
+static constexpr std::size_t index(uint8_t row, uint8_t column) {
+⋮----
+void transition(std::size_t keyIndex, bool pressed, uint32_t nowMs);
+bool pushEvent(std::size_t keyIndex, KeyAction action);
+void eraseQueueIndex(std::size_t queueIndex);
+bool removeQueuedPress(std::size_t keyIndex);
+bool removeOldestRepeat();
+bool removeUndispatchedPress();
+⋮----
+} // namespace numos::input
+</file>
+
+<file path="src/input/SerialBridge.h">
+/*
+ * NeoCalculator - NumOS
+ * Copyright (C) 2026 Juan Ramon
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+⋮----
+/**
+ * SerialBridge.h
+ * PC → NumOS keyboard bridge via Serial Monitor.
+ *
+ * Reads characters from Serial.read() (non-blocking) and
+ * translates them into KeyEvent structs that SystemApp understands.
+ *
+ * Mapping (PC → Calculator):
+ *   w/s/a/d      → UP / DOWN / LEFT / RIGHT
+ *   Enter / z    → ENTER (OK/EXE)
+ *   Backspace / x→ DEL
+ *   Escape / h   → MODE (HOME)
+ *   c            → AC   (Clear All)
+ *   0–9          → NUM_0..NUM_9
+ *   + - * /      → ADD SUB MUL DIV
+ *   .            → DOT
+ *   ^            → POW
+ *   (            → LPAREN
+ *   )            → RPAREN
+ *   f            → SHIFT+DIV (Fraction)
+ *   S            → SHIFT
+ *   g            → GRAPH
+ *   t            → SIN  (trig shortcut)
+ */
+⋮----
+#include "input/KeyMatrix.h"   // For KeyEvent, KeyAction, KeyCode
+⋮----
+/// Call once in setup() after Serial.begin()
+void begin();
+⋮----
+/// Non-blocking: reads available serial chars, pushes events.
+/// Returns true if at least one event was generated.
+bool pollEvent(KeyEvent &outEvent);
+void setLineHandler(LineHandler handler, void* context);
+⋮----
+// Small circular buffer for generated events
+⋮----
+void push(KeyCode code, const char* label);
+bool pop(KeyEvent &out);
+void processChar(int ch);
+</file>
+
+<file path="src/input/KeyCodes.h">
+/*
+ * NeoCalculator - NumOS
+ * Copyright (C) 2026 Juan Ramon
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+⋮----
+/**
+ * KeyCodes.h
+ * Logical key codes for the ESP32 calculator keypad.
+ */
+⋮----
+// ── Acciones de tecla (movido aquí desde KeyMatrix.h para portabilidad) ──
+enum class KeyAction {
+⋮----
+// ── Códigos lógicos de tecla ─────────────────────────────────────────────
+enum class KeyCode : uint8_t {
+⋮----
+// Top row: modes and softkeys
+SHIFT,      // R0C0
+ALPHA,      // R0C1
+MODE,       // R0C2
+SETUP,      // R0C3
+F1,         // R0C4
+F2,         // R0C5
+F3,         // R0C6
+F4,         // R0C7
+⋮----
+// Row 1: control & navigation
+ON,         // R1C0
+AC,         // R1C1
+DEL,        // R1C2
+FREE_EQ,    // R1C3
+LEFT,       // R1C4
+UP,         // R1C5
+DOWN,       // R1C6
+RIGHT,      // R1C7
+⋮----
+// Row 2
+VAR_X,      // R2C0
+VAR_Y,      // R2C1
+TABLE,      // R2C2
+GRAPH,      // R2C3
+ZOOM,       // R2C4
+TRACE,      // R2C5
+SHOW_STEPS, // R2C6
+SOLVE,      // R2C7
+⋮----
+// Row 3
+⋮----
+// Row 4
+⋮----
+// Row 5
+⋮----
+// Virtual Keys or extras
+F5,          // F5 (top-row function key)
+EXE,         // Execute / Solve (mapped to physical '<' key)
+⋮----
+// Virtual keys for functions/constants (via SHIFT combos or serial)
+LN,          // ln (logaritmo natural)
+LOG,         // log (logaritmo base 10)
+LOG_BASE,    // log_n(x) (logaritmo de base custom)
+CONST_PI,    // π
+CONST_E,     // e (Euler)
+⋮----
+// ── Variables y Ans ──
+ANS,         // Ans (último resultado)
+PREANS,      // PreAns (penúltimo resultado)
+STO,         // Store (modo almacenamiento)
+⋮----
+// ── Variables Alpha (A-F, x, y, z) ──
+// Se activan vía ALPHA + tecla numérica o vía serial
+⋮----
+// ── Negación (cambio de signo) ──
+NEGATE,      // (−) toggle signo
+⋮----
+// ── Funciones avanzadas ──
+FACT,        // Factorización en primos (SHIFT + botón asignado)
+⋮----
+// ── Operadores relacionales de desigualdad (Grapher) ──
+// '<' y '>' para graficar inecuaciones (x^2+y^2<1, y>x^2, …). Se insertan
+// como NodeVariable en el editor VPAM y se serializan tal cual; GraphModel
+// los detecta antes que '=' y sombrea la región solución. Añadidos al FINAL
+// del enum para no desplazar ningún valor existente.
+LESS,        // <
+GREATER,     // >
+⋮----
+// Production Revision-C physical concepts. Append-only: all pre-existing
+// numeric values above remain stable for serial scripts and the web ABI.
+HOME,        // Return to launcher; distinct from legacy MODE
+BACK,        // Contextual back/cancel without clearing input
+VAR,         // Open variable picker; distinct from VAR_X
+TOOLBOX,     // Open contextual toolbox
+FRAC,        // Structured fraction template; distinct from division
+DIVIDE,      // Physical mathematical/code division operator
+SQUARE,      // Structured x^2 shortcut
+FORMAT,      // Toggle/choose result representation
+COMMA,       // Comma token
+EQUAL,       // Equality token; distinct from FREE_EQ exact/decimal toggle
+EXP,         // Scientific exponent (×10^x) template
+⋮----
+// ── Mapeo de tecla numérica → valor de dígito ────────────────────────────
+// El enum KeyCode coloca NUM_0..NUM_9 en el orden FÍSICO del teclado
+// (NUM_7,8,9 → NUM_4,5,6 → NUM_1,2,3 → NUM_0 al final, junto a ENTER), de modo
+// que los dígitos NO son contiguos y NUM_0 > NUM_9 numéricamente. Un test de
+// rango como `code >= NUM_0 && code <= NUM_9` es por tanto SIEMPRE falso, y la
+// aritmética `code - NUM_0` también depende del orden. Esta función explícita no
+// depende de la ordenación del enum, no asigna memoria y es segura tanto en
+// firmware como en el emulador host. Devuelve 0–9 para un dígito, o -1 si no.
+inline int keyCodeDigitValue(KeyCode code) {
+⋮----
+// ── Estructura completa de KeyEvent (usa KeyCode definido arriba) ────────
+struct KeyEvent {
+⋮----
+// Optional generated semantic payload. Legacy backends leave these zeroed.
+</file>
+
+<file path="src/input/ProductionKeypadScanner.cpp">
+ProductionKeypadScanner::ProductionKeypadScanner(
+⋮----
+void ProductionKeypadScanner::ingestRow(const uint8_t row,
+⋮----
+key.lastRepeatMs = nowMs; // No burst catch-up after a stalled frame.
+⋮----
+void ProductionKeypadScanner::transition(const std::size_t keyIndex,
+⋮----
+bool ProductionKeypadScanner::pushEvent(const std::size_t keyIndex,
+⋮----
+// If PRESS was never dispatched, collapse the pair. No logical state
+// was exposed, so fabricating a RELEASE would be incorrect.
+⋮----
+// A dropped PRESS is remembered so its later physical release is also
+// suppressed. This prevents release-without-down fabrication.
+⋮----
+void ProductionKeypadScanner::eraseQueueIndex(const std::size_t queueIndex) {
+⋮----
+bool ProductionKeypadScanner::removeQueuedPress(
+⋮----
+bool ProductionKeypadScanner::removeOldestRepeat() {
+⋮----
+bool ProductionKeypadScanner::removeUndispatchedPress() {
+⋮----
+bool ProductionKeypadScanner::pollEvent(KeyEvent& event) {
+⋮----
+void ProductionKeypadScanner::forceReleaseAll(const uint32_t nowMs) {
+⋮----
+// Transition is a hard input boundary. Discard queued PRESS/REPEAT events
+// from the old application, then emit releases only for presses that were
+// actually dispatched. This prevents both post-transition repeats and
+// release-without-down fabrication.
+⋮----
+void ProductionKeypadScanner::reset() {
+⋮----
+const ProductionKeyState& ProductionKeypadScanner::state(
+⋮----
+uint16_t ProductionKeypadScanner::activeColumns(const uint8_t row) const {
+⋮----
+} // namespace numos::input
+</file>
+
+<file path="src/input/SerialBridge.cpp">
+/*
+ * NeoCalculator - NumOS
+ * Copyright (C) 2026 Juan Ramon
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+⋮----
+/**
+ * SerialBridge.cpp
+ * PC → NumOS keyboard bridge.
+ * Non-blocking Serial reader that generates KeyEvent structs.
+ */
+⋮----
+SerialBridge::SerialBridge()
+⋮----
+void SerialBridge::begin() {
+⋮----
+void SerialBridge::setLineHandler(LineHandler handler, void* context) {
+⋮----
+// ── Circular buffer helpers ──
+⋮----
+void SerialBridge::push(KeyCode code, const char* label) {
+⋮----
+ev.row    = -1;  // Virtual key (no physical row/col)
+⋮----
+if (next == _tail) return;  // Buffer full, drop event
+⋮----
+// Debug feedback
+⋮----
+bool SerialBridge::pop(KeyEvent &out) {
+⋮----
+// ── Main API ──
+⋮----
+bool SerialBridge::pollEvent(KeyEvent &outEvent) {
+// 1. Read all available serial chars and convert to events
+⋮----
+// 2. Pop one event from queue
+⋮----
+// ── Character → KeyCode mapping ──
+⋮----
+void SerialBridge::processChar(int ch) {
+// Use a std::string buffer to accumulate characters until newline.
+⋮----
+// Echo and accumulate printable characters
+⋮----
+// Backspace/delete should edit the current buffer if present
+⋮----
+// Handle Enter / newline (debounce CR+LF pairs)
+⋮----
+// duplicate newline from CR/LF, ignore
+⋮----
+// Trim leading/trailing whitespace
+⋮----
+// Empty line -> treat as ENTER key
+⋮----
+// If line starts with ':' → Giac command
+⋮----
+// Case-insensitive keyword checks. Named keys keep the PC bridge usable
+// for keys that have no unambiguous single-character representation.
+⋮----
+// Single character line: map to key codes (preserve previous mappings)
+⋮----
+// Unrecognized single char: echo it
+⋮----
+// Unrecognized multi-char line: echo back and clear
+</file>
+
+</files>

@@ -202,6 +202,8 @@ uint16_t Keyboard::diagnosticActiveColumns(const uint8_t row) const {
 
 #else
 
+#include "../lib/TCA9555/TCA9555.h"
+
 // ── Keymap 5×10 ───────────────────────────────────────────────────────────────
 //
 // Diseño visual de las 15 teclas ACTUALMENTE CABLEADAS (cols 0-2):
@@ -220,57 +222,53 @@ uint16_t Keyboard::diagnosticActiveColumns(const uint8_t row) const {
 //   Physical '<' key → EXE (Execute/Solve) at C9.
 //   Physical Enter → ENTER (Place/Select) remains at R3C2.
 //
+// Placeholder key mapping for 6x9 matrix - TO BE UPDATED BY HUMAN LATER
+// Current mapping uses placeholder values since the original layout doesn't match the 6x9 configuration
 const KeyCode Keyboard::_map[Keyboard::ROWS][Keyboard::COLS] = {
-    // C0          C1          C2          C3          C4
-    // C5          C6          C7          C8          C9
-    { KeyCode::NUM_7, KeyCode::NUM_8, KeyCode::NUM_9,
-      KeyCode::SETUP, KeyCode::F1,    KeyCode::F2,
-      KeyCode::F3,    KeyCode::F4,    KeyCode::F5,    KeyCode::EXE  },  // Row 0
-
-    { KeyCode::NUM_4, KeyCode::NUM_5, KeyCode::NUM_6,
-      KeyCode::NONE,  KeyCode::LEFT,  KeyCode::UP,
-      KeyCode::DOWN,  KeyCode::RIGHT, KeyCode::NONE,  KeyCode::NONE },  // Row 1
-
-    { KeyCode::NUM_1, KeyCode::NUM_2, KeyCode::NUM_3,
-      KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE,
-      KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE },  // Row 2
-
-    { KeyCode::NUM_0, KeyCode::AC,     KeyCode::ENTER,
-      KeyCode::SHIFT, KeyCode::ALPHA,  KeyCode::MODE,
-      KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE },  // Row 3
-
-    { KeyCode::ADD,   KeyCode::SUB,   KeyCode::MUL,
-      KeyCode::DIV,   KeyCode::DEL,   KeyCode::NONE,
-      KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE,  KeyCode::NONE },  // Row 4
+    // C0               C1                |C2               |C3              |C4                |C5
+    { KeyCode::SHIFT,   KeyCode::ALPHA,   KeyCode::MODE,    KeyCode::SETUP,   KeyCode::F1,      KeyCode::F2    },  // Row 0
+    { KeyCode::F3,      KeyCode::F4,      KeyCode::F5,      KeyCode::EXE,     KeyCode::ON,      KeyCode::AC    },  // Row 1
+    { KeyCode::DEL,     KeyCode::FREE_EQ, KeyCode::LEFT,    KeyCode::UP,      KeyCode::DOWN,    KeyCode::RIGHT },  // Row 2
+    { KeyCode::VAR_X,   KeyCode::VAR_Y,   KeyCode::TABLE,   KeyCode::GRAPH,   KeyCode::ZOOM,    KeyCode::TRACE },  // Row 3
+    { KeyCode::SHOW_STEPS, KeyCode::SOLVE, KeyCode::NUM_7,  KeyCode::NUM_8,   KeyCode::NUM_9,   KeyCode::LPAREN},  // Row 4
+    { KeyCode::RPAREN,  KeyCode::DIV,     KeyCode::POW,     KeyCode::SQRT,    KeyCode::NUM_4,   KeyCode::NUM_5 },  // Row 5
+    { KeyCode::NUM_6,   KeyCode::MUL,     KeyCode::SUB,     KeyCode::SIN,     KeyCode::COS,     KeyCode::TAN   },  // Row 6
+    { KeyCode::NUM_1,   KeyCode::NUM_2,   KeyCode::NUM_3,   KeyCode::ADD,     KeyCode::NEG,     KeyCode::NUM_0 },  // Row 7
+    { KeyCode::DOT,     KeyCode::ENTER,   KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE  },  // Row 8
 };
 
 // ── begin() ──────────────────────────────────────────────────────────────────
 
 void Keyboard::begin() {
-    // Filas: OUTPUT, idle en HIGH (ninguna fila activa).
-    for (int r = 0; r < ROWS; ++r) {
-        pinMode(_rowPins[r], OUTPUT);
-        digitalWrite(_rowPins[r], HIGH);
+    // Initialize I2C bus with specified pins
+    Wire.begin(47, 6); // SDA=47, SCL=6
+    
+    // Initialize TCA9555
+    if (!_tca.begin()) {
+        // Handle initialization failure - set enabled to false
+        return;
     }
-
-    // Columnas: INPUT_PULLUP.  Solo configuramos las que están cableadas para
-    // evitar que pines flotantes generen eventos espurios.
-    for (int c = 0; c < CONNECTED_COLS; ++c) {
-        pinMode(_colPins[c], INPUT_PULLUP);
+    
+    // Configure column pins as OUTPUTS (active low scanning)
+    for (int c = 0; c < COLS; c++) {
+        _tca.pinMode1(_colPins[c], OUTPUT);
+        _tca.write1(_colPins[c], HIGH); // Start inactive (HIGH)
     }
-
-    // Limpia el estado completo de la matriz.
-    for (int r = 0; r < ROWS; ++r) {
-        for (int c = 0; c < COLS; ++c) {
-            _rawState[r][c] = false;
-            _debState[r][c] = false;
-            _debTimer[r][c] = 0;
-            _arTimer[r][c]  = 0;
-        }
+    
+    // Configure row pins as INPUTS with internal pull-ups
+    for (int r = 0; r < ROWS; r++) {
+        _tca.pinMode1(_rowPins[r], INPUT);
     }
-
-    _qHead = 0;
-    _qTail = 0;
+    
+    // Configure unused pin as INPUT to prevent floating
+    _tca.pinMode1(TCA_P07, INPUT);
+    
+    // Initialize state arrays
+    memset(_rawState, 0, sizeof(_rawState));
+    memset(_debState, 0, sizeof(_debState));
+    memset(_debTimer, 0, sizeof(_debTimer));
+    memset(_arTimer, 0, sizeof(_arTimer));
+    
     _lastScanMs = millis();
 }
 
@@ -278,9 +276,13 @@ void Keyboard::begin() {
 
 void Keyboard::update() {
     uint32_t now = millis();
-    if (now - _lastScanMs < SCAN_INTERVAL_MS) return;
-    _lastScanMs = now;
-    doScan();
+    
+    // For interrupt-driven mode, we would check a volatile flag here
+    // But for compatibility, maintain polling with proper timing
+    if ((now - _lastScanMs) >= SCAN_INTERVAL_MS) {
+        doScan();
+        _lastScanMs = now;
+    }
 }
 
 // ── pollEvent() ──────────────────────────────────────────────────────────────
@@ -296,52 +298,49 @@ bool Keyboard::pollEvent(KeyEvent& outEvent) {
 
 void Keyboard::doScan() {
     uint32_t now = millis();
-
-    for (int r = 0; r < ROWS; ++r) {
-        // Activa la fila poniéndola a LOW.
-        digitalWrite(_rowPins[r], LOW);
-
-        // Pequeño delay para que los pines se estabilicen.
-        // delayMicroseconds(10) es suficiente para ESP32-S3.
+    
+    // Scan each column (OUTPUT)
+    for (int c = 0; c < COLS; ++c) {
+        // Activate column by setting it LOW (active)
+        _tca.write1(_colPins[c], LOW);
+        
+        // Small delay for signal settling (microseconds sufficient for ESP32-S3)
         delayMicroseconds(10);
-
-        // Lee solo las columnas físicamente cableadas.
-        for (int c = 0; c < CONNECTED_COLS; ++c) {
-            bool rawNow = (digitalRead(_colPins[c]) == LOW);  // LOW = pulsada
-
-            // ── Máquina de estados de debounce por celda ─────────────────
+        
+        // Read all row inputs (INPUT)
+        for (int r = 0; r < ROWS; ++r) {
+            bool rawNow = (_tca.read1(_rowPins[r]) == LOW); // LOW = pressed (due to pull-up)
+            
+            // Debounce state machine per key
             if (rawNow != _rawState[r][c]) {
-                // El estado físico cambió: reinicia el temporizador.
+                // Raw state changed - reset timer
                 _rawState[r][c] = rawNow;
-                _debTimer[r][c]  = now;
+                _debTimer[r][c] = now;
             } else if ((now - _debTimer[r][c]) >= DEBOUNCE_MS) {
-                // Estado estable durante DEBOUNCE_MS ms: confirma el cambio.
+                // Stable state confirmed
                 if (rawNow != _debState[r][c]) {
                     _debState[r][c] = rawNow;
-
+                    
                     KeyCode kc = _map[r][c];
                     if (kc != KeyCode::NONE) {
-                        KeyAction action = rawNow ? KeyAction::PRESS
-                                                  : KeyAction::RELEASE;
+                        KeyAction action = rawNow ? KeyAction::PRESS : KeyAction::RELEASE;
                         pushEvent({ kc, action, r, c });
-
+                        
                         if (rawNow) {
-                            // Inicia el temporizador de auto-repetición.
+                            // Start autorepeat timer
                             _arTimer[r][c] = now;
                         }
                     }
                 }
             }
-
-            // ── Auto-repetición (solo si sigue pulsada) ──────────────────
+            
+            // Autorepeat logic (only if key is still pressed)
             if (_debState[r][c] && _rawState[r][c]) {
                 uint32_t elapsed = now - _arTimer[r][c];
-                // Primera repetición: espera AUTOREPEAT_DELAY_MS.
-                // Siguientes: cada AUTOREPEAT_RATE_MS.
-                uint32_t threshold = (_arTimer[r][c] == _debTimer[r][c])
-                                     ? AUTOREPEAT_DELAY_MS
-                                     : AUTOREPEAT_RATE_MS;
-
+                uint32_t threshold = (_arTimer[r][c] == _debTimer[r][c]) 
+                                   ? AUTOREPEAT_DELAY_MS 
+                                   : AUTOREPEAT_RATE_MS;
+                
                 if (elapsed >= threshold) {
                     KeyCode kc = _map[r][c];
                     if (kc != KeyCode::NONE) {
@@ -351,9 +350,9 @@ void Keyboard::doScan() {
                 }
             }
         }
-
-        // Desactiva la fila: vuelve a HIGH.
-        digitalWrite(_rowPins[r], HIGH);
+        
+        // Deactivate column by setting it HIGH
+        _tca.write1(_colPins[c], HIGH);
     }
 }
 

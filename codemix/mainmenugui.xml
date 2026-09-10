@@ -1,0 +1,592 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+The content has been processed where content has been compressed (code blocks are separated by ⋮---- delimiter).
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: src/ui/MainMenu.cpp, src/ui/MainMenu.h
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+src/
+  ui/
+    MainMenu.cpp
+    MainMenu.h
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/ui/MainMenu.h">
+/*
+ * NeoCalculator - NumOS
+ * Copyright (C) 2026 Juan Ramon
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+⋮----
+/**
+ * MainMenu.h
+ * Launcher NumOS — Pixel-Perfect NumWorks aesthetic (High-Fidelity).
+ *
+ * LVGL 9.x implementation:
+ *  - 24 px orange status bar (#FF9900) with rad/deg, title, battery
+ *  - 3-column grid of white cards with geometric vector-style icons
+ *  - Focus: blue border (#0074D9) + 1.05× scale + overshoot animation
+ *  - Shadows: diffuse 4 px normal, intensified on focus
+ *  - Dot-grid background pattern (#D1D1D1 on #F5F5F5)
+ *  - Anti-aliased UI default font (Montserrat)
+ */
+⋮----
+explicit MainMenu(DisplayDriver& display);
+⋮----
+// ── Lifecycle ────────────────────────────────────────────────────────
+void create();
+void load();
+⋮----
+// ── Input ────────────────────────────────────────────────────────────
+void setLaunchCallback(std::function<void(int)> cb);
+bool moveFocusByDelta(int dCol, int dRow);
+⋮----
+// ── Accessors ────────────────────────────────────────────────────────
+lv_group_t* group()  const { return _group; }
+lv_obj_t*   screen() const { return _screen; }
+⋮----
+// ── Native-only read-only debug accessors (Phase 9B menu-nav parity) ──
+// Compiled ONLY into the SDL2 emulator: NATIVE_SIM is defined exclusively by
+// [env:emulator_pc] (platformio.ini), so the firmware preprocessor strips this
+// whole block — the device build, its symbols, and its binary are unchanged.
+// They expose just enough of the focus model for a `.numos` `assert_menu_focus`
+// check WITHOUT reading pixels or leaking internal LVGL pointers. Strictly
+// read-only: there is deliberately no mutation surface here.
+//
+//   * debugFocusedCardId()    — id of the currently focused card, or -1 if none
+//                               (thin wrapper over the private focusedCardId()).
+//   * debugResolveCardToken() — map a script token (a card NAME, case- and
+//                               space-insensitive, OR a non-negative decimal id)
+//                               to a card id in [0, APP_COUNT); -1 if unknown or
+//                               out of range. The real APPS[] table is the single
+//                               source of truth, so names never drift.
+//   * debugCardNameById()     — canonical card name for an id, or nullptr if the
+//                               id is out of range (for friendly diagnostics).
+int                debugFocusedCardId() const { return focusedCardId(); }
+bool               debugFocusedCardCenter(int& x, int& y) const;
+static int         debugResolveCardToken(const char* token);
+static const char* debugCardNameById(int id);
+⋮----
+// ── App descriptor ───────────────────────────────────────────────────
+struct AppEntry {
+⋮----
+uint32_t    color;       // Primary icon colour
+uint32_t    colorLight;  // Lighter accent for geometric decoration
+⋮----
+// ── UI construction ──────────────────────────────────────────────────
+void buildStatusBar();
+void buildGrid();
+lv_obj_t* buildCard(lv_obj_t* parent, const AppEntry& app);
+lv_obj_t* cardById(int appId) const;
+int focusedCardId() const;
+⋮----
+/** Creates a geometric vector icon inside `parent` based on app id. */
+void createAppIcon(lv_obj_t* parent, const AppEntry& app);
+⋮----
+// Flex layout: col/row params no longer required (dynamic wrapping)
+⋮----
+// ── Styles ───────────────────────────────────────────────────────────
+void initStyles();
+⋮----
+// Focus transition (overshoot, 250 ms)
+⋮----
+// ── Event handlers ───────────────────────────────────────────────────
+static void onCardEvent(lv_event_t* e);
+static void onCardFocused(lv_event_t* e);   ///< Logs focus changes to Serial
+static void onGridDraw(lv_event_t* e);
+static void onIconDraw(lv_event_t* e);
+/** Disables shadow rendering on all cards+icons during scroll for FPS. */
+static void onScrollBegin(lv_event_t* e);
+/** Restores shadow rendering after scroll ends. */
+static void onScrollEnd(lv_event_t* e);
+⋮----
+// ── Members ──────────────────────────────────────────────────────────
+⋮----
+lv_obj_t*   _firstCard = nullptr;   ///< First card — focused on create()
+</file>
+
+<file path="src/ui/MainMenu.cpp">
+/*
+ * NeoCalculator - NumOS
+ * Copyright (C) 2026 Juan Ramon
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+⋮----
+/**
+ * MainMenu.cpp
+ * Launcher NumOS — Pixel-Perfect NumWorks High-Fidelity
+ *
+ * Feature summary:
+ *  1. UI typography via LV_FONT_DEFAULT (Montserrat), full-opacity anti-aliased text
+ *  2. Dot-grid background #D1D1D1 on #F5F5F5, 1 px dots, 20 px spacing
+ *  3. Cards: shadow_width 12, shadow_spread 2; focus → blue/orange glow
+ *  4. Focus anim: 1.05× scale via lv_anim_path_overshoot (250 ms)
+ *  5. Geometric vector icons per app (concentric shapes, NumWorks palette)
+ *  6. ENTER/OK → _launchCb(app_id) → SystemApp::launchApp()
+ *
+ * Visual layout (320 × 240):
+ *   ┌──────────────────────────────────────┐
+ *   │  rad      APPLICATIONS     battery   │  24 px (#FF9900)
+ *   ├──────────────────────────────────────┤
+ *   │  ┌────┐  ┌────┐  ┌────┐             │
+ *   │  │ ◎  │  │ ∿  │  │ ≡  │             │  Row 0
+ *   │  │Calc│  │Grph│  │Eqns│             │
+ *   │  └────┘  └────┘  └────┘             │
+ *   │  ┌────┐  ┌────┐  ┌────┐             │
+ *   │  │ ⊞  │  │ ↺  │  │ ∞  │             │  Row 1
+ *   │  │Stat│  │Regr│  │Sequ│             │
+ *   │  └────┘  └────┘  └────┘             │
+ *   │         ... scroll ↕ ...             │
+ *   └──────────────────────────────────────┘
+ */
+⋮----
+// Only the Phase 9B native-only debug accessors below need these; the firmware
+// build (NATIVE_SIM undefined) pulls in nothing extra.
+⋮----
+// ═══════════════════════════════════════════════════════════════════════════════
+// Layout constants
+⋮----
+static constexpr int GRID_H        = SCREEN_H - STATUS_BAR_H;   // 216 px
+⋮----
+static constexpr int CARD_W        = 94;   // 3×94 + 2×6(gap) + 2×8(pad) = 310 ≤ 320
+static constexpr int CARD_H        = ROW_H; // icon(44)+label(18)+padding(16)
+⋮----
+// NumWorks colour palette
+⋮----
+// App registry — {id, name, primary colour, lighter accent}
+⋮----
+//  id   name            primary     light accent
+{  0, "Calculation",  0xFF8000,   0xFFBB66 },   // Orange
+{  1, "Grapher",      0x50B849,   0x8ED888 },   // Green
+{  2, "Equations",    0x1565C0,   0x5E9CE0 },   // Blue
+{  3, "Calculus",     0x6A1B9A,   0xAB60D0 },   // Purple
+{  4, "Statistics",   0xE65100,   0xFF8A50 },   // Deep orange
+{  5, "Probability",  0x00897B,   0x40BBA8 },   // Teal
+{  6, "Regression",   0xBF360C,   0xE07040 },   // Brown-red
+{  7, "Sequences",    0x1B5E20,   0x4C9A4E },   // Dark green
+{  8, "Python",       0xF57F17,   0xFAAF50 },   // Amber
+{  9, "Matrices",     0x7B1FA2,   0xAB60D0 },   // Purple
+{ 10, "Settings",     0x546E7A,   0x8AA4B0 },   // Blue-grey
+{ 11, "Chemistry",    0x00838F,   0x4DB6AC },   // Cyan-teal
+{ 12, "Bridge",       0x2E86AB,   0x6BB8D6 },   // Steel blue
+{ 13, "Circuit",      0xE91E63,   0xF06292 },   // Pink-red (electronics)
+{ 14, "Fluid 2D",   0x1E88E5,   0x64B5F6 },   // Water blue
+{ 15, "ParticleLab", 0xFF9800,   0xFFCC80 },   // Energetic Orange (particles)
+{ 16, "Neural Lab", 0x9C27B0,   0xCE93D8 },   // Purple (AI/ML)
+{ 17, "OpticsLab",  0x00BCD4,   0x80DEEA },   // Cyan/Teal (Optics)
+{ 18, "NeoLang",    0x4CAF50,   0xA5D6A7 },   // Terminal Green (Language/IDE)
+{ 19, "Fractals",   0x3F51B5,   0x7986CB },   // Indigo (Math)
+⋮----
+{ 20, "Math Visual", 0x1565C0,   0x5E9CE0 },   // Renderer hardware verification
+⋮----
+// Transition properties (animated with overshoot on focus)
+⋮----
+static const lv_style_prop_t _transProps[] = { // kept for future use
+⋮----
+// Constructor / Destructor
+⋮----
+MainMenu::MainMenu(DisplayDriver& display) : _display(display) {}
+⋮----
+// Public API
+⋮----
+void MainMenu::setLaunchCallback(std::function<void(int)> cb) {
+⋮----
+void MainMenu::load() {
+⋮----
+bool MainMenu::moveFocusByDelta(int dCol, int dRow) {
+⋮----
+// Horizontal wrap-around
+⋮----
+// Vertical wrap-around
+⋮----
+// Clamp to valid range (last row may be incomplete)
+⋮----
+lv_obj_t* MainMenu::cardById(int appId) const {
+⋮----
+int MainMenu::focusedCardId() const {
+⋮----
+// Native-only read-only debug accessors (Phase 9B menu-nav parity).
+//
+// Excised from the firmware: NATIVE_SIM is defined only by [env:emulator_pc]
+// (platformio.ini), so on the device these definitions do not exist. They read
+// the SAME APPS[]/APP_COUNT table the launcher renders, so a `.numos`
+// `assert_menu_focus` token always resolves against the real card set — no
+// duplicated name list to drift. See MainMenu.h for the contract.
+⋮----
+// Lowercase + strip spaces, so a single whitespace-delimited script token can
+// match multi-word card names ("Fluid 2D" -> "fluid2d", "Neural Lab" ->
+// "neurallab"). Script tokens never contain spaces (the parser reads one token),
+// so the only way to name those cards is the space-free spelling — which this
+// normalisation accepts on both sides.
+static std::string menuNormalizeToken(const char* s) {
+⋮----
+int MainMenu::debugResolveCardToken(const char* token) {
+⋮----
+// Non-negative decimal id (e.g. "5"): accept only if it is a real card.
+⋮----
+// Card name (case- and space-insensitive) against the real APPS[] table.
+⋮----
+bool MainMenu::debugFocusedCardCenter(int& x, int& y) const {
+⋮----
+const char* MainMenu::debugCardNameById(int id) {
+⋮----
+#endif  // NATIVE_SIM
+⋮----
+// create()
+⋮----
+void MainMenu::create() {
+// Memory safety: destroy any previous state if create() is re-called
+⋮----
+lv_group_set_wrap(_group, true);   // Wrap-around: last→first, first→last
+⋮----
+// Force LVGL to resolve all flex card positions NOW — without this the
+// layout is computed lazily at the next render frame, so the card
+// coordinates are still (0,0) and lv_obj_scroll_to_view() is a no-op.
+⋮----
+// Focus IDs 0 and snap the container to the top without animation so
+// "Calculation" is always dead-center-visible on power-on.
+⋮----
+// buildStatusBar() — 24 px orange bar, UI default font, anti-aliased
+⋮----
+void MainMenu::buildStatusBar() {
+⋮----
+// Left: angle mode
+⋮----
+// Centre: title
+⋮----
+// Right: battery
+⋮----
+// buildGrid()
+⋮----
+void MainMenu::buildGrid() {
+// No static col_dsc/row_dsc arrays — Flex ROW_WRAP creates rows dynamically.
+⋮----
+// Background
+⋮----
+// Scrollbar styling
+⋮----
+// Flex layout: ROW_WRAP creates new rows automatically — no descriptor arrays.
+⋮----
+LV_FLEX_ALIGN_CENTER,   // main axis:  centre cards within each row
+LV_FLEX_ALIGN_CENTER,   // cross axis: centre item height within row
+LV_FLEX_ALIGN_START);   // track cross: rows start from TOP — prevents startup scroll-to-middle glitch
+⋮----
+// Elastic overscroll bounce at edges (smoother feel)
+⋮----
+// NOTE: lv_gridnav removed — each card is added individually to _group.
+// Standard LVGL group navigation moves focus directly on cards, which
+// reliably triggers LV_STATE_FOCUSED and _styleCardFocused (blue border).
+⋮----
+// Dot-grid background callback
+⋮----
+// Scroll optimisation: disable shadow rendering while scrolling to
+// prevent the FPS from dropping below ~15 on 10-card layouts.
+⋮----
+// Bounds guard: APP_COUNT must never exceed the APPS[] array length
+⋮----
+if (!_firstCard) _firstCard = card; // deterministic first visible card
+⋮----
+// buildCard()
+⋮----
+lv_obj_t* MainMenu::buildCard(lv_obj_t* parent, const AppEntry& app)
+⋮----
+// Explicit size so Flex ROW_WRAP places exactly 3 cards per row.
+// Formula: 3×CARD_W + 2×CARD_GAP_COL + 2×GRID_PAD = 310 ≤ 320.
+⋮----
+// Add to navigation group so LVGL focus moves to this card on arrow keys
+⋮----
+// Log when this card gains focus
+⋮----
+// ── Geometric vector icon ───────────────────────────────────────────
+⋮----
+// ── App name (UI default font, anti-aliased) ────────────────────────
+⋮----
+// Browser pointer input should activate the compound card even when the
+// pointer lands on its label rather than on the card background.
+⋮----
+// createAppIcon() — Geometric vector icon per app
+⋮----
+// Each icon is a coloured rounded box with LVGL draw primitives drawn
+// via LV_EVENT_DRAW_MAIN_END: concentric circles, bars, curves, etc.
+// Stores the app ID in user_data so the draw callback can branch per app.
+⋮----
+void MainMenu::createAppIcon(lv_obj_t* parent, const AppEntry& app) {
+⋮----
+// Keep the icon visual-only so SDL pointer hits reach the card's CLICKED
+// handler. This is browser-only and does not change desktop or hardware.
+⋮----
+// Per-app primary colour
+⋮----
+// Colour-tinted shadow for depth
+⋮----
+// Store both colours packed: primary in lower 32 bits via user_data
+// We use app.id to branch drawing and app.colorLight in the callback
+⋮----
+// Register custom draw callback for geometric shapes
+⋮----
+// onIconDraw() — Draws geometric vector shapes per app id
+⋮----
+// Shapes are drawn in white / light-accent on the coloured background.
+// This creates a clean, "printed" look matching NumWorks style.
+⋮----
+void MainMenu::onIconDraw(lv_event_t* e) {
+⋮----
+int cx = (a.x1 + a.x2) / 2;   // Centre X
+int cy = (a.y1 + a.y2) / 2;   // Centre Y
+⋮----
+// Helper: draw a filled circle (arc 0–360)
+⋮----
+// Helper: draw a small filled rect
+⋮----
+// Helper: draw a line segment
+⋮----
+// Calculation: "1+2" style — three horizontal bars (abstract keypad)
+⋮----
+// Plus sign
+⋮----
+// Grapher: sine-wave approximation with line segments
+⋮----
+// X-axis
+⋮----
+// Equations: "x=" symbol — variable + equals sign
+⋮----
+// Integral: stylised integral symbol ∫
+// Vertical stroke
+⋮----
+// Top hook (right curl)
+⋮----
+// Bottom hook (left curl)
+⋮----
+// Small "dx" text hint
+⋮----
+// Statistics: bar chart icon (3 ascending bars)
+⋮----
+// Base line
+⋮----
+// Probability: bell-curve (Gaussian approximation)
+⋮----
+// Regression: scatter dots + trend line
+⋮----
+// Trend line
+⋮----
+// Sequences: concentric circles (rings = progression)
+⋮----
+// Python: ">_" prompt — two lines
+⋮----
+// Matrices: grid pattern (2×2 matrix)
+int gs = 6; // grid square size
+⋮----
+// Brackets
+⋮----
+// Settings: gear — concentric ring + centre dot
+⋮----
+// Four notch lines (simplified gear teeth)
+⋮----
+// Chemistry: atom icon (nucleus + orbits)
+⋮----
+// Three elliptical orbits (simplified as tilted lines)
+⋮----
+// Bridge: arch bridge with truss structure
+⋮----
+// Road deck (horizontal line)
+⋮----
+// Arch (inverted V)
+⋮----
+// Vertical trusses
+⋮----
+// Anchor points (small dots)
+⋮----
+// Circuit: schematic resistor zigzag + voltage source symbol
+// Resistor zigzag (horizontal)
+⋮----
+// Ground symbol below
+⋮----
+// Fluid 2D: wavy water lines + droplet
+// Three horizontal waves
+⋮----
+// Second wave
+⋮----
+// Third wave
+⋮----
+// Droplet (circle)
+⋮----
+// ParticleLab: scattered particles with motion trails
+// Central particles
+⋮----
+// Motion trails
+⋮----
+// Neural Lab: 3-layer neural network diagram
+// Input layer (2 nodes, left)
+⋮----
+// Hidden layer (3 nodes, centre)
+⋮----
+// Output node (right)
+⋮----
+// Connections: input → hidden
+⋮----
+// Connections: hidden → output
+⋮----
+// OpticsLab: convex lens cross-section + converging light rays
+// Lens body (biconvex outline approximated with rects)
+⋮----
+// Incoming parallel rays (left)
+⋮----
+// Refracted rays converging to focal point (right)
+⋮----
+// Focal point dot
+⋮----
+// NeoLang IDE: terminal prompt ">" + cursor "_" + code brackets
+// ">" chevron prompt
+⋮----
+// Cursor bar "_"
+⋮----
+// Code brackets "{ }" — top and bottom lines
+⋮----
+// Fractals: spiral/nested geometric pattern (Mandelbrot abstraction)
+⋮----
+// Fallback: simple centred dot
+⋮----
+// initStyles() — All styles + overshoot transition
+⋮----
+void MainMenu::initStyles() {
+⋮----
+// ── Transition: simple 150 ms linear (overshoot removed for stability) ──
+⋮----
+150,          // duration ms
+0,            // delay
+⋮----
+// ── Screen ──────────────────────────────────────────────────────────
+⋮----
+// ── Card (normal) ───────────────────────────────────────────────────
+⋮----
+// Reserve border space (invisible at rest)
+⋮----
+// Diffuse shadow (optimized: shadow_width 4 for software renderer perf)
+⋮----
+// No base scale (no transform layers needed)
+// Transition for border/shadow only
+⋮----
+// ── Card (focused): blue border only — transparent background ───────
+// Keep focus cue minimal and stable: no shadow, no transforms, no tint.
+⋮----
+// ── Card (pressed) ──────────────────────────────────────────────────
+⋮----
+// Scale transform removed for stability (re-add after navigation works)
+⋮----
+// ── Icon box ────────────────────────────────────────────────────────
+⋮----
+// ── App name (UI default font) ──────────────────────────────────────
+⋮----
+// onScrollBegin() / onScrollEnd() — Shadow kill-switch during scrolling
+⋮----
+// With the default _styleCard (shadow_width=12, LV_OPA_10) and each icon box
+// (shadow_width=10, LV_OPA_30), LVGL must allocate temporary draw layers for
+// every card visible on-screen during each flush strip.  On a 32 KB buffer
+// (≈51 lines) this means ≈5 strips × 10 shadows = ~50 layer allocs per frame,
+// easily dragging FPS from 30 to <10 during inertial scroll.
+⋮----
+// Strategy: on SCROLL_BEGIN we set shadow_opa = LV_OPA_TRANSP directly on each
+// card object and its first child (the icon box) — this overrides the style
+// shadow without touching _styleCard.  SCROLL_END restores original values and
+// invalidates the grid so the next frame draws with full quality.
+⋮----
+void MainMenu::onScrollBegin(lv_event_t* e) {
+⋮----
+// First child of every card is the icon box (see buildCard → createAppIcon)
+⋮----
+void MainMenu::onScrollEnd(lv_event_t* e) {
+⋮----
+lv_obj_set_style_shadow_opa(card, LV_OPA_20, LV_PART_MAIN);   // Restore card diffuse shadow
+⋮----
+if (iconBox) lv_obj_set_style_shadow_opa(iconBox, LV_OPA_30, 0);  // Restore icon tinted shadow
+⋮----
+lv_obj_invalidate(self->_grid);   // Force redraw with full quality
+⋮----
+// onGridDraw() — Dot-grid pattern: 1 px #D1D1D1 dots, 20 px spacing
+⋮----
+// Optimisation: only iterate dots whose row/column falls within the current
+// LVGL clip area, avoiding hundreds of no-op lv_draw_rect calls per strip.
+⋮----
+void MainMenu::onGridDraw(lv_event_t* e) {
+⋮----
+// Get LVGL clip area — only dots within this rect will be rendered
+⋮----
+static constexpr int DOT_SIZE    = 1;     // 1 px subtle dots
+⋮----
+// Static dots: compute in absolute screen coordinates so they do NOT
+// move with the scroll container.  This eliminates full-screen
+// invalidations during card scrolling.
+⋮----
+// Clamp iteration to LVGL clip area (only visible dots)
+⋮----
+// onCardEvent — ENTER/OK → _launchCb(app_id) → SystemApp::launchApp()
+⋮----
+void MainMenu::onCardEvent(lv_event_t* e) {
+⋮----
+// onCardFocused — log focus changes
+⋮----
+void MainMenu::onCardFocused(lv_event_t* e) {
+⋮----
+// Auto-scroll the grid so the focused card is always visible
+</file>
+
+</files>
