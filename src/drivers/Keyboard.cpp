@@ -240,8 +240,8 @@ const KeyCode Keyboard::_map[Keyboard::ROWS][Keyboard::COLS] = {
 // ── begin() ──────────────────────────────────────────────────────────────────
 
 void Keyboard::begin() {
-    // Initialize I2C bus with specified pins
-    Wire.begin(47, 6); // SDA=47, SCL=6
+    // Initialize I2C bus with specified pins from Config.h
+    Wire.begin(KBD_I2C_SDA_PIN, KBD_I2C_SCL_PIN);
     
     // Initialize TCA9555
     if (!_tca.begin()) {

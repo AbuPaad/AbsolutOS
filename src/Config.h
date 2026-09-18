@@ -244,5 +244,5 @@ static const int PIN_KEY_C7 = 21;
 #endif
 
 static const uint8_t KEY_ROWS = 6;
-static const uint8_t KEY_COLS = 8;
+static const uint8_t KEY_COLS = 9;
 

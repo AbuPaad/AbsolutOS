@@ -14,6 +14,7 @@
 #else
 // Include TCA9555 definitions for non-production build
 #include "../lib/TCA9555/TCA9555.h"
+#include "./config.h"
 #endif
 
 class Keyboard {
@@ -61,7 +62,7 @@ private:
 #else
 private:
     // TCA9555 instance and pin mapping
-    TCA9555 _tca{0x20}; // Default I2C address
+    TCA9555 _tca{0x20}; // I2C address from Config.h
     
     // Matrix dimensions for 6x9 configuration
     static constexpr int ROWS = 9;
