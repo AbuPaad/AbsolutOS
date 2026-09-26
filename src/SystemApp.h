@@ -59,6 +59,7 @@
 #include "apps/OpticsLabApp.h"
 #include "apps/NeoLanguageApp.h"
 #include "apps/FractalApp.h"
+#include "apps/GameBoyApp.h"        // Game Boy / GBC front-end (Walnut-CGB)
 #if defined(NUMOS_MATH_VISUAL_VERIFY)
 #define NUMOS_MATH_VISUAL_APP_ENABLED 1
 #include "apps/MathRenderVisualTestApp.h"
@@ -95,6 +96,7 @@ enum class Mode : uint8_t {
     APP_OPTICS_LAB,      // 2D optical ray-tracing simulator
     APP_NEO_LANGUAGE,    // NeoLanguage compiler frontend IDE
     APP_FRACTAL,         // Mandelbrot Fractal Explorer
+    APP_GAMEBOY,         // Game Boy / GBC front-end (Walnut-CGB core)
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     APP_MATH_VISUAL,     // Math renderer hardware verification screen
 #endif
@@ -167,6 +169,7 @@ private:
     OpticsLabApp*      _opticsLabApp;
     NeoLanguageApp*    _neoLangApp;
     FractalApp*        _fractalApp;
+    GameBoyApp*        _gameboyApp;
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     MathRenderVisualTestApp* _mathVisualApp;
 #endif

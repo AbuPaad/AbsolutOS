@@ -30,6 +30,26 @@
  *
  * El código de serialización (File::write, File::read, LittleFS.open, etc.)
  * funciona sin cambios en ambas plataformas.
+ *
+ * ── Listado de directorios (paridad con Arduino) ────────────────────────────
+ * El wrapper nativo no tenía forma de enumerar un directorio, así que el código
+ * de app que necesita "recorrer /roms y ver qué hay" solo podía compilar en
+ * firmware. Ahora File expone la misma forma que Arduino:
+ *
+ *   File dir = LittleFS.open("/roms", "r");
+ *   if (dir && dir.isDirectory()) {
+ *       while (File entry = dir.openNextFile()) {
+ *           if (entry.isDirectory()) continue;
+ *           const char* base = entry.name();   // "x.gb"
+ *           const char* path = entry.path();   // "/roms/x.gb" (ruta emulada)
+ *           size_t bytes     = entry.size();
+ *       }
+ *   }
+ *
+ * En firmware esa MISMA secuencia la sirve LittleFS/FS del framework (File de
+ * ESP32 ya implementa openNextFile/isDirectory/name); aquí solo se implementa
+ * el equivalente nativo. La implementación nativa usa std::filesystem, que
+ * evita #ifdefs por plataforma (POSIX opendir vs _findfirst de Windows).
  */
 
 #pragma once
@@ -55,30 +75,62 @@ extern "C" void numosFilesystemDidMutate(int operation);
 // ════════════════════════════════════════════════════════════════════════════
 class File {
 public:
-    File()         : _fp(nullptr), _mutating(false) {}
-    File(FILE* fp, bool mutating = false) : _fp(fp), _mutating(mutating) {}
+    File() : _fp(nullptr), _mutating(false), _dir(nullptr), _isDir(false) {}
+    File(FILE* fp, bool mutating = false)
+        : _fp(fp), _mutating(mutating), _dir(nullptr), _isDir(false) {}
     ~File()        { close(); }
 
     // Move semantics (Arduino File es copiable, pero para native mover es suficiente)
     File(File&& other) noexcept
-        : _fp(other._fp), _mutating(other._mutating) {
+        : _fp(other._fp), _mutating(other._mutating), _dir(other._dir),
+          _isDir(other._isDir), _dirHostPath(other._dirHostPath),
+          _root(other._root), _name(other._name),
+          _emulatedPath(other._emulatedPath) {
         other._fp = nullptr;
         other._mutating = false;
+        other._dir = nullptr;
+        other._isDir = false;
+        other._dirHostPath.clear();
+        other._root.clear();
+        other._name.clear();
+        other._emulatedPath.clear();
     }
     File& operator=(File&& other) noexcept {
         if (this != &other) {
             close();
             _fp = other._fp;
             _mutating = other._mutating;
+            _dir = other._dir;
+            _isDir = other._isDir;
+            _dirHostPath = other._dirHostPath;
+            _root = other._root;
+            _name = other._name;
+            _emulatedPath = other._emulatedPath;
             other._fp = nullptr;
             other._mutating = false;
+            other._dir = nullptr;
+            other._isDir = false;
+            other._dirHostPath.clear();
+            other._root.clear();
+            other._name.clear();
+            other._emulatedPath.clear();
         }
         return *this;
     }
 
-    explicit operator bool() const { return _fp != nullptr; }
+    explicit operator bool() const { return _fp != nullptr || _dir != nullptr; }
 
     void close() {
+        if (_dir) {
+            // The iterator object is owned by this File; its type is only known
+            // in the .cpp (std::filesystem is deliberately not included here).
+            destroyDirectoryHandle(_dir);
+            _dir = nullptr;
+        }
+        _isDir = false;
+        _dirHostPath.clear();
+        _name.clear();
+        _emulatedPath.clear();
         if (_fp) {
             const bool notify = _mutating && std::fclose(_fp) == 0;
             _fp = nullptr;
@@ -108,7 +160,7 @@ public:
         return std::fgetc(_fp);
     }
 
-    /// Tamaño total del archivo (seek al final y volver)
+    /// Tamaño total del archivo (seek al final y volver). 0 para directorios.
     size_t size() {
         if (!_fp) return 0;
         long cur = std::ftell(_fp);
@@ -133,9 +185,45 @@ public:
         if (_fp) std::fseek(_fp, (long)pos, SEEK_SET);
     }
 
+    // ── Listado de directorios (paridad con Arduino File) ───────────────────
+
+    /** True cuando este File representa un directorio abierto. */
+    bool isDirectory() const { return _isDir; }
+
+    /**
+     * Nombre base de la entrada ("rom.gb", o el nombre de la carpeta si
+     * isDirectory()). Igual que File::name() de Arduino/ESP32.
+     */
+    const char* name() const { return _name.c_str(); }
+
+    /** Ruta dentro del sistema de archivos emulado ("/roms/rom.gb"). */
+    const char* path() const { return _emulatedPath.c_str(); }
+
+    /**
+     * Siguiente entrada del directorio. Devuelve un File vacío (falsy) al final.
+     * Solo válido sobre un File de directorio.
+     */
+    File openNextFile();
+
+    /**
+     * Fábrica interna: construye el File nativo adecuado (archivo o directorio)
+     * para una ruta del host. Usada por LittleFSClass::open y openNextFile.
+     */
+    static File fromHostPath(const std::string& hostPath, const std::string& root,
+                             const char* mode = "rb", bool allowDirectory = false);
+
 private:
-    FILE* _fp;
-    bool  _mutating;
+    FILE*       _fp;
+    bool        _mutating;
+    void*       _dir;              ///< std::filesystem::directory_iterator*
+    bool        _isDir;
+    std::string _dirHostPath;      ///< host path of an opened directory
+    std::string _root;             ///< emulated FS root this entry lives under
+    std::string _name;             ///< base name of this entry
+    std::string _emulatedPath;     ///< root-relative path of this entry
+
+    /// Defined in the .cpp: deletes the iterator without exposing its type.
+    static void destroyDirectoryHandle(void* handle);
 
     // No copyable
     File(const File&) = delete;
@@ -171,6 +259,9 @@ public:
      * Abre un archivo.
      * @param path  Ruta absoluta (ej: "/vars.dat")
      * @param mode  "r" (lectura) o "w" (escritura/creación)
+     *
+     * Si @p path es un directorio y el modo es de lectura, devuelve un File de
+     * directorio listo para openNextFile().
      */
     File open(const char* path, const char* mode);
 
@@ -182,6 +273,12 @@ public:
 
     /** Crea un directorio dentro de la raíz emulada. */
     bool mkdir(const char* path);
+
+    /** True si la ruta existe y es un directorio. */
+    bool isDirectory(const char* path);
+
+    /** Ruta del host para una ruta emulada (diagnóstico). */
+    std::string hostPath(const char* path) const;
 
 private:
     std::string fullPath(const char* path) const;

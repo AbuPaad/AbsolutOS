@@ -76,6 +76,7 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _opticsLabApp(nullptr),
       _neoLangApp(nullptr),
       _fractalApp(nullptr),
+      _gameboyApp(nullptr),
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
       _mathVisualApp(nullptr),
 #endif
@@ -155,6 +156,7 @@ void SystemApp::begin() {
     _opticsLabApp = new OpticsLabApp();
     _neoLangApp   = new NeoLanguageApp();
     _fractalApp   = new FractalApp();
+    _gameboyApp   = new GameBoyApp();
 #endif
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     _mathVisualApp = new MathRenderVisualTestApp();
@@ -294,6 +296,7 @@ void SystemApp::initApps() {
     _apps.emplace_back(10, "Settings",     icon_Settings);
     // 11-18 are hidden/experimental LVGL apps 
     _apps.emplace_back(19, "Fractals",     icon_Grapher);
+    _apps.emplace_back(21, "Game Boy",     icon_Grapher);   // Walnut-CGB front-end
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     _apps.emplace_back(20, "Math Visual",  icon_Calculation);
 #endif
@@ -322,6 +325,7 @@ void SystemApp::teardownModeNow(Mode mode) {
         case Mode::APP_OPTICS_LAB:     if (_opticsLabApp)    _opticsLabApp->end();    break;
         case Mode::APP_NEO_LANGUAGE:   if (_neoLangApp)      _neoLangApp->end();      break;
         case Mode::APP_FRACTAL:        if (_fractalApp)      _fractalApp->end();      break;
+        case Mode::APP_GAMEBOY:        if (_gameboyApp)      _gameboyApp->end();      break;
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
         case Mode::APP_MATH_VISUAL:     if (_mathVisualApp)   _mathVisualApp->end();   break;
 #endif
@@ -413,6 +417,9 @@ void SystemApp::update() {
     } else if (_mode == Mode::APP_FRACTAL) {
         // FractalApp has a small update state machine (safe transitions + render polling).
         if (_fractalApp) _fractalApp->update();
+    } else if (_mode == Mode::APP_GAMEBOY) {
+        // GameBoyApp paces itself: exactly one emulated frame per loop pass.
+        if (_gameboyApp && _gameboyApp->isActive()) _gameboyApp->update();
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     } else if (_mode == Mode::APP_MATH_VISUAL) {
         // LVGL handles MathRenderVisualTestApp rendering.
@@ -488,6 +495,7 @@ void SystemApp::render() {
         case Mode::APP_OPTICS_LAB:   break;    // LVGL-native — no-op
         case Mode::APP_NEO_LANGUAGE: break;    // LVGL-native — no-op
         case Mode::APP_FRACTAL:      break;    // LVGL-native — no-op
+        case Mode::APP_GAMEBOY:      break;    // LVGL-native — no-op
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
         case Mode::APP_MATH_VISUAL:  break;    // LVGL-native — no-op
 #endif
@@ -861,6 +869,18 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
                 }
             }
             break;
+        // GameBoyApp is LVGL-native (Walnut-CGB front-end). MODE and AC both
+        // leave; while playing, AC is consumed by the app to reopen the ROM list.
+        case Mode::APP_GAMEBOY:
+            if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            } else if (_gameboyApp) {
+                _gameboyApp->handleKey(ev);
+                if (_gameboyApp->consumeExitRequest()) {
+                    returnToMenu();
+                }
+            }
+            break;
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
         case Mode::APP_MATH_VISUAL:
             if (ev.code == KeyCode::MODE || ev.code == KeyCode::AC) {
@@ -1056,6 +1076,11 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_fractalApp) _fractalApp->load();
+    } else if (id == 21) {
+        // GameBoyApp es LVGL-native (front-end del core Walnut-CGB)
+        g_lvglActive = true;
+        switchApp(id);
+        if (_gameboyApp) _gameboyApp->load();
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     } else if (id == 20) {
         // Math renderer visual verification is LVGL-native and debug-only.
@@ -1164,6 +1189,7 @@ void SystemApp::switchApp(int id) {
         case 17: _mode = Mode::APP_OPTICS_LAB; break;
         case 18: _mode = Mode::APP_NEO_LANGUAGE; break;
         case 19: _mode = Mode::APP_FRACTAL;    break;
+        case 21: _mode = Mode::APP_GAMEBOY;    break;
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
         case 20: _mode = Mode::APP_MATH_VISUAL; break;
 #endif

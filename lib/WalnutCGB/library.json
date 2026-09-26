@@ -1,0 +1,19 @@
+{
+  "name": "WalnutCGB",
+  "version": "1.2.4",
+  "description": "Walnut-CGB — single-header Game Boy / Game Boy Color emulator (MIT), a performance-oriented rewrite of Peanut-GB. Vendored for the NumOS Game Boy app. LOCAL MODIFICATION: the two DMA width macros (WALNUT_GB_16BIT_DMA / WALNUT_GB_32BIT_DMA) are wrapped in #ifndef guards so a desktop build can disable them, as the upstream SDL2 example requires. No other changes.",
+  "keywords": ["gameboy", "gbc", "emulator", "walnut-cgb", "peanut-gb"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mr-PauI/Walnut-CGB.git",
+    "tag": "v1.2.4",
+    "commit": "a42c186917516cc9c80515ceae1121600a071628"
+  },
+  "build": {
+    "srcDir": ".",
+    "flags": ["-DENABLE_SOUND=0"]
+  },
+  "frameworks": "*",
+  "platforms": "*"
+}

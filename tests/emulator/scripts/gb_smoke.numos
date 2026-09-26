@@ -1,0 +1,56 @@
+# gb_smoke.numos — Game Boy front-end (app id 21): scan /roms, load a ROM, run
+# real emulated frames, back out, and leave to the launcher.
+#
+# The ROM fixture is dmg-acid2.gb (MIT, © 2020 Matt Currie), which lives in the
+# run's emulated filesystem root at <fs-root>/roms/dmg-acid2.gb. Point the run at
+# the repo's isolated GB root (NOT at tests/emulator/ itself, which would let
+# writes land in the tracked tree):
+#
+#   program --headless --deterministic --script tests/emulator/scripts/gb_smoke.numos \
+#           --fs-root tests/emulator/fs --frames 1600 --screenshot out/gb_smoke.ppm --quiet
+#
+# Timing (deterministic, step-ms 16):
+#   * 200 frames -> splash (~frame 125) is done; we are in the launcher.
+#   * 60 frames  -> the picker screen is built and loaded (the ROM scan ran in
+#                   load(), so the row list is real: it came from /roms).
+#   * each `key` consumes exactly one frame.
+#   * 240 frames -> GameBoyApp steps ONE emulated frame per loop iteration, so
+#                   this is ~240 Game Boy frames, past dmg-acid2's draw-complete
+#                   point (its correct output is a static face image).
+#
+# What this does NOT prove: audio (there is none), CGB colour (this fixture is a
+# DMG cartridge), or anything on hardware. See gameboyimplement.md §6.
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "gb_smoke: waiting for launcher"
+wait 200
+
+open_app gameboy
+wait 60
+assert_app gameboy
+log "gb_smoke: picker open (/roms scanned)"
+
+# ENTER loads the selected ROM — the first row, which is the alphabetically
+# first entry the scan found.
+key enter
+wait 240
+assert_app gameboy
+log "gb_smoke: rom running"
+
+# Screenshot before the remaining asserts, mirroring calc_1_plus_2.numos: the
+# artifact is produced even if a later assertion fails.
+screenshot out/gb_smoke.ppm
+log "gb_smoke: screenshot captured"
+
+# AC backs out of the running game to the ROM list, still inside the app...
+key ac
+wait 30
+assert_app gameboy
+log "gb_smoke: AC returned to the rom list"
+
+# ...and MODE leaves the app for the launcher.
+key mode
+wait 90
+assert_app menu
+log "gb_smoke: MODE returned to the launcher"

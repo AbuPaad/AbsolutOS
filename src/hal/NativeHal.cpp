@@ -125,6 +125,7 @@
 #include "../apps/RegressionApp.h"        // Phase 7C: LVGL-only, pure-math (no CAS/HW)
 #include "../apps/GrapherApp.h"           // Phase 8G: LVGL-native grapher (RPN pipeline; no Giac/CAS)
 #include "../apps/MathRenderVisualTestApp.h" // Candidate-only renderer verification
+#include "../apps/GameBoyApp.h"             // Game Boy / GBC front-end (Walnut-CGB)
 #if defined(NUMOS_NEO_APP_SMOKE)
 #include "../apps/NeoLanguageApp.h"        // GIAC-N01 opt-in lifecycle smoke only
 #endif
@@ -242,6 +243,7 @@ enum class AppMode : uint8_t {
     SEQUENCES,      // Secuencias (LVGL-native; Phase 7A, emulador)
     REGRESSION,     // Regresion (LVGL-native; Phase 7C, emulador)
     GRAPHER,        // Grapher (LVGL-native; Phase 8G, emulador)
+    GAMEBOY,        // Game Boy / GBC front-end (Walnut-CGB; emulador)
     MATH_VISUAL,    // Full MathRenderer verification canvas
 #if defined(NUMOS_NEO_APP_SMOKE)
     NEO_LANGUAGE    // Opt-in: excluded from the normal emulator whitelist
@@ -321,6 +323,7 @@ static SequencesApp*    g_seqApp   = nullptr;      // Phase 7A (emulador)
 static RegressionApp*   g_regApp   = nullptr;      // Phase 7C (emulador)
 static GrapherApp*      g_grapherApp = nullptr;    // Phase 8G (emulador)
 static MathRenderVisualTestApp* g_mathVisualApp = nullptr;
+static GameBoyApp*      g_gameboyApp   = nullptr;   // Game Boy front-end (emulador)
 #if defined(NUMOS_NEO_APP_SMOKE)
 static NeoLanguageApp*  g_neoLangApp = nullptr;
 static uint32_t         g_neoGiacCountSnapshot = 0;
@@ -711,7 +714,8 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
     const bool appOwnsModifiers =
         g_mode == AppMode::CALCULATION ||
         g_mode == AppMode::CALCULUS ||
-        g_mode == AppMode::EQUATIONS;
+        g_mode == AppMode::EQUATIONS ||
+        g_mode == AppMode::GAMEBOY;    // SHIFT/ALPHA = Game Boy Start/Select
     if (isDown && !appOwnsModifiers && kc == KeyCode::SHIFT) {
         vpam::KeyboardManager::instance().pressShift();
         return;
@@ -940,6 +944,26 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
             }
             break;
 
+        case AppMode::GAMEBOY:
+            // Game Boy front-end: MODE vuelve al launcher; el resto (PRESS,
+            // REPEAT y RELEASE — un D-pad mantenido debe seguir pulsado) se
+            // reenvia a GameBoyApp::handleKey. AC dentro del juego abre la
+            // lista de ROMs; desde la lista, la app pide salir.
+            if (isDown && kc == KeyCode::MODE) {
+                returnToMenu();
+                break;
+            }
+            if (g_gameboyApp) {
+                KeyEvent ke;
+                ke.code   = kc;
+                ke.action = action;
+                ke.row    = -1;
+                ke.col    = -1;
+                g_gameboyApp->handleKey(ke);
+                if (g_gameboyApp->consumeExitRequest()) returnToMenu();
+            }
+            break;
+
 #if defined(NUMOS_NEO_APP_SMOKE)
         case AppMode::NEO_LANGUAGE:
             if (isDown && kc == KeyCode::MODE) {
@@ -1143,6 +1167,7 @@ static void transitionToMenu()
     // se crea en el primer load() (GrapherApp::load() llama a begin() si hace falta).
     g_grapherApp = new GrapherApp();
     g_mathVisualApp = new MathRenderVisualTestApp();
+    g_gameboyApp    = new GameBoyApp();
 #if defined(NUMOS_NEO_APP_SMOKE)
     // Opt-in only: the full Neo stack still contains native file() routes
     // outside the emulator LittleFS sandbox. This smoke never invokes them.
@@ -1237,6 +1262,14 @@ static void launchApp(int appId)
             }
             break;
 
+        case 21: // Game Boy / Game Boy Color front-end (vendored Walnut-CGB core)
+            if (g_gameboyApp) {
+                g_gameboyApp->load();
+                g_mode = AppMode::GAMEBOY;
+                std::printf("[APP] GameBoyApp activa\n");
+            }
+            break;
+
         case 20: // Full MathRenderer verification app
             if (g_mathVisualApp) {
                 g_mathVisualApp->load();
@@ -1324,6 +1357,10 @@ static void performAppTeardown(AppMode m)
             break;
         case AppMode::MATH_VISUAL:
             if (g_mathVisualApp) g_mathVisualApp->end();
+            break;
+        case AppMode::GAMEBOY:
+            // GameBoyApp::load() vuelve a llamar begin() perezosamente.
+            if (g_gameboyApp) g_gameboyApp->end();
             break;
 #if defined(NUMOS_NEO_APP_SMOKE)
         case AppMode::NEO_LANGUAGE:
@@ -1926,6 +1963,8 @@ static const char* canonicalAppName(const std::string& name)
     if (lc == "sequences" || lc == "seq")         return "Sequences";       // Phase 7A
     if (lc == "regression" || lc == "reg")        return "Regression";      // Phase 7C
     if (lc == "grapher" || lc == "graph")         return "Grapher";         // Phase 8G
+    if (lc == "gameboy" || lc == "gb" ||
+        lc == "game_boy")                         return "Game Boy";
 #if defined(NUMOS_NEO_APP_SMOKE)
     if (lc == "neolanguage" || lc == "neolang" || lc == "neo")
                                                     return "NeoLanguage";
@@ -1950,6 +1989,7 @@ static int scriptAppNameToId(const std::string& name)
     if (lc == "regression" || lc == "reg")                            return 6;   // Phase 7C
     if (lc == "grapher" || lc == "graph")                             return 1;   // Phase 8G
     if (lc == "settings")                                             return 10;
+    if (lc == "gameboy" || lc == "gb" || lc == "game_boy")            return 21;   // Walnut-CGB front-end
 #if defined(NUMOS_NEO_APP_SMOKE)
     if (lc == "neolanguage" || lc == "neolang" || lc == "neo")         return 18;
 #endif
@@ -2046,7 +2086,7 @@ static bool loadScript(const char* path)
             if (iss >> extra)   return scriptErr(path, lineNo, "open_app: demasiados argumentos");
             int id = scriptAppNameToId(name);
             if (id < 0) return scriptErr(path, lineNo,
-                                         "open_app: app no lanzable (Calculation|Grapher|Statistics|Probability|Sequences|Regression|Settings|MathShowcase)");
+                                         "open_app: app no lanzable (Calculation|Grapher|Statistics|Probability|Sequences|Regression|Settings|MathShowcase|GameBoy)");
             sc.type   = ScriptCmdType::OpenApp;
             sc.waitN  = id;
             const char* canon = canonicalAppName(name);
@@ -2714,6 +2754,7 @@ static const char* activeAppName()
          : (g_mode == AppMode::REGRESSION)    ? "Regression"
          : (g_mode == AppMode::GRAPHER)       ? "Grapher"
          : (g_mode == AppMode::MATH_VISUAL)   ? "Math Visual"
+         : (g_mode == AppMode::GAMEBOY)       ? "Game Boy"
          : (g_mode == AppMode::EQUATIONS)     ? "Equations"
          : (g_mode == AppMode::CALCULUS)      ? "Calculus"
 #if defined(NUMOS_NEO_APP_SMOKE)
@@ -3741,6 +3782,11 @@ static void emulatorRunFrame()
 
         if (g_mode == AppMode::EQUATIONS && g_equationsApp) {
             g_equationsApp->update();
+        }
+        // Game Boy front-end: un frame emulado por iteracion del bucle (pacing
+        // del emulador de escritorio; el firmware necesitara un acumulador).
+        if (g_mode == AppMode::GAMEBOY && g_gameboyApp) {
+            g_gameboyApp->update();
         }
         lv_timer_handler();
         if (g_pointerReleasePending && g_pointerPressObserved) {

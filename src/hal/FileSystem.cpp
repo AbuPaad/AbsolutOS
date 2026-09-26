@@ -44,6 +44,11 @@ EM_JS(void, numosFilesystemDidMutate, (int operation), {
     #define MKDIR_P(path) ::mkdir(path, 0755)
 #endif
 
+// Listado de directorios: std::filesystem evita #ifdefs por plataforma
+// (opendir/readdir en POSIX vs _findfirst/_findnext en Windows/MinGW).
+#include <filesystem>
+#include <system_error>
+
 // Raíz configurable (FIX-01): por defecto el comportamiento histórico
 // ./emulator_data (relativo al CWD); NativeHal puede redirigirla a un
 // sandbox por-ejecución ANTES de begin().
@@ -98,11 +103,14 @@ File LittleFSClass::open(const char* path, const char* mode) {
     }
 
     std::string fp = fullPath(path);
-    FILE* f = std::fopen(fp.c_str(), bmode.c_str());
     const bool mutating = bmode.find('w') != std::string::npos ||
                           bmode.find('a') != std::string::npos ||
                           bmode.find('+') != std::string::npos;
-    return File(f, mutating);
+
+    // Un directorio abierto en modo lectura se devuelve como File de directorio,
+    // con paridad Arduino: LittleFS.open("/dir") + openNextFile(). En modo de
+    // escritura se deja caer al fopen() normal, que fallará (como en Arduino).
+    return File::fromHostPath(fp, s_rootDir, bmode.c_str(), !mutating);
 }
 
 // ── remove — Elimina un archivo ─────────────────────────────────────────────
@@ -134,6 +142,90 @@ bool LittleFSClass::mkdir(const char* path) {
     if (created) numosFilesystemDidMutate(3);
 #endif
     return created;
+}
+
+// ── emulatedPathOf — Ruta host → ruta dentro del FS emulado ─────────────────
+// "./emulator_data/roms/x.gb" con raíz "./emulator_data" → "/roms/x.gb"
+static std::string emulatedPathOf(const std::string& hostPath, const std::string& root) {
+    std::string base = root;
+    while (base.size() > 1 && base.back() == '/') base.pop_back();
+
+    std::string p = hostPath;
+    if (!base.empty() && p.compare(0, base.size(), base) == 0) p.erase(0, base.size());
+    if (p.empty()) return "/";
+    if (p[0] != '/') p.insert(p.begin(), '/');
+    return p;
+}
+
+// ── File::fromHostPath — Fábrica de File para una ruta del host ─────────────
+File File::fromHostPath(const std::string& hostPath, const std::string& root,
+                        const char* mode, bool allowDirectory) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+
+    if (allowDirectory && fs::is_directory(hostPath, ec) && !ec) {
+        auto* it = new fs::directory_iterator(hostPath, ec);
+        if (ec) {
+            delete it;
+            return File();
+        }
+        File entry;
+        entry._dir         = it;
+        entry._isDir       = true;
+        entry._dirHostPath = hostPath;
+        entry._root        = root;
+        entry._emulatedPath = emulatedPathOf(hostPath, root);
+        entry._name         = fs::path(hostPath).filename().string();
+        return entry;
+    }
+
+    FILE* f = std::fopen(hostPath.c_str(), mode && mode[0] ? mode : "rb");
+    if (!f) return File();
+
+    const bool mutating = mode && (std::strchr(mode, 'w') || std::strchr(mode, 'a') ||
+                                   std::strchr(mode, '+'));
+    File entry(f, mutating);
+    entry._root         = root;
+    entry._emulatedPath = emulatedPathOf(hostPath, root);
+    entry._name         = fs::path(hostPath).filename().string();
+    return entry;
+}
+
+// ── File::destroyDirectoryHandle — libera el iterador sin exponer su tipo ───
+void File::destroyDirectoryHandle(void* handle) {
+    delete static_cast<std::filesystem::directory_iterator*>(handle);
+}
+
+// ── File::openNextFile — siguiente entrada del directorio ───────────────────
+File File::openNextFile() {
+    if (!_dir) return File();
+
+    namespace fs = std::filesystem;
+    auto* it = static_cast<fs::directory_iterator*>(_dir);
+    const fs::directory_iterator end;
+    std::error_code ec;
+
+    while (*it != end) {
+        const fs::directory_entry entry = **it;
+        it->increment(ec);
+        if (ec) return File();
+
+        const std::string base = entry.path().filename().string();
+        if (base.empty() || base == "." || base == "..") continue;
+        return File::fromHostPath(entry.path().string(), _root, "rb", true);
+    }
+    return File();
+}
+
+// ── isDirectory — ¿la ruta emulada es un directorio? ────────────────────────
+bool LittleFSClass::isDirectory(const char* path) {
+    std::error_code ec;
+    return std::filesystem::is_directory(fullPath(path), ec) && !ec;
+}
+
+// ── hostPath — ruta del host correspondiente (diagnóstico) ──────────────────
+std::string LittleFSClass::hostPath(const char* path) const {
+    return fullPath(path);
 }
 
 #endif // !ARDUINO
