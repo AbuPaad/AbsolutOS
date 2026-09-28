@@ -125,6 +125,21 @@ static void build(MdRenderer& r, const char* src) {
     r.paginate(styles);
 }
 
+// Same, but with a page height small enough to make every line unbreakable —
+// the only way to reach the clip guard on a host, where real line heights are
+// ~14 px against CONTENT_H 176.
+static void buildWithContentH(MdRenderer& r, const char* src, int contentH) {
+    r.parse(reinterpret_cast<const uint8_t*>(src), std::strlen(src));
+    MdStyles styles;
+    styles.bodySize = 14;
+    styles.headingSize = 14;
+    styles.codeSize = 12;
+    styles.contentH = contentH;
+    HostMetrics metrics;
+    r.layout(metrics, styles);
+    r.paginate(styles);
+}
+
 static void everyPageFits(const MdRenderer& r, const char* what) {
     for (const Page& p : r.pages()) {
         if (p.height > CONTENT_H) {
@@ -372,6 +387,39 @@ int main() {
         build(r, f.src);
         everyPageFits(r, f.name);
         printPages(r, f.name);
+    }
+
+    // ── 21. Clip guard: an unbreakable line is clipped, never overflowed ────
+    {
+        // A real host line is ~14 px against CONTENT_H 176, so this path is
+        // unreachable at full size; the page is shrunk to force it.
+        MdRenderer r;
+        buildWithContentH(r, "# A\n\nB\n\nC\n", 8);
+        check(r.pageCount() >= 1, "clip guard: pages emitted");
+        int clipped = 0;
+        for (const Page& p : r.pages()) {
+            check(p.height <= 8, "clip guard: page height clamped to contentH");
+            if (p.truncated) ++clipped;
+        }
+        check(clipped == r.pageCount(), "clip guard: every page flagged truncated");
+        check(r.pageTruncated(0), "clip guard: accessor reports page 0 clipped");
+        check(!r.pageTruncated(-1), "clip guard: accessor rejects a negative page");
+        check(!r.pageTruncated(r.pageCount()), "clip guard: accessor rejects past the end");
+        const std::string t = allText(r);
+        check(has(t, "A") && has(t, "B") && has(t, "C"),
+              "clip guard: display rule only — no text lost");
+        std::printf("  [clip-guard] contentH=8 -> %d page(s), %d clipped, heights clamped\n",
+                    r.pageCount(), clipped);
+    }
+
+    // ── 22. Regression: a normal document never flags a clipped page ────────
+    {
+        MdRenderer r;
+        build(r, "# T\n\npara one\n\npara two\n\n- a\n- b\n");
+        everyPageFits(r, "normal");
+        int clipped = 0;
+        for (int p = 0; p < r.pageCount(); ++p) if (r.pageTruncated(p)) ++clipped;
+        expectEq(clipped, 0, "normal doc: no page flagged clipped");
     }
 
     if (g_failures == 0) {

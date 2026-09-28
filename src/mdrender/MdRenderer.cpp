@@ -1366,6 +1366,21 @@ bool MdRenderer::paginate(const MdStyles& styles) {
             }
         }
         if (page.lineCount == 0) page.firstLine = i;
+
+        // Clip guard — the fits invariant is absolute. A line that cannot fit even
+        // on a freshly opened page (or cannot fit under a repeated table header) is
+        // CLIPPED here instead of silently overflowing CONTENT_H: the page is
+        // clamped and flagged, and render() draws that last line dimmed. The app's
+        // chrome owns the visible indicator, no text is invented, and the note's
+        // own text is untouched — clipping is a display rule only.
+        if (page.height + line.h > contentH) {
+            page.height    = static_cast<uint16_t>(contentH);
+            page.truncated = true;
+            page.lineCount++;
+            ++i;
+            continue;
+        }
+
         page.height = static_cast<uint16_t>(page.height + line.h);
         page.lineCount++;
         ++i;
@@ -1432,26 +1447,37 @@ void MdRenderer::render(int page, void* parent, const MdStyles& styles) {
     if (pg.lineCount == 0) return;
     const int baseY = lines[pg.firstLine].y;
 
+    // On a clipped page the last line is the one that could not fit, so draw it
+    // with the dim Truncated style and no background: the clip is then visible on
+    // the page itself. The app's chrome owns the fuller indicator, and no text is
+    // invented here.
+    const int32_t clippedLine = pg.truncated
+        ? static_cast<int32_t>(pg.firstLine + pg.lineCount - 1)
+        : -1;
+
     for (uint32_t li = pg.firstLine; li < pg.firstLine + pg.lineCount && li < lines.size(); ++li) {
         const Line& line = lines[li];
         if (line.hardBreak) continue;
+        const bool isClipped = (static_cast<int32_t>(li) == clippedLine);
         for (uint32_t ri = line.firstRun; ri < line.firstRun + line.runCount; ++ri) {
             if (ri >= _display.runs.size()) break;
             const Run& run = _display.runs[ri];
             const std::string text = runText(run);
             if (text.empty()) continue;
 
+            const StyleId effStyle = isClipped ? StyleId::Truncated : run.style;
+
             lv_obj_t* label = lv_label_create(root);
             lv_label_set_text(label, text.c_str());
-            lv_obj_set_style_text_font(label, asFont(styleFont(styles, run.style),
-                                                     styleSize(styles, run.style)),
+            lv_obj_set_style_text_font(label, asFont(styleFont(styles, effStyle),
+                                                     styleSize(styles, effStyle)),
                                        LV_PART_MAIN);
-            lv_obj_set_style_text_color(label, lv_color_hex(styleColor(styles, run.style)),
+            lv_obj_set_style_text_color(label, lv_color_hex(styleColor(styles, effStyle)),
                                         LV_PART_MAIN);
-            if (run.style == StyleId::Code) {
+            if (!isClipped && run.style == StyleId::Code) {
                 lv_obj_set_style_bg_opa(label, LV_OPA_COVER, LV_PART_MAIN);
                 lv_obj_set_style_bg_color(label, lv_color_hex(styles.colorCodeBg), LV_PART_MAIN);
-            } else if (run.style == StyleId::Highlight) {
+            } else if (!isClipped && run.style == StyleId::Highlight) {
                 lv_obj_set_style_bg_opa(label, LV_OPA_COVER, LV_PART_MAIN);
                 lv_obj_set_style_bg_color(label, lv_color_hex(styles.colorHighlight), LV_PART_MAIN);
             }

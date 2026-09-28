@@ -346,6 +346,10 @@ struct Page {
     uint32_t firstLine;  ///< index into DisplayList::lines
     uint16_t lineCount;
     uint16_t height;     ///< total px; every emitted page fits CONTENT_H
+    /// A line was clipped to keep the line above true — its bottom is cut at the
+    /// page edge and it is drawn dimmed. Clipping is a display rule only: the
+    /// note's own text is never altered by it. The app's chrome owns the marker.
+    bool     truncated = false;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -373,7 +377,9 @@ public:
 
     // ── Stage 4: paginate ────────────────────────────────────────────────
     /// Emit a page table (first-line index + height per page). Every emitted
-    /// page fits CONTENT_H; a thematic break is a hard page break.
+    /// page fits CONTENT_H; a thematic break is a hard page break. A line that
+    /// cannot fit even on a fresh page is clipped to the page and the page is
+    /// flagged — see pageTruncated().
     bool paginate(const MdStyles& styles);
 
     // ── Stage 5: LVGL draw (LVGL builds only) ────────────────────────────
@@ -386,7 +392,15 @@ public:
     const DisplayList&  display() const  { return _display; }
     const std::vector<Page>& pages() const { return _pages; }
     int  pageCount() const { return static_cast<int>(_pages.size()); }
+    /// True if a note-level cap was hit (size/block/span limits), not pagination.
     bool isTruncated() const { return _doc.truncated; }
+    /// True if this page had to clip a line to keep the fits invariant. The
+    /// clipped line is drawn dimmed; the app's chrome owns the fuller indicator.
+    /// Clipping never alters the note's text.
+    bool pageTruncated(int page) const {
+        return page >= 0 && page < static_cast<int>(_pages.size()) &&
+               _pages[static_cast<size_t>(page)].truncated;
+    }
 
     /// Resolve a run's text out of the pool (for tests / debugging).
     std::string runText(const Run& run) const;
