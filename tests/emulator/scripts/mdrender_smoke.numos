@@ -1,0 +1,52 @@
+# mdrender_smoke.numos — shared Markdown render module (src/mdrender) demo host:
+# open a note, screenshot page 1, page forward, then a larger font. Ends while
+# the reader is active, so the generator's final-frame candidate is meaningful.
+#
+# The note fixture lives at <fs-root>/notes/demo.md. Point the run at the
+# repo's isolated notes root (NOT at tests/emulator/ itself):
+#
+#   program --headless --deterministic --script tests/emulator/scripts/mdrender_smoke.numos \
+#           --fs-root tests/emulator/fs --frames 900 --screenshot out/mdrender_smoke.ppm --quiet
+#
+# Screenshots written by this script: out/mdrender_page1.ppm, out/mdrender_page2.ppm,
+# out/mdrender_large.ppm. Candidate generation (human review gate) is the usual:
+#   pio run -e emulator_pc
+#   python scripts/generate-emulator-candidates.py         # -> out/emulator-candidates/mdrender_smoke.ppm
+#   python scripts/promote-emulator-golden.py mdrender_smoke
+#
+# Timing (deterministic, step-ms 16):
+#   * 200 frames -> splash (~frame 125) done; we are in the launcher.
+#   * 60 frames  -> the reader screen loads, parses /notes/demo.md, lays out and
+#                   paginates, and draws page 1.
+#
+# Key map (reader): RIGHT/LEFT change page; F2 = smaller font, F3 = larger font
+# (12 / 14 / 20 px); UP/DOWN move the line cursor; AC/MODE leave.
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "mdrender_smoke: waiting for launcher"
+wait 200
+
+open_app notes
+wait 60
+assert_app notes
+log "mdrender_smoke: reader open (parsed /notes/demo.md)"
+
+# Screenshot BEFORE later keys so the artifact exists even if an assert fails.
+screenshot out/mdrender_page1.ppm
+log "mdrender_smoke: page 1 captured"
+
+# RIGHT changes page (no intra-page scrolling in the module).
+key right
+wait 10
+screenshot out/mdrender_page2.ppm
+assert_app notes
+log "mdrender_smoke: page 2 captured"
+
+# F3 = larger font (20 px); repaginates and returns to page 1. The final frame is
+# the larger-font page 1, which is what the candidate generator captures.
+key f3
+wait 10
+screenshot out/mdrender_large.ppm
+assert_app notes
+log "mdrender_smoke: large font captured"

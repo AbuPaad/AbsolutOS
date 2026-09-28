@@ -166,6 +166,11 @@ CANDIDATES = [
     ("grapher_mixed_relations_smoke", "tests/emulator/scripts/grapher_mixed_relations_smoke.numos", 1400),
     ("grapher_trace_domain_smoke", "tests/emulator/scripts/grapher_trace_domain_smoke.numos", 1400),
     ("grapher_explicit_parabola_smoke", "tests/emulator/scripts/grapher_explicit_parabola_smoke.numos", 1400),
+    # mdrender: the shared Markdown render module demo host. Opens /notes/demo.md
+    # (see tests/emulator/fs/notes/) and captures page 1 / page 2 / a larger font.
+    # The script asserts the active app (exit 4 -> FAIL here). No golden is blessed
+    # here — the compare step warns (not fails) while no golden exists.
+    ("mdrender_smoke", "tests/emulator/scripts/mdrender_smoke.numos", 900),
 ]
 
 
