@@ -75,7 +75,7 @@ public:
 class BufferSource : public NoteSource {
 public:
     BufferSource() = default;
-    BufferSource(const uint8_t* data, size_t len) : _data(data), _len(len) {}
+    BufferSource(const uint8_t* data, size_t len) : _data(data), _len(len), _remaining(len) {}
 
     size_t read(uint8_t* buf, size_t len) override {
         const size_t n = (len < _remaining) ? len : _remaining;
