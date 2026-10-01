@@ -49,7 +49,7 @@ static constexpr uint32_t COL_PREVIEW     = 0x4488FF;
 static constexpr int TOOLBAR_Y  = 24;   // below StatusBar
 static constexpr int TOOLBAR_H  = 18;
 static constexpr int DRAW_Y     = 42;   // below toolbar
-static constexpr int DRAW_H     = 198;  // rest of 240px screen
+static constexpr int DRAW_H     = SCREEN_HEIGHT - DRAW_Y;  // canvas minus StatusBar + toolbar (was 198)
 static constexpr int INFO_H     = 14;   // info label overlay height
 
 // Tool names for toolbar

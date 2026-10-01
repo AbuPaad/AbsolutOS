@@ -14,7 +14,8 @@
 #else
 // Include TCA9555 definitions for non-production build
 #include "../lib/TCA9555/TCA9555.h"
-#include "./config.h"
+// ("../Config.h" above already carries KBD_I2C_SDA_PIN / KBD_I2C_SCL_PIN; the
+//  old `#include "./config.h"` here was a typo and never resolved.)
 #endif
 
 class Keyboard {
@@ -62,38 +63,54 @@ private:
 #else
 private:
     // TCA9555 instance and pin mapping
-    TCA9555 _tca{0x20}; // I2C address from Config.h
-    
-    // Matrix dimensions for 6x9 configuration
+    TCA9555 _tca{0x20}; // I2C address 0x20
+
+    // Matrix dimensions for the TCA9555 6x9 expander (6 driven columns x 9 sensed rows)
     static constexpr int ROWS = 9;
     static constexpr int COLS = 6;
     static constexpr int CONNECTED_COLS = 6; // All 6 columns connected
-    
+
     // TCA9555 pin mappings (matching assignment specifications)
-    const uint8_t _colPins[COLS] = {TCA_P00, TCA_P01, TCA_P02, TCA_P03, TCA_P04, TCA_P05}; // C1-C6
-    const uint8_t _rowPins[ROWS] = {TCA_P06, TCA_P10, TCA_P11, TCA_P12, TCA_P13, TCA_P14, TCA_P15, TCA_P16, TCA_P17}; // R1-R9
-    
-    // Timing constants (preserve existing values)
-    static constexpr uint16_t SCAN_INTERVAL_MS = 5;
-    static constexpr uint16_t DEBOUNCE_MS = 20;
-    static constexpr uint16_t AUTOREPEAT_DELAY_MS = 500;
-    static constexpr uint16_t AUTOREPEAT_RATE_MS = 80;
+    //   Columns  = TCA port 0 bits 0..5 (driven outputs, active LOW).
+    //   Row 0    = TCA_P06 (port 0 bit 6); rows 1..8 = TCA_P10..P17 (port 1 bits 0..7).
+    //   TCA_P07  = unused, left INPUT so it cannot drive anything.
+    const uint8_t _colPins[COLS] = {TCA_P00, TCA_P01, TCA_P02, TCA_P03, TCA_P04, TCA_P05};
+    const uint8_t _rowPins[ROWS] = {TCA_P06, TCA_P10, TCA_P11, TCA_P12, TCA_P13, TCA_P14, TCA_P15, TCA_P16, TCA_P17};
+
     static const KeyCode _map[ROWS][COLS];
-    
+
     // State tracking arrays
     bool _rawState[ROWS][COLS]{};
     bool _debState[ROWS][COLS]{};
+    bool _repeatStarted[ROWS][COLS]{};
     uint32_t _debTimer[ROWS][COLS]{};
     uint32_t _arTimer[ROWS][COLS]{};
+
+    // INT-gated scan state machine
+    enum class ScanMode : uint8_t { IDLE, SCANNING };
+    ScanMode _scanMode = ScanMode::IDLE;
+    static volatile bool s_intTriggered;
+    bool _sweepDue = false;
     uint32_t _lastScanMs = 0;
-    
+
+    // Health / enable / overflow accounting
+    bool _initialized = false;
+    bool _enabled = false;
+    uint32_t _overflowCount = 0;
+    uint8_t _consecutiveFailures = 0;
+
     // Event queue
     static constexpr int QUEUE_SIZE = 16;
     KeyEvent _queue[QUEUE_SIZE]{};
     int _qHead = 0;
     int _qTail = 0;
-    
+
+    static void IRAM_ATTR kbdIsr();
+
     void doScan();
     void pushEvent(const KeyEvent& ev);
+    void setIdleState();
+    bool hasActiveKeys() const;
+    void onBusFailure();
 #endif
 };

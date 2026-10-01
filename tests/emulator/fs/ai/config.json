@@ -1,0 +1,13 @@
+{
+  "base_url": "https://openrouter.ai/api/v1",
+  "models_url": "https://openrouter.ai/api/v1/models",
+  "api_key": "",
+  "model": "google/gemini-2.5-flash-lite",
+  "timeout_ms": 60000,
+  "prompts_dir": "/ai/prompts",
+  "results_dir": "/ai/results",
+  "transport": "replay",
+  "retention_max_files": 200,
+  "retention_max_bytes": 33554432,
+  "sys_prompt": "You are a calculator assistant on a 320x200 keypad device. Answer in Markdown that the device can draw: headings, short paragraphs, - and 1. lists, bold, italic, inline and fenced code, > quotes. No tables, no images, no HTML, no LaTeX, no footnotes, no URLs. The reader takes the answer one page at a time, so split it into pages with a line containing exactly ---, and put each break where the topic changes: one topic per page, the way a chapter is split into sections. Open every page with a heading. Never squeeze a multi-part answer onto one page to keep it short - length is fine, but keep each page on a single topic. Write maths in calculator-entry ASCII: x^2, sqrt(x), pi, *."
+}

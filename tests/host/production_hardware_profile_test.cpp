@@ -18,22 +18,25 @@ int main() {
 
     assert(board.display.logicalWidth == 320);
     assert(board.display.logicalHeight == 240);
-    assert(board.display.chipSelect.gpio == 38);
-    assert(board.display.clock.gpio == 39);
-    assert(board.display.dataCommand.gpio == 40);
-    assert(board.display.mosi.gpio == 41);
-    assert(board.display.miso.gpio == 42);
-    assert(board.display.reset.gpio == 1);
+    // Display pins = bench ILI9341 bring-up wiring (source of truth).
+    assert(board.display.chipSelect.gpio == 10);
+    assert(board.display.clock.gpio == 12);
+    assert(board.display.dataCommand.gpio == 4);
+    assert(board.display.mosi.gpio == 11);
+    assert(board.display.miso.gpio == 13);
+    assert(board.display.reset.gpio == 5);
     assert(board.display.reset.activeLevel == ActiveLevel::Low);
-    assert(board.display.backlight.gpio == 2);
-    assert(board.display.backlight.activeLevel == ActiveLevel::High);
+    // Backlight is on a fixed rail: explicitly not a GPIO.
+    assert(board.display.backlight.gpio == -1);
     assert(board.display.initialSpiHz == 40'000'000U);
     assert(!board.display.misoRequiredForBasicRendering);
     assert(!board.display.teConnected);
 
-    constexpr std::array<int8_t, 5> expectedRows = {9, 21, 47, 48, 11};
+    // Keypad matrix is wiped on purpose; it collided with the bench display
+    // pins and will be re-mapped to the real wiring later.
+    constexpr std::array<int8_t, 5> expectedRows = {-1, -1, -1, -1, -1};
     constexpr std::array<int8_t, 10> expectedColumns =
-        {4, 5, 6, 7, 15, 16, 17, 18, 8, 10};
+        {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     assert(board.electricalMatrix.rowOutputs == expectedRows);
     assert(board.electricalMatrix.columnInputs == expectedColumns);
     constexpr std::array<uint8_t, 5> expectedRowOrder = {0, 1, 2, 3, 4};
@@ -48,7 +51,7 @@ int main() {
     assert(board.electricalMatrix.perKeyDiodesFitted);
     assert(board.electricalMatrix.fullScanIntervalUs == 5'000U);
     assert(board.electricalMatrix.settlingDurationUs == 10U);
-    assert(board.electricalMatrix.logicalMappingReady);
+    assert(!board.electricalMatrix.logicalMappingReady);
 
     assert(board.usbDataMinus.gpio == 19);
     assert(board.usbDataPlus.gpio == 20);

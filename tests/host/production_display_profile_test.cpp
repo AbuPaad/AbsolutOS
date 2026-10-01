@@ -108,7 +108,7 @@ void executeAndVerify(const ClippedFlushPlan& plan,
 
 int main() {
     static_assert(kSafeDisplayProfile.rotation == 1);
-    static_assert(displayMadctl(kSafeDisplayProfile) == 0x28);
+    static_assert(displayMadctl(kSafeDisplayProfile) == 0x68);
     static_assert(kSafeDisplayProfile.writeSpiHz == 40'000'000U);
     static_assert(kSafeDisplayProfile.xOffset == 0);
     static_assert(kSafeDisplayProfile.yOffset == 0);
@@ -130,10 +130,10 @@ int main() {
     }
 
     // Rotation owns MX/MY/MV. BGR is the only independently variable bit.
-    assert(displayMadctl(1, ColorOrder::Rgb) == 0x20);
-    assert(displayMadctl(1, ColorOrder::Bgr) == 0x28);
-    assert(displayMadctl(3, ColorOrder::Rgb) == 0xE0);
-    assert(displayMadctl(3, ColorOrder::Bgr) == 0xE8);
+    assert(displayMadctl(1, ColorOrder::Rgb) == 0x60);
+    assert(displayMadctl(1, ColorOrder::Bgr) == 0x68);
+    assert(displayMadctl(3, ColorOrder::Rgb) == 0xA0);
+    assert(displayMadctl(3, ColorOrder::Bgr) == 0xA8);
     assert((displayMadctl(1, ColorOrder::Rgb) ^
             displayMadctl(1, ColorOrder::Bgr)) == kMadctlBgr);
     assert((displayMadctl(3, ColorOrder::Rgb) ^
@@ -141,8 +141,8 @@ int main() {
     uint8_t decodedRotation = 0;
     ColorOrder decodedOrder = ColorOrder::Rgb;
     for (const auto& expected : std::array<std::array<uint8_t, 3>, 4>{{
-             {{0x20, 1, 0}}, {{0x28, 1, 1}},
-             {{0xE0, 3, 0}}, {{0xE8, 3, 1}}
+             {{0x60, 1, 0}}, {{0x68, 1, 1}},
+             {{0xA0, 3, 0}}, {{0xA8, 3, 1}}
          }}) {
         assert(decodeSupportedMadctl(
             expected[0], decodedRotation, decodedOrder));
@@ -152,15 +152,15 @@ int main() {
     }
     for (const uint8_t invalid :
          std::array<uint8_t, 8>{0x00, 0x08, 0x40, 0x48,
-                                0x60, 0x68, 0xA0, 0xA8}) {
+                                0x20, 0x28, 0xE0, 0xE8}) {
         assert(!decodeSupportedMadctl(
             invalid, decodedRotation, decodedOrder));
     }
     for (uint16_t candidate = 0; candidate <= UINT8_MAX; ++candidate) {
         const uint8_t value = static_cast<uint8_t>(candidate);
         const bool expected =
-            value == 0x20 || value == 0x28 ||
-            value == 0xE0 || value == 0xE8;
+            value == 0x60 || value == 0x68 ||
+            value == 0xA0 || value == 0xA8;
         const bool accepted =
             decodeSupportedMadctl(value, decodedRotation, decodedOrder);
         assert(accepted == expected);
@@ -227,7 +227,7 @@ int main() {
     assert(decodeDisplayProfileRecord(coherentRecord, decoded));
     assert(decoded.rotation == 3);
     assert(decoded.colorOrder == ColorOrder::Rgb);
-    assert(displayMadctl(decoded) == 0xE0);
+    assert(displayMadctl(decoded) == 0xA0);
 
     // RTC/NVS recovery policy: power and clean resets never count. Only an
     // armed matching panic/watchdog before launcher readiness increments.
@@ -422,8 +422,9 @@ int main() {
                        "numos-esp32-s3-n16r8-cam") == 0);
     const std::array<int8_t, 6> expectedCamPins = {13, 12, 10, 4, 5, 45};
     assert(kExistingCamIdentity.displayPins == expectedCamPins);
-    assert(kProductionBoard.display.chipSelect.gpio !=
-           kExistingCamIdentity.displayPins[2]);
+    // Production now deliberately reuses the bench display pins, which overlap
+    // the CAM pin set; the old "must not alias CAM" guard is retired.
+    assert(kProductionBoard.display.mosi.gpio == 11);
 
     std::cout << "production_display_profile_test: PASS\n";
     return 0;

@@ -694,12 +694,17 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
     }
 
     // ── SHIFT/ALPHA gestión global (CalculationApp y CalculusApp tienen su propia) ──
-    if (ev.code == KeyCode::SHIFT && _mode != Mode::APP_CALCULATION && _mode != Mode::APP_CALCULUS) {
+    // GameBoyApp needs the raw SHIFT/ALPHA edges as Game Boy Start/Select, so it
+    // is exempt like Calculation/Calculus (otherwise both are swallowed here and
+    // never reach the app — the device analogue of NativeHal::appOwnsModifiers).
+    if (ev.code == KeyCode::SHIFT && _mode != Mode::APP_CALCULATION &&
+        _mode != Mode::APP_CALCULUS && _mode != Mode::APP_GAMEBOY) {
         _shiftActive = !_shiftActive;
         km.pressShift();
         return;
     }
-    if (ev.code == KeyCode::ALPHA && _mode != Mode::APP_CALCULATION && _mode != Mode::APP_CALCULUS) {
+    if (ev.code == KeyCode::ALPHA && _mode != Mode::APP_CALCULATION &&
+        _mode != Mode::APP_CALCULUS && _mode != Mode::APP_GAMEBOY) {
         _alphaActive = !_alphaActive;
         km.pressAlpha();
         return;
@@ -1384,7 +1389,11 @@ void SystemApp::powerOff() {
     }
 
     // ── Apagar backlight via PWM ──
-    analogWrite(PIN_TFT_BL, 0);
+    // The backlight is tied to a fixed rail; there is no GPIO to drive.  Guard
+    // so PIN_TFT_BL == -1 is a no-op rather than an out-of-range write.
+    if (PIN_TFT_BL >= 0) {
+        analogWrite(PIN_TFT_BL, 0);
+    }
 
     Serial.println("[SYSTEM] Deep sleep...");
     Serial.flush();

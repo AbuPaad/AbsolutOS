@@ -105,24 +105,36 @@ inline constexpr ProductionBoardProfile kProductionBoard = {
     16U * 1024U * 1024U,
     8U * 1024U * 1024U,
     {
+        // Display pins follow the bench ILI9341 bring-up wiring, which is the
+        // display source of truth for this hardware.  The backlight is tied to
+        // a fixed rail, so there is no backlight GPIO (-1).
         320,
-        240,
+        // Logical canvas height: the fx-82 shell exposes 180 of the panel's 240
+        // rows (32 px bars top and bottom, applied as a flush offset, not drawn
+        // in app code). Keep in step with kLogicalDisplayHeight in
+        // display/ProductionDisplayProfile.h and SCREEN_W/H in hal/NativeHal.cpp.
+        180,
         40'000'000U,
-        {"LCD CS", 38, Direction::Output, ActiveLevel::Low, Pull::None},
-        {"LCD SCLK", 39, Direction::Output, ActiveLevel::None, Pull::None},
-        {"LCD DC", 40, Direction::Output, ActiveLevel::None, Pull::None},
-        {"LCD MOSI/SDI", 41, Direction::Output, ActiveLevel::None, Pull::None},
-        {"LCD MISO/SDO", 42, Direction::Input, ActiveLevel::None, Pull::None},
-        {"LCD reset", 1, Direction::Output, ActiveLevel::Low, Pull::None},
-        {"LCD backlight", 2, Direction::Output, ActiveLevel::High, Pull::None},
+        {"LCD CS", 10, Direction::Output, ActiveLevel::Low, Pull::None},
+        {"LCD SCLK", 12, Direction::Output, ActiveLevel::None, Pull::None},
+        {"LCD DC", 4, Direction::Output, ActiveLevel::None, Pull::None},
+        {"LCD MOSI/SDI", 11, Direction::Output, ActiveLevel::None, Pull::None},
+        {"LCD MISO/SDO", 13, Direction::Input, ActiveLevel::None, Pull::None},
+        {"LCD reset", 5, Direction::Output, ActiveLevel::Low, Pull::None},
+        {"LCD backlight", -1, Direction::Output, ActiveLevel::High, Pull::None},
         false,
         false,
-        0x28,
+        0x68,   // bench-proven landscape MADCTL (MX|MV|BGR)
         true
     },
     {
-        {9, 21, 47, 48, 11},
-        {4, 5, 6, 7, 15, 16, 17, 18, 8, 10},
+        // Keypad matrix WIPED on purpose.  The previous assignments came from
+        // the upstream maintainer's PCBA contract and collided with the bench
+        // display pins (row 11 vs MOSI; columns 4/5/10 vs DC/RST/CS).  The
+        // keypad will be re-mapped to the real bench wiring later; until then
+        // no scanner GPIO is assigned and logicalMappingReady is false.
+        {-1, -1, -1, -1, -1},
+        {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
         {0, 1, 2, 3, 4},
         {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
         ActiveLevel::Low,
@@ -132,7 +144,7 @@ inline constexpr ProductionBoardProfile kProductionBoard = {
         10U,
         true,
         true,
-        true
+        false
     },
     {"native USB D-", 19, Direction::Reserved, ActiveLevel::None, Pull::None},
     {"native USB D+", 20, Direction::Reserved, ActiveLevel::None, Pull::None},
@@ -145,7 +157,7 @@ inline constexpr ProductionBoardProfile kProductionBoard = {
         {"strap GPIO45", 45, Direction::Reserved, ActiveLevel::None, Pull::Up10k},
         {"strap GPIO46", 46, Direction::Reserved, ActiveLevel::None, Pull::Down10k}
     }},
-    {12, 13, 14, 35, 36, 37},
+    {14, 35, 36, 37, -1, -1},
     {false, false, false}
 };
 
@@ -197,10 +209,9 @@ constexpr bool allUnique(const std::array<int8_t, N>& values) {
     return true;
 }
 
-inline constexpr std::array<int8_t, 22> kProductionNormalPeripheralGpios = {
-    38, 39, 40, 41, 42, 1, 2,
-    9, 21, 47, 48, 11,
-    4, 5, 6, 7, 15, 16, 17, 18, 8, 10
+// Only the display pins are assigned now that the keypad matrix is wiped.
+inline constexpr std::array<int8_t, 6> kProductionNormalPeripheralGpios = {
+    10, 12, 4, 11, 13, 5
 };
 
 static_assert(kProductionBoard.electricalMatrix.rowOutputs.size() == 5);
@@ -217,20 +228,14 @@ static_assert(!contains(kProductionNormalPeripheralGpios, 0) &&
               !contains(kProductionNormalPeripheralGpios, 45) &&
               !contains(kProductionNormalPeripheralGpios, 46),
               "BOOT/strap pins must not be normal peripherals");
-static_assert(!contains(kProductionNormalPeripheralGpios, 12) &&
-              !contains(kProductionNormalPeripheralGpios, 13) &&
-              !contains(kProductionNormalPeripheralGpios, 14) &&
+static_assert(!contains(kProductionNormalPeripheralGpios, 14) &&
               !contains(kProductionNormalPeripheralGpios, 35) &&
               !contains(kProductionNormalPeripheralGpios, 36) &&
               !contains(kProductionNormalPeripheralGpios, 37),
               "Milestone-reserved unconnected GPIOs must remain unassigned");
-static_assert(kProductionBoard.electricalMatrix.logicalMappingReady);
 static_assert(!kProductionBoard.capabilities.batteryAdc);
 static_assert(!kProductionBoard.capabilities.softwareRegulatorControl);
 static_assert(!kProductionBoard.capabilities.chargerStatusGpios);
 static_assert(kProductionBoard.display.initialSpiHz <= 40'000'000U);
-static_assert(kProductionBoard.display.chipSelect.gpio !=
-              kExistingCamIdentity.displayPins[2],
-              "Production profile must not inherit the CAM display contract");
 
 } // namespace numos::hardware

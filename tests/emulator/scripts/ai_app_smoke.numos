@@ -1,0 +1,92 @@
+# ai_app_smoke.numos — the AI wrapper (app id 23): every screen, screenshotted.
+#
+# transport = replay (see <fs-root>/ai/config.json), so this run sends NOTHING
+# anywhere: the stream comes from a recorded fixture at /ai/replay/answer.sse
+# and the app streams, paginates, commits and saves exactly as it would against
+# a live endpoint.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/ai_app_smoke.numos \
+#           --fs-root tests/emulator/fs --frames 900 --screenshot out/ai_app.ppm --quiet
+#
+# Screens written by this script (out/):
+#   ai_menu, ai_ask, ai_stream, ai_result_p1, ai_result_p2,
+#   ai_capture, ai_recent, ai_settings, ai_results_dir
+#
+# Timing (deterministic, 16 ms steps): the replay transport emits 24 bytes per
+# frame, so the fixture (~1.2 KB) needs ~50 frames to stream and lands about 90
+# after the run starts. `wait 25` therefore captures the card MID-STREAM.
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "ai_app_smoke: waiting for launcher"
+wait 200
+
+open_app ai
+wait 40
+assert_app AI
+screenshot out/ai_menu.ppm
+log "ai_app_smoke: action menu captured"
+
+# ENTER on "Ask" (first row) -> the question screen.
+key enter
+wait 20
+assert_app AI
+screenshot out/ai_ask.ppm
+log "ai_app_smoke: ask screen captured"
+
+# ENTER again sends: streaming starts. This is the card mid-stream, page 1
+# growing word by word from the fixture.
+key enter
+wait 25
+screenshot out/ai_stream.ppm
+log "ai_app_smoke: streaming card captured (mid-stream)"
+
+# Let the rest arrive. On [DONE] the app commits atomically and shows the
+# fell-swoop paginated result.
+wait 200
+screenshot out/ai_result_p1.ppm
+log "ai_app_smoke: result page 1 captured"
+
+key right
+wait 20
+screenshot out/ai_result_p2.ppm
+assert_app AI
+log "ai_app_smoke: result page 2 captured"
+
+# Back to the menu, then Capture (second row).
+key ac
+wait 20
+key down
+wait 10
+key enter
+wait 20
+screenshot out/ai_capture.ppm
+log "ai_app_smoke: capture (prompt images) captured"
+
+# Recent answers (third row) — the run above just committed one.
+key ac
+wait 20
+key down
+wait 10
+key down
+wait 10
+key enter
+wait 20
+screenshot out/ai_recent.ppm
+log "ai_app_smoke: recent answers captured"
+
+# Settings (fourth row).
+key ac
+wait 20
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+key enter
+wait 20
+screenshot out/ai_settings.ppm
+assert_app AI
+log "ai_app_smoke: settings captured"

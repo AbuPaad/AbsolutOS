@@ -25,7 +25,7 @@
  *  5. Geometric vector icons per app (concentric shapes, NumWorks palette)
  *  6. ENTER/OK → _launchCb(app_id) → SystemApp::launchApp()
  *
- * Visual layout (320 × 240):
+ * Visual layout (320 × 180 canvas):
  *   ┌──────────────────────────────────────┐
  *   │  rad      APPLICATIONS     battery   │  24 px (#FF9900)
  *   ├──────────────────────────────────────┤
@@ -62,9 +62,9 @@
 // Layout constants
 // ═══════════════════════════════════════════════════════════════════════════════
 static constexpr int SCREEN_W      = 320;
-static constexpr int SCREEN_H      = 240;
+static constexpr int SCREEN_H      = SCREEN_HEIGHT;  // canvas (Config.h)
 static constexpr int STATUS_BAR_H  = 24;
-static constexpr int GRID_H        = SCREEN_H - STATUS_BAR_H;   // 216 px
+static constexpr int GRID_H        = SCREEN_H - STATUS_BAR_H;   // 156 px
 
 static constexpr int GRID_PAD      = 8;
 static constexpr int CARD_GAP_COL  = 6;
@@ -114,6 +114,7 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     { 18, "NeoLang",    0x4CAF50,   0xA5D6A7 },   // Terminal Green (Language/IDE)
     { 19, "Fractals",   0x3F51B5,   0x7986CB },   // Indigo (Math)
     { 21, "Game Boy",   0x8E24AA,   0xC77DD8 },   // Purple (Walnut-CGB front-end)
+    { 23, "AI",         0x00897B,   0x4DB6AC },   // Teal (AI wrapper: ask / capture / answer)
 #if defined(NUMOS_MATH_VISUAL_VERIFY)
     { 20, "Math Visual", 0x1565C0,   0x5E9CE0 },   // Renderer hardware verification
 #endif

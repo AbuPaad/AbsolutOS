@@ -26,7 +26,12 @@
  *  · One text pool (`MdDocument::pool`); every span/run is (off,len) into it.
  *  · A thematic break is a HARD page break and is never drawn as a rule.
  *  · Every emitted page fits CONTENT_H; overflow reflow guarantees it. There
- *    is no intra-page scrolling.
+ *    is no intra-page scrolling — whatever does not fit is truncated with a
+ *    visible block. NOTE (2026-09-29): callers can now produce pages with no
+ *    length cap (the AI sys prompt breaks at topic changes, not at a character
+ *    budget), so an over-tall page is expected rather than exotic. Making pages
+ *    scrollable in the caller, or splitting an over-tall page at a paragraph
+ *    boundary here, is an owed fix; neither exists today.
  *  · Raw HTML is disabled and no URL is ever fetched.
  */
 

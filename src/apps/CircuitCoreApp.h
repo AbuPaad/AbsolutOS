@@ -36,6 +36,8 @@
  */
 
 #pragma once
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
 
 #include <lvgl.h>
 #include "../ui/StatusBar.h"
@@ -117,7 +119,7 @@ private:
 
     // ── Screen geometry ─────────────────────────────────────────────────
     static constexpr int SCREEN_W    = 320;
-    static constexpr int SCREEN_H    = 240;
+    static constexpr int SCREEN_H    = SCREEN_HEIGHT;  // canvas (Config.h)
     static constexpr int STATUSBAR_H = 24;
     static constexpr int TOOLBAR_H   = 20;
     static constexpr int INFOBAR_H   = 18;

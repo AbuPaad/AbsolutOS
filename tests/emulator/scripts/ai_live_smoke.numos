@@ -1,0 +1,53 @@
+# ai_live_smoke.numos — the AI wrapper against a REAL endpoint.
+#
+# transport = emulator (libcurl): this run opens a real HTTPS connection and
+# posts a real request. The fs-root is `tests/emulator/fs-live` (gitignored,
+# built by tests/emulator/tools/make_live_fs.py, deleted after) so the key never
+# touches a tracked path.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/ai_live_smoke.numos \
+#           --fs-root tests/emulator/fs-live --frames 3200 --quiet
+#
+# Frames are wall-clock (16 ms), so the waits below are seconds, not frames:
+# a real generation takes as long as it takes. Several captures are taken rather
+# than one, because there is no "wait until done" in this grammar.
+
+log "ai_live: waiting for launcher"
+wait 200
+
+open_app ai
+wait 40
+assert_app AI
+screenshot out/ai_live_menu.ppm
+log "ai_live: menu up (transport line should read emulator(libcurl))"
+
+# Ask -> the question is prefilled on this build (no letter keys on the pad).
+key enter
+wait 20
+screenshot out/ai_live_ask.ppm
+
+# Send: a real POST to {base_url}/chat/completions.
+key enter
+wait 60
+screenshot out/ai_live_00_tls.ppm
+log "ai_live: ~1s in (connect/TLS/first byte)"
+
+wait 240
+screenshot out/ai_live_01.ppm
+log "ai_live: ~4s in"
+
+wait 480
+screenshot out/ai_live_02.ppm
+log "ai_live: ~12s in"
+
+wait 600
+screenshot out/ai_live_03.ppm
+log "ai_live: ~22s in"
+
+wait 900
+screenshot out/ai_live_04_done.ppm
+log "ai_live: ~36s in"
+
+assert_app AI
+log "ai_live: end"

@@ -23,6 +23,8 @@
  */
 
 #pragma once
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -50,7 +52,7 @@ public:
 private:
     // ── Screen dimensions ──
     static constexpr int SCREEN_W = 320;
-    static constexpr int SCREEN_H = 240;
+    static constexpr int SCREEN_H = SCREEN_HEIGHT;  // canvas (Config.h)
     static constexpr int STATUS_H = 24;
     static constexpr int INFO_H   = 14;
     static constexpr int TOOLBAR_H = 20;

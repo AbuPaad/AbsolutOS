@@ -1,0 +1,40 @@
+# NumOS 16 MB flash layout — single application slot, filesystem-heavy.
+#
+# Why not the framework's default_16MB.csv:
+#
+#   1. The SD card is DOA (board decision, 2026-10-01). Every byte a user can
+#      write — Game Boy ROMs in /roms, AI prompts and answers in /ai/* — lives
+#      in internal flash, so the filesystem is the scarce resource, not the app.
+#   2. NumOS ships no OTA workflow. Nothing in src/ references ArduinoOTA,
+#      esp_ota or Update.h, and docs/PRODUCTION_PCBA_HARDWARE_CONTRACT.md says
+#      so explicitly. The second 6,400 KiB ota_1 slot was therefore 6.25 MB of
+#      dead flash.
+#
+# This table hands that space to LittleFS: 3,375 KiB -> 9,875 KiB (~2.9x).
+#
+#   nvs        0x5000     20 KiB
+#   otadata    0x2000      8 KiB   (see the note below)
+#   app0       0x600000  6,144 KiB  firmware slot (single)
+#   spiffs     0x9E0000  9,875 KiB  LittleFS — mounted by its "spiffs" label
+#   coredump   0x10000     64 KiB
+#
+# otadata is kept even though there is no app1. That is exactly the shape of
+# the framework's own noota_ffat.csv (app0 = ota_0, otadata present, no app1),
+# and it costs 8 KiB to keep the option of a future OTA repartition open.
+#
+# HEADROOM IS THIN — READ THIS BEFORE ADDING FEATURES:
+#   The firmware measured 5,783,729 bytes (88.3%) against the old 6,400 KiB
+#   slot. Against this 6,144 KiB slot it is ~91.9%, i.e. only ~500 KiB spare.
+#   docs/specs/NUMOS_MEMORY_RISK_REGISTER.md MEMX-14 already flags app growth.
+#   When the build stops fitting, move space FROM `spiffs` INTO `app0` — do not
+#   paper over it by dropping a feature, and do not shrink `spiffs` silently.
+#
+# Flashing a table change repartitions flash and WIPES LittleFS, so any user
+# ROMs and saved answers go with it. Treat this as a one-way move on a unit
+# already in the field.
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,  0x5000,
+otadata,  data, ota,     0xe000,  0x2000,
+app0,     app,  ota_0,   0x10000, 0x600000,
+spiffs,   data, spiffs,  0x610000,0x9E0000,
+coredump, data, coredump,0xFF0000,0x10000,

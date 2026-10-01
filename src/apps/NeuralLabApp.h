@@ -27,6 +27,8 @@
  */
 
 #pragma once
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -54,14 +56,14 @@ public:
 private:
     // ── Screen layout ──
     static constexpr int SCREEN_W = 320;
-    static constexpr int SCREEN_H = 240;
+    static constexpr int SCREEN_H = SCREEN_HEIGHT;  // canvas (Config.h)
     static constexpr int STATUS_H = 24;
     static constexpr int INFO_H   = 14;
 
     // ── Decision boundary buffer (low-res, upscaled with bilinear) ──
     static constexpr int DB_W = 80;
-    static constexpr int DB_H = 60;
-    static constexpr int DB_SCALE = 4;  // 80*4 = 320, 60*4 = 240
+    static constexpr int DB_SCALE = 4;  // 80*4 = 320 wide
+    static constexpr int DB_H = SCREEN_H / DB_SCALE;  // 45 * 4 = 180 = the canvas
 
     // ── Loss chart ──
     static constexpr int LOSS_HISTORY_SIZE = 100;

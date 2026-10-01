@@ -53,7 +53,7 @@ static constexpr uint32_t COL_RING       = 0xFF4040;   // EXE pressure ring
 
 // ══ Layout constants ═════════════════════════════════════════════════════════
 static constexpr int DRAW_Y  = 24;   // below StatusBar
-static constexpr int DRAW_H  = 216;  // 240 - 24
+static constexpr int DRAW_H  = SCREEN_HEIGHT - DRAW_Y;  // canvas minus StatusBar (was 240 - 24)
 static constexpr int INFO_H  = 12;
 
 // ══ Viscosity presets (0=Gas … 9=Honey) ══════════════════════════════════════

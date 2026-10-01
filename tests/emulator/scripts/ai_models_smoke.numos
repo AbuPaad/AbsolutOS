@@ -1,0 +1,109 @@
+# ai_models_smoke.numos — the AI app's model picker (screen: Models).
+#
+# Opens Settings -> ENTER on "model" -> the picker, then walks the list far enough
+# that the viewport has to scroll, picks a model, and returns to Settings so the
+# write-back is visible. transport is `replay`, so this run sends NOTHING anywhere.
+#
+# Run (against a COPY of the fixture, because picking a model rewrites
+# /ai/config.json and the tracked fixture must stay clean):
+#   cp -r tests/emulator/fs /tmp/ai_models_fs
+#   program --headless --deterministic --script tests/emulator/scripts/ai_models_smoke.numos \
+#           --fs-root /tmp/ai_models_fs --frames 900 --quiet
+#
+# Screens written by this script (out/):
+#   ai_settings_model_row, ai_models_top, ai_models_scrolled,
+#   ai_models_bottom, ai_settings_after_pick
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "ai_models_smoke: waiting for launcher"
+wait 200
+
+open_app ai
+wait 40
+assert_app AI
+screenshot out/ai_models_menu.ppm
+
+# Menu rows: Ask, Capture, Recent answers, Settings.
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+key enter
+wait 25
+assert_app AI
+screenshot out/ai_settings_model_row.ppm
+log "ai_models_smoke: settings captured (cursor on the model row)"
+
+# ENTER on the model row opens the picker.
+key enter
+wait 30
+screenshot out/ai_models_top.ppm
+log "ai_models_smoke: picker opened"
+
+# Walk down. The list is taller than the viewport (26 rows at ROW_H=26), so past
+# the first screenful the container has to scroll to keep the cursor visible.
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 20
+screenshot out/ai_models_scrolled.ppm
+log "ai_models_smoke: picker scrolled (cursor past the first viewport)"
+
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 6
+key down
+wait 20
+screenshot out/ai_models_bottom.ppm
+log "ai_models_smoke: picker at the end of the list"
+
+# Pick it: the app writes the new id to /ai/config.json and goes back to Settings.
+key enter
+wait 30
+assert_app AI
+screenshot out/ai_settings_after_pick.ppm
+log "ai_models_smoke: back on settings after the pick"

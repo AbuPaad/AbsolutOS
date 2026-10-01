@@ -25,6 +25,8 @@
  * KEY_BACK (AC) reverses focus chain; MODE returns to menu.
  */
 #pragma once
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
 
 #include <lvgl.h>
 #include <vector>
@@ -96,7 +98,7 @@ private:
     // ── Constants ────────────────────────────────────────────────────
     static constexpr int MAX_FUNCS    = 6;
     static constexpr int SCREEN_W     = 320;
-    static constexpr int SCREEN_H     = 240;
+    static constexpr int SCREEN_H     = SCREEN_HEIGHT;  // canvas (Config.h)
     static constexpr int BAR_H        = 25;   // StatusBar::HEIGHT + 1
     static constexpr int TAB_H        = 28;   // Tab header strip
     static constexpr int TOOLBAR_H    = 24;   // Graph toolbar strip

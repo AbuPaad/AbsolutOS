@@ -37,6 +37,8 @@
  */
 
 #pragma once
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
 
 #ifdef ARDUINO
   #include <Arduino.h>
@@ -88,11 +90,24 @@ private:
 
     /**
      * Image zoom in LVGL's 1/256 units. 256 = 1×: the Game Boy's 160×144 sits
-     * centred and pixel-exact inside the 320×240 logical surface. The documented
-     * alternative is 384 (1.5× = 240×216) — a display-level toggle, NOT a
-     * different surface size.
+     * centred and pixel-exact inside the 320×180 logical canvas. NOTE: the
+     * documented 384 alternative (1.5× = 240×216) no longer fits — 216 > 180 —
+     * so it would need a real vertical crop, not just a scale toggle.
      */
     static constexpr int kImageScale = 256;
+
+    /** Logical surface height, shared by the emulator and the production panel. */
+    static constexpr int kScreenH = SCREEN_HEIGHT;
+
+    /**
+     * Game Boy frame period in microseconds (59.7275 Hz ≈ 16.743 ms). Device
+     * pacing is a real accumulator against micros(); the PC emulator keeps the
+     * one-frame-per-loop cadence that makes scripted goldens byte-stable.
+     */
+    static constexpr uint32_t kFrameUs = 16743;
+
+    /** Catch-up cap so a stall can never spiral into a long emulation burst. */
+    static constexpr uint32_t kMaxCatchUpFrames = 4;
 
     static constexpr const char* kRomDir = "/roms";
 
@@ -131,5 +146,7 @@ private:
     lv_image_dsc_t           _imgDsc{};
     std::string              _romBaseName;  ///< base name of the running ROM
     std::string              _romPath;      ///< "/roms/<name>" (the .sav prefix)
+    uint32_t                 _frameAccumUs = 0;   ///< device frame-pacing accumulator
+    uint32_t                 _lastTickUs   = 0;   ///< device pacing: previous micros()
     numos::emulation::GameBoyCore _core;
 };

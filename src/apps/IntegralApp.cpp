@@ -26,6 +26,7 @@
  */
 
 #include "IntegralApp.h"
+#include "../Config.h"   // SCREEN_HEIGHT = logical canvas
 #include "../math/MathAST.h"
 #include "../math/cas/SymToAST.h"
 #include <cstdlib>
@@ -46,7 +47,7 @@ static constexpr uint32_t COL_DESC_HEX    = 0x2E7D32;
 static constexpr uint32_t COL_INTEG_HEX   = 0x6A1B9A;  // Purple for integral label
 
 static constexpr int SCREEN_W  = 320;
-static constexpr int SCREEN_H  = 240;
+static constexpr int SCREEN_H  = SCREEN_HEIGHT;  // canvas (Config.h)
 static constexpr int BAR_H     = ui::StatusBar::HEIGHT + 1;
 static constexpr int PAD       = 6;
 

@@ -157,8 +157,9 @@ def validate_board_contract() -> Dict[str, Any]:
     require(parse_hz(build.get("f_flash", 0)) == FLASH_FREQ_HZ, "flash must be 80 MHz")
     require(upload.get("flash_size") == "16MB", "flash size must be 16 MB")
     require(
-        arduino.get("partitions") == "default_16MB.csv",
-        "partition table must remain default_16MB.csv",
+        arduino.get("partitions") == "boards/numos-16mb.csv",
+        "partition table must remain boards/numos-16mb.csv (single app slot, "
+        "filesystem-weighted)",
     )
     require(build.get("filesystem") == "littlefs", "filesystem must be LittleFS")
     return board

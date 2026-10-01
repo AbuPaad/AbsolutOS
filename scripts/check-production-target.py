@@ -27,6 +27,13 @@ def require(condition: bool, message: str) -> None:
 
 
 def find_partition_table(name: str) -> Path:
+    # A NumOS-owned table is referenced project-relative ("boards/numos-16mb.csv")
+    # because that is how PlatformIO's espressif32 builder resolves it: it looks
+    # the name up in the framework's own components/partition_table dir and,
+    # failing that, treats it as a path relative to the project dir.
+    project_candidate = ROOT / name
+    if project_candidate.is_file():
+        return project_candidate
     roots = []
     configured = os.environ.get("PLATFORMIO_CORE_DIR")
     if configured:
@@ -62,12 +69,16 @@ def validate_partitions(path: Path) -> None:
             size = parse_size(row[4])
             regions.append((label, offset, size))
 
+    # NumOS ships no OTA workflow, so the second 6,400 KiB slot in the
+    # framework's default_16MB.csv was dead flash. boards/numos-16mb.csv drops
+    # app1 and gives the space to LittleFS (3,375 KiB -> 9,875 KiB), which
+    # matters because the SD card is DOA and every user-writable byte — GB ROMs,
+    # AI prompts and answers — lives in internal flash.
     expected = {
         "nvs": (0x009000, 0x005000),
         "otadata": (0x00E000, 0x002000),
-        "app0": (0x010000, 0x640000),
-        "app1": (0x650000, 0x640000),
-        "spiffs": (0xC90000, 0x360000),
+        "app0": (0x010000, 0x600000),
+        "spiffs": (0x610000, 0x9E0000),
         "coredump": (0xFF0000, 0x010000),
     }
     require({label for label, _, _ in regions} == set(expected),
@@ -114,7 +125,7 @@ def main() -> int:
             "pinned Arduino QIO boot/runtime contract changed")
     require(build["f_flash"] == "80000000L", "flash frequency must be 80 MHz")
     require(upload["flash_size"] == "16MB", "manifest must report 16 MB flash")
-    require(upload["maximum_size"] == 0x640000,
+    require(upload["maximum_size"] == 0x600000,
             "maximum firmware size must equal app0 size")
     require(hardware["module"] == "ESP32-S3-WROOM-1U-N16R8",
             "exact production module identity missing")
@@ -150,8 +161,11 @@ def main() -> int:
             "production environment strips its required USB mode")
     require("-DNUMOS_SERIAL_BACKEND_USB_CDC=1" in normal,
             "production serial backend is not native USB CDC")
+    # Display pins follow the bench ILI9341 bring-up wiring (display source of
+    # truth): MISO 13, MOSI 11, SCLK 12, CS 10, DC 4, RST 5; no backlight GPIO.
     require(
-        "-DTFT_MISO=42" in normal
+        "-DTFT_MISO=13" in normal
+        and "-DTFT_MOSI=11" in normal
         and "-DSPI_FREQUENCY=numos_display_write_spi_hz" in normal
         and "-DSPI_READ_FREQUENCY=numos_display_read_spi_hz" in normal
         and "-include display/ProductionDisplayRuntimeConfig.h" in normal,

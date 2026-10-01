@@ -32,12 +32,17 @@
 #include <cstdint>
 #include <cmath>
 
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
+
 /// Minimum radius threshold below which a surface is treated as flat (mm).
 static constexpr float OPT_MIN_RADIUS_MM = 0.5f;
-static constexpr int OPT_BUF_W      = 320;
-static constexpr int OPT_BUF_H      = 216;  // SCREEN_H(240) - STATUS_H(24)
-static constexpr int OPT_VIEWPORT_H = 156;  // OPT_BUF_H(216) - OPT_TELEMETRY_H(60) = 156px
+static constexpr int OPT_BUF_W      = SCREEN_WIDTH;
 static constexpr int OPT_TELEMETRY_H = 60;
+// Must match OpticsLabApp::CANVAS_H / ::VIEWPORT_H: the renderer writes straight
+// into the app's canvas-sized buffer, so a taller OPT_BUF_H would run past it.
+static constexpr int OPT_BUF_H      = SCREEN_HEIGHT - 24;  // canvas - StatusBar
+static constexpr int OPT_VIEWPORT_H = OPT_BUF_H - OPT_TELEMETRY_H;
 static constexpr int OPT_AXIS_ROW   = OPT_VIEWPORT_H / 2;  // 78 — optical axis
 
 // ── Colour palette ──────────────────────────────────────────────────────────

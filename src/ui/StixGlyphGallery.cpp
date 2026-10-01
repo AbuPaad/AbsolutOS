@@ -15,6 +15,9 @@
 
 #include "StixGlyphGallery.h"
 
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
+
 #include <Arduino.h>
 #include <algorithm>
 #include <array>
@@ -124,7 +127,7 @@ void showStixGlyphGallery(uint32_t holdMs) {
 
     lv_obj_t* panel = lv_obj_create(activeScreen);
     lv_obj_remove_style_all(panel);
-    lv_obj_set_size(panel, 320, 240);
+    lv_obj_set_size(panel, SCREEN_WIDTH, SCREEN_HEIGHT);
     lv_obj_set_style_bg_color(panel, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);

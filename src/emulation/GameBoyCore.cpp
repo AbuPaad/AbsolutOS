@@ -37,8 +37,14 @@
 #include "GameBoyCore.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
+
+// PSRAM placement on device; both fall back to the standard C heap on PC.
+// See the ESP32-S3 port note: a 0.5–8 MB ROM cannot live in internal SRAM.
+#include "math/cas/PSRAMAllocator.h"
+#include "utils/MemoryUtils.h"
 
 #ifndef ENABLE_SOUND
 #define ENABLE_SOUND 0
@@ -57,6 +63,9 @@
 
 namespace numos {
 namespace emulation {
+
+/** Byte buffer placed in PSRAM on device, ordinary heap on PC. */
+using ByteBuffer = std::vector<uint8_t, cas::PSRAMAllocator<uint8_t>>;
 
 namespace {
 
@@ -93,9 +102,13 @@ constexpr uint8_t kButtonBit[static_cast<size_t>(GbButton::COUNT)] = {
 }  // namespace
 
 struct GameBoyCore::Impl {
-    std::vector<uint8_t> rom;
-    std::vector<uint8_t> cartRam;
-    uint16_t             fb[kHeight][kWidth] = {};
+    // ROM and cartridge RAM are large (0.5–8 MB); framebuffer is 46 KB. All
+    // three live in PSRAM on device so internal SRAM stays free for LVGL and
+    // the rest of the firmware. On PC these are ordinary heap allocations.
+    ByteBuffer rom;
+    ByteBuffer cartRam;
+    utils::PSRAMBuffer<uint16_t> fbData;   // kWidth * kHeight RGB565
+    uint16_t*            fb           = nullptr;
     gb_s                 gb;
     bool                 loaded       = false;
     bool                 saveDirty    = false;
@@ -114,7 +127,7 @@ GameBoyCore::Impl* implOf(gb_s* gb) {
 }
 
 uint8_t romRead8(gb_s* gb, const uint_fast32_t addr) {
-    const std::vector<uint8_t>& rom = implOf(gb)->rom;
+    const ByteBuffer& rom = implOf(gb)->rom;
     return addr < rom.size() ? rom[addr] : 0xFF;
 }
 
@@ -129,7 +142,7 @@ uint32_t romRead32(gb_s* gb, const uint_fast32_t addr) {
 }
 
 uint8_t cartRamRead(gb_s* gb, const uint_fast32_t addr) {
-    const std::vector<uint8_t>& ram = implOf(gb)->cartRam;
+    const ByteBuffer& ram = implOf(gb)->cartRam;
     return addr < ram.size() ? ram[addr] : 0xFF;
 }
 
@@ -149,16 +162,31 @@ void onCoreError(gb_s* gb, const enum gb_error_e error, const uint16_t addr) {
     std::printf("[GB] core error %d at 0x%04X\n", static_cast<int>(error), addr);
 }
 
+/** Seed Walnut's derived RGB565 palette from its reset palette registers. */
+void initializeCgbFixPalette(gb_s* gb) {
+    for (uint_fast8_t i = 0; i < 0x20; ++i) {
+        const uint_fast8_t offset = static_cast<uint_fast8_t>(i << 1);
+        const uint16_t bg = static_cast<uint16_t>(gb->cgb.BGPalette[offset]) |
+                            (static_cast<uint16_t>(gb->cgb.BGPalette[offset + 1]) << 8);
+        const uint16_t obj = static_cast<uint16_t>(gb->cgb.OAMPalette[offset]) |
+                             (static_cast<uint16_t>(gb->cgb.OAMPalette[offset + 1]) << 8);
+        gb->cgb.fixPalette[i] = bgr555_to_rgb565_accurate(bg);
+        gb->cgb.fixPalette[0x20 + i] = bgr555_to_rgb565_accurate(obj);
+    }
+}
+
 void lcdDrawLine(gb_s* gb, const uint8_t* pixels, const uint_fast8_t line) {
     GameBoyCore::Impl* impl = implOf(gb);
+    if (!impl->fb) return;
     if (line >= static_cast<uint_fast8_t>(GameBoyCore::kHeight)) return;   // 0..144 documented
 
+    uint16_t* const row = impl->fb + static_cast<size_t>(line) * GameBoyCore::kWidth;
     if (gb->cgb.cgbMode) {
         for (int x = 0; x < GameBoyCore::kWidth; ++x)
-            impl->fb[line][x] = gb->cgb.fixPalette[pixels[x]];
+            row[x] = gb->cgb.fixPalette[pixels[x]];
     } else {
         for (int x = 0; x < GameBoyCore::kWidth; ++x)
-            impl->fb[line][x] = kDmgPalette[((pixels[x] & 18) >> 1) | (pixels[x] & 3)];
+            row[x] = kDmgPalette[((pixels[x] & 18) >> 1) | (pixels[x] & 3)];
     }
 }
 
@@ -174,8 +202,15 @@ bool GameBoyCore::loadRom(const uint8_t* data, size_t size) {
     if (!data || size < 0x150) return false;   // header must be present
 
     _impl->rom.assign(data, data + size);
+
+    if (!_impl->fbData.allocate(static_cast<size_t>(kWidth) * kHeight)) {
+        _impl->rom.clear();
+        return false;   // PSRAM exhausted — refuse rather than render garbage
+    }
+    _impl->fb = _impl->fbData.data();
+
     std::memset(&_impl->gb, 0, sizeof(_impl->gb));
-    std::memset(_impl->fb, 0, sizeof(_impl->fb));
+    std::memset(_impl->fb, 0, _impl->fbData.size() * sizeof(uint16_t));
 
     const enum gb_init_error_e err = gb_init(&_impl->gb, romRead8, romRead16, romRead32,
                                             cartRamRead, cartRamWrite, onCoreError, _impl);
@@ -186,6 +221,7 @@ bool GameBoyCore::loadRom(const uint8_t* data, size_t size) {
     }
 
     gb_init_lcd(&_impl->gb, lcdDrawLine);
+    initializeCgbFixPalette(&_impl->gb);
     _impl->gb.direct.joypad = 0xFF;            // nothing pressed (active-low)
 
     _impl->saveSize = 0;
@@ -212,7 +248,8 @@ void GameBoyCore::unload() {
     _impl->frames   = 0;
     _impl->title[0] = '\0';
     std::memset(&_impl->gb, 0, sizeof(_impl->gb));
-    std::memset(_impl->fb, 0, sizeof(_impl->fb));
+    _impl->fbData.reset();
+    _impl->fb = nullptr;
 }
 
 bool GameBoyCore::ready() const { return _impl && _impl->loaded; }
@@ -245,7 +282,7 @@ void GameBoyCore::stepFrame() {
 uint64_t GameBoyCore::framesRun() const { return _impl ? _impl->frames : 0; }
 
 const uint16_t* GameBoyCore::framebuffer() const {
-    return _impl ? &_impl->fb[0][0] : nullptr;
+    return _impl ? _impl->fb : nullptr;
 }
 
 // ── Input ───────────────────────────────────────────────────────────────────

@@ -70,6 +70,15 @@ void Keyboard::begin() {
         numos::hardware::kProductionBoard.electricalMatrix;
     const int inactive = levelFor(matrix.inactiveRowLevel);
 
+    // The production matrix was wiped when the display moved onto the bench
+    // pins (see BoardProfile.h).  No scanner GPIO is assigned, so do not arm
+    // the scanner: an invalid GPIO would read LOW and look like a key hold.
+    if (!matrix.logicalMappingReady) {
+        _initialized = false;
+        _enabled = false;
+        return;
+    }
+
     // WHY: preload every output latch before output enable so no row can emit
     // an active-low glitch while GPIO ownership transfers to the scanner.
     for (const int gpio : matrix.rowOutputs) {
@@ -237,51 +246,115 @@ const KeyCode Keyboard::_map[Keyboard::ROWS][Keyboard::COLS] = {
     { KeyCode::DOT,     KeyCode::ENTER,   KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE  },  // Row 8
 };
 
+namespace {
+
+bool elapsedAtLeast(const uint32_t now, const uint32_t then,
+                    const uint32_t duration) {
+    return static_cast<uint32_t>(now - then) >= duration;
+}
+
+} // namespace
+
 // ── begin() ──────────────────────────────────────────────────────────────────
 
 void Keyboard::begin() {
-    // Initialize I2C bus with specified pins from Config.h
+    _initialized = false;
+    _enabled = false;
+
+    // Initialize the I2C bus with the bench-tested pins from Config.h.
     Wire.begin(KBD_I2C_SDA_PIN, KBD_I2C_SCL_PIN);
-    
-    // Initialize TCA9555
+    // A short timeout: a wedged bus must not stall the whole main loop.
+    Wire.setTimeOut(50);
+
+    // Probe the TCA9555 and remember whether it answered.
     if (!_tca.begin()) {
-        // Handle initialization failure - set enabled to false
-        return;
+        return;  // initialized() stays false.
     }
-    
-    // Configure column pins as OUTPUTS (active low scanning)
-    for (int c = 0; c < COLS; c++) {
-        _tca.pinMode1(_colPins[c], OUTPUT);
-        _tca.write1(_colPins[c], HIGH); // Start inactive (HIGH)
-    }
-    
-    // Configure row pins as INPUTS with internal pull-ups
-    for (int r = 0; r < ROWS; r++) {
-        _tca.pinMode1(_rowPins[r], INPUT);
-    }
-    
-    // Configure unused pin as INPUT to prevent floating
-    _tca.pinMode1(TCA_P07, INPUT);
-    
-    // Initialize state arrays
+
+    // Direction registers, configured ONCE (never touched in the scan path):
+    //   port 0 = 0xC0 : bits 0..5 = column OUTPUTs, bit 6 = row 0 INPUT,
+    //                   bit 7 = unused INPUT (cannot drive anything).
+    //   port 1 = 0xFF : all INPUTs (rows 1..8).
+    _tca.pinMode16(0xFFC0);
+
+    // /INT on GPIO14: pull-up input, FALLING edge. The ISR only sets a flag.
+    pinMode(KBD_I2C_INT_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(KBD_I2C_INT_PIN), kbdIsr, FALLING);
+
     memset(_rawState, 0, sizeof(_rawState));
     memset(_debState, 0, sizeof(_debState));
+    memset(_repeatStarted, 0, sizeof(_repeatStarted));
     memset(_debTimer, 0, sizeof(_debTimer));
     memset(_arTimer, 0, sizeof(_arTimer));
-    
-    _lastScanMs = millis();
+
+    _initialized = true;
+    _enabled = true;
+
+    setIdleState();  // Columns LOW, clear the interrupt latch, enter IDLE.
+}
+
+// ── Interrupt ISR ────────────────────────────────────────────────────────────
+
+void IRAM_ATTR Keyboard::kbdIsr() {
+    s_intTriggered = true;
+}
+
+volatile bool Keyboard::s_intTriggered = false;
+
+// ── setIdleState() ───────────────────────────────────────────────────────────
+
+void Keyboard::setIdleState() {
+    // Drive all six columns LOW so pressing any key ties a LOW column to a row
+    // INPUT and asserts /INT. Reading both ports clears the TCA9555 interrupt
+    // latch; then drop the software flag and go IDLE (zero I2C until /INT).
+    _tca.write8(0, 0x00);
+    _tca.read16();
+    s_intTriggered = false;
+    _scanMode = ScanMode::IDLE;
+    _sweepDue = false;
+}
+
+// ── hasActiveKeys() ──────────────────────────────────────────────────────────
+
+bool Keyboard::hasActiveKeys() const {
+    for (int r = 0; r < ROWS; r++) {
+        for (int c = 0; c < COLS; c++) {
+            if (_debState[r][c] || (_rawState[r][c] != _debState[r][c])) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 // ── update() ─────────────────────────────────────────────────────────────────
 
 void Keyboard::update() {
-    uint32_t now = millis();
-    
-    // For interrupt-driven mode, we would check a volatile flag here
-    // But for compatibility, maintain polling with proper timing
-    if ((now - _lastScanMs) >= SCAN_INTERVAL_MS) {
-        doScan();
+    if (!_initialized || !_enabled) return;
+
+    const uint32_t now = millis();
+
+    // IDLE: wait for /INT. Zero I2C transactions while no interrupt has fired.
+    if (_scanMode == ScanMode::IDLE) {
+        if (!s_intTriggered) return;
+        s_intTriggered = false;
+        _scanMode = ScanMode::SCANNING;
+        _sweepDue = true;  // Explicit immediate sweep (never "0 == now").
+    }
+
+    // SCANNING: sweep on the shared scan interval.
+    if (_scanMode == ScanMode::SCANNING) {
+        const bool due = _sweepDue ||
+            elapsedAtLeast(now, _lastScanMs, KEY_SCAN_INTERVAL_MS);
+        if (!due) return;
+        _sweepDue = false;
         _lastScanMs = now;
+        doScan();
+
+        // Nothing left held or bouncing -> park back in IDLE.
+        if (!hasActiveKeys()) {
+            setIdleState();
+        }
     }
 }
 
@@ -294,82 +367,158 @@ bool Keyboard::pollEvent(KeyEvent& outEvent) {
     return true;
 }
 
-// ── doScan() — núcleo del driver ─────────────────────────────────────────────
+// ── doScan() — núcleo del driver (port-level I/O) ───────────────────────────
 
 void Keyboard::doScan() {
-    uint32_t now = millis();
-    
-    // Scan each column (OUTPUT)
+    const uint32_t now = millis();
+
     for (int c = 0; c < COLS; ++c) {
-        // Activate column by setting it LOW (active)
-        _tca.write1(_colPins[c], LOW);
-        
-        // Small delay for signal settling (microseconds sufficient for ESP32-S3)
+        // One port-level write: active column LOW, the other five columns HIGH.
+        const uint8_t mask = static_cast<uint8_t>(0x3F & ~(1u << c));
+        if (!_tca.write8(0, mask)) {
+            onBusFailure();
+            return;
+        }
+
+        // Let the driven column settle before sampling.
         delayMicroseconds(10);
-        
-        // Read all row inputs (INPUT)
+
+        // One port-level read: both input ports, split below.
+        const uint16_t raw16 = _tca.read16();
+        if (_tca.lastError() != TCA9555_OK) {
+            onBusFailure();
+            return;
+        }
+        _consecutiveFailures = 0;  // Any successful transaction resets the count.
+
+        const uint8_t port0 = static_cast<uint8_t>(raw16 & 0xFF);
+        const uint8_t port1 = static_cast<uint8_t>((raw16 >> 8) & 0xFF);
+
         for (int r = 0; r < ROWS; ++r) {
-            bool rawNow = (_tca.read1(_rowPins[r]) == LOW); // LOW = pressed (due to pull-up)
-            
-            // Debounce state machine per key
+            // LOW level == pressed (a LOW column tied to a pulled-up row input).
+            const bool rawNow = (r == 0)
+                ? ((port0 & (1u << 6)) == 0)          // row 0 = TCA_P06
+                : ((port1 & (1u << (r - 1))) == 0);   // rows 1..8 = TCA_P10..P17
+
+            // Debounce state machine per key.
             if (rawNow != _rawState[r][c]) {
-                // Raw state changed - reset timer
                 _rawState[r][c] = rawNow;
                 _debTimer[r][c] = now;
-            } else if ((now - _debTimer[r][c]) >= DEBOUNCE_MS) {
-                // Stable state confirmed
+            } else if (elapsedAtLeast(now, _debTimer[r][c], KEY_DEBOUNCE_MS)) {
                 if (rawNow != _debState[r][c]) {
                     _debState[r][c] = rawNow;
-                    
-                    KeyCode kc = _map[r][c];
+
+                    const KeyCode kc = _map[r][c];
                     if (kc != KeyCode::NONE) {
-                        KeyAction action = rawNow ? KeyAction::PRESS : KeyAction::RELEASE;
-                        pushEvent({ kc, action, r, c });
-                        
+                        // Deviation from the rig: the rig emits events even for
+                        // KeyCode::NONE cells; this driver keeps NONE silent.
+                        pushEvent({kc, rawNow ? KeyAction::PRESS
+                                              : KeyAction::RELEASE, r, c});
                         if (rawNow) {
-                            // Start autorepeat timer
                             _arTimer[r][c] = now;
+                            _repeatStarted[r][c] = false;
                         }
                     }
                 }
             }
-            
-            // Autorepeat logic (only if key is still pressed)
+
+            // Autorepeat (only while the key is still debounced-held).
             if (_debState[r][c] && _rawState[r][c]) {
-                uint32_t elapsed = now - _arTimer[r][c];
-                uint32_t threshold = (_arTimer[r][c] == _debTimer[r][c]) 
-                                   ? AUTOREPEAT_DELAY_MS 
-                                   : AUTOREPEAT_RATE_MS;
-                
-                if (elapsed >= threshold) {
-                    KeyCode kc = _map[r][c];
-                    if (kc != KeyCode::NONE) {
-                        pushEvent({ kc, KeyAction::REPEAT, r, c });
+                const KeyCode kc = _map[r][c];
+                if (kc != KeyCode::NONE) {
+                    const uint32_t threshold = _repeatStarted[r][c]
+                        ? KEY_AUTOREPEAT_RATE_MS
+                        : KEY_AUTOREPEAT_DELAY_MS;
+                    if (elapsedAtLeast(now, _arTimer[r][c], threshold)) {
+                        pushEvent({kc, KeyAction::REPEAT, r, c});
+                        _arTimer[r][c] = now;
+                        _repeatStarted[r][c] = true;
                     }
-                    _arTimer[r][c] = now;
                 }
             }
         }
-        
-        // Deactivate column by setting it HIGH
-        _tca.write1(_colPins[c], HIGH);
     }
 }
 
 // ── pushEvent() ──────────────────────────────────────────────────────────────
 
 void Keyboard::pushEvent(const KeyEvent& ev) {
-    int nextTail = (_qTail + 1) & (QUEUE_SIZE - 1);
-    if (nextTail == _qHead) return;   // Cola llena: descarta el evento silenciosamente.
+    const int nextTail = (_qTail + 1) & (QUEUE_SIZE - 1);
+    if (nextTail == _qHead) {
+        ++_overflowCount;  // A dropped event is now accounted for.
+        return;
+    }
     _queue[_qTail] = ev;
     _qTail = nextTail;
 }
 
-void Keyboard::setEnabled(bool) {}
-void Keyboard::forceReleaseAll() {}
-bool Keyboard::initialized() const { return true; }
-bool Keyboard::enabled() const { return CONNECTED_COLS > 0; }
-bool Keyboard::rowSelected() const { return false; }
-uint32_t Keyboard::overflowCount() const { return 0; }
+// ── setEnabled() ─────────────────────────────────────────────────────────────
+
+void Keyboard::setEnabled(const bool enabled) {
+    if (!_initialized || _enabled == enabled) return;
+
+    if (!enabled) {
+        // Release any held keys and reset per-key state, then drive all six
+        // columns HIGH: no key can conduct, /INT stays quiet, zero traffic.
+        forceReleaseAll();
+        _tca.write8(0, 0x3F);
+        _enabled = false;
+        return;
+    }
+
+    _enabled = true;
+    setIdleState();  // Back to columns-LOW idle and a cleared interrupt latch.
+}
+
+// ── forceReleaseAll() ────────────────────────────────────────────────────────
+
+void Keyboard::forceReleaseAll() {
+    // Discard any queued PRESS/REPEAT the application has not yet consumed,
+    // then emit RELEASE only for keys that are still debounced-held. No
+    // phantom RELEASE is synthesised for keys that were never down.
+    _qHead = 0;
+    _qTail = 0;
+
+    for (int r = 0; r < ROWS; ++r) {
+        for (int c = 0; c < COLS; ++c) {
+            if (_debState[r][c]) {
+                const KeyCode kc = _map[r][c];
+                if (kc != KeyCode::NONE) {
+                    pushEvent({kc, KeyAction::RELEASE, r, c});
+                }
+            }
+            _rawState[r][c] = false;
+            _debState[r][c] = false;
+            _repeatStarted[r][c] = false;
+            _debTimer[r][c] = 0;
+            _arTimer[r][c] = 0;
+        }
+    }
+
+    setIdleState();
+}
+
+// ── onBusFailure() ────────────────────────────────────────────────────────────
+
+void Keyboard::onBusFailure() {
+    ++_consecutiveFailures;
+    if (_consecutiveFailures >= 3) {
+        // Three consecutive failed transactions -> treat the bus as wedged.
+        // Drop held state so a dead bus cannot leave phantom held keys.
+        _consecutiveFailures = 0;
+        forceReleaseAll();
+    }
+}
+
+// ── Getters ──────────────────────────────────────────────────────────────────
+
+bool Keyboard::initialized() const { return _initialized; }
+bool Keyboard::enabled() const { return _enabled; }
+bool Keyboard::rowSelected() const {
+    // This driver drives columns, not rows, so there is no row-select phase.
+    // main.cpp only consults rowSelected() in the production build.
+    return false;
+}
+uint32_t Keyboard::overflowCount() const { return _overflowCount; }
 
 #endif

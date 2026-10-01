@@ -155,7 +155,7 @@ Both builds succeeded on this tree (toolchain xtensa-esp32s3, Arduino core):
   `.text` ≈ 2,429,540 B, libtommath `.text` ≈ 28,505 B — consistent with the
   environment-delta measurement above (remainder is rodata/static tables).
 - Free app-partition headroom with Giac: 1.32 MB (partition table
-  `default_16MB.csv`; the 16 MB part leaves room to grow the app partition
+  `boards/numos-16mb.csv`; the 16 MB part leaves room to grow the app partition
   if ever needed).
 - Runtime on hardware: **no ESP32-S3 was attached during this spike**, so
   no fresh on-device timings/heap high-water were captured. Compile

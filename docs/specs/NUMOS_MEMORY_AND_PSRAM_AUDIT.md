@@ -53,7 +53,7 @@ Static data (`.data`/`.bss`, e.g. the LVGL pool, `Keyboard` state arrays, `Pytho
 | Flash / DROM | 16 MB | Code; STIX fonts ≈ 304 KB bitmap data (+descriptors → ~320–340 KB: `stix_math_18/12/8.c`, `lv_font_montserrat_math_*.c`); `Icons.h` legacy bitmaps up to 96 KB if referenced (referenced via `SystemApp.cpp:163-177` legacy table); π/e digits (`Constants.h:54-101`); element DB (`ChemDatabase.h:51`) | link-time |
 | Stack | 64 KB loopTask (+32 KB Fractal task, transient) | Everything: LVGL render recursion, `MathRenderer` ≤ 12-deep draw (`MathRenderer.h:239`), CAS recursion, **all Giac evaluation** | overflow → corruption/panic; Giac recursion guarded only by `MAX_RECURSION_LEVEL=100` (`lib/giac/src/kglobal.cc:1679`) |
 | LVGL pool | 64 KB fixed | every `lv_obj`, style, label text, table cell, chart array, anim, timer | `while(1)` hang (§2.1) |
-| Filesystem | LittleFS partition (`default_16MB.csv`) | `/vars.dat` 379 B (`VariableManager.h:148-155`: 5 + 11×34 B), `/circuit.bin`, `/save.pt`, `/neolang.nl`, `/scripts/*.py` | write fail; app-level handling |
+| Filesystem | LittleFS partition (`spiffs`, 9,875 KiB in `boards/numos-16mb.csv`) | `/vars.dat` 379 B (`VariableManager.h:148-155`: 5 + 11×34 B), `/circuit.bin`, `/save.pt`, `/neolang.nl`, `/scripts/*.py`, `/roms/*.{gb,gbc}` (Game Boy ROMs), `/ai/*` (AI prompts + answers) | write fail; app-level handling |
 | NVS | nvs partition | `VariableContext` `PackedVars` ≈ 246 B blob (`VariableContext.h:61-70`) | Preferences API errors |
 
 \* Note: `std::vector<Token>`/`Token::text` (Arduino `String`, `Tokenizer.h:59`) split across mechanisms: the vector's node array via `operator new` → PSRAM; each `String`'s character buffer via `malloc` → internal (< 4 KB). One logical structure, two domains.
@@ -175,6 +175,14 @@ Flash: [========  ]  79.4% (used 5203645 bytes from 6553600 bytes)
 
 - **Static internal DRAM: 115,896 B of 327,680 B** ⇒ ≈ 211.8 KB left for the internal heap (before FreeRTOS/runtime task allocations; measure the true boot floor per §7). The LVGL pool alone is 64 KB = 56 % of the static figure — ELF-verified: `work_mem_int$8270` = `0x10000` B in `.bss` @ `0x3fc98108` (`xtensa-esp32s3-elf-nm -S firmware.elf`).
 - **Flash: 79.4 % used — 1,349,955 B headroom** in the 6.25 MB app slot (`default_16MB.csv`). This answers ground-truth open question P-“does it fit”: yes, but flash is the tighter axis (PROJECT_BIBLE’s “23.2 % flash” long predates Giac). ~80 KB of that is the legacy `Icons.h` bitmaps kept alive by the legacy menu table (`SystemApp.cpp:163-177`; ELF: 10 × 8,192 B `icon_*` symbols in DROM).
+
+> **Update 2026-10-01 — the app slot shrank, so the headroom above is stale.**
+> The partition table is now the NumOS-owned `boards/numos-16mb.csv`: a single
+> 6,144 KiB `app0` with a 9,875 KiB LittleFS, because NumOS has no OTA workflow
+> and the SD card is DOA. Re-measured on `pio run -e esp32s3_n16r8`:
+> `Flash: 91.9% (used 5783729 bytes from 6291456 bytes)` — **~496 KiB spare**,
+> not 1.35 MB. MEMX-14 is raised to likelihood H accordingly. See
+> `docs/PRODUCTION_PCBA_HARDWARE_CONTRACT.md` for the current layout.
 - **Global `operator new` override is linked**: the map attributes `_Znwj`/`_ZdlPv` to `.pio/build/esp32s3_n16r8/src/math/giac/GiacAlloc.cpp.o` (firmware.map) — direct proof of §1.2.
 - Toolchain: GCC 8.4.0 has no `<memory_resource>` (verified: `#include <memory_resource>` fails to preprocess) ⇒ `CAS_HAS_PMR=0` on firmware, the `cas::pmr` shim path is the live one (§4.4).
 - `esp32s3_n16r8_validate` also built SUCCESS during this audit (239 s): RAM identical 35.4 %; Flash 79.8 % (5,228,473 B, +24,828 B over production for the visual-verify fixture). This clears ground-truth open question P-09's "do the validate envs still compile" for the primary validate env.

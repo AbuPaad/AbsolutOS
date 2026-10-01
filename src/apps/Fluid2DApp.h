@@ -28,7 +28,8 @@
  *   - Internal wall obstacles
  *   - Blinn-Phong liquid shading with density-gradient normals
  *
- * Grid: 64×48 cells mapped to 320×240 display (5×5 px per cell).
+ * Grid: 64×48 cells at 5×5 px per cell = 320×240 of grid, drawn into the 320×180
+ * canvas: the bottom rows are clipped (re-fit M/CELL_H if that matters).
  * Physics tick at ~30 Hz via lv_timer_t.
  * Custom draw via LV_EVENT_DRAW_MAIN (no lv_canvas).
  *
@@ -47,6 +48,8 @@
  */
 
 #pragma once
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
 
 #include <lvgl.h>
 #include "../ui/StatusBar.h"
@@ -78,7 +81,7 @@ private:
 
     // ── Screen geometry ──────────────────────────────────────────────────
     static constexpr int SCREEN_W = 320;
-    static constexpr int SCREEN_H = 240;
+    static constexpr int SCREEN_H = SCREEN_HEIGHT;  // canvas (Config.h)
 
     // ── Simulation constants ─────────────────────────────────────────────
     static constexpr float BASE_DT       = 1.0f / 30.0f;

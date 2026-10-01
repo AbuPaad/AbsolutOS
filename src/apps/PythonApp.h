@@ -24,6 +24,8 @@
  * Uses PythonEngine for simulated Python execution.
  */
 #pragma once
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
 
 #include <lvgl.h>
 #include "../ui/StatusBar.h"
@@ -45,7 +47,7 @@ public:
 private:
     // ── Layout constants ─────────────────────────────────────────
     static constexpr int SCREEN_W     = 320;
-    static constexpr int SCREEN_H     = 240;
+    static constexpr int SCREEN_H     = SCREEN_HEIGHT;  // canvas (Config.h)
     static constexpr int BAR_H        = 25;
     static constexpr int TAB_H        = 28;
     static constexpr int BTN_BAR_H    = 28;

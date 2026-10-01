@@ -28,6 +28,7 @@
  */
 
 #include "CalculusApp.h"
+#include "../Config.h"   // SCREEN_HEIGHT = logical canvas
 #include "../math/MathAST.h"
 #include "../math/cas/SymToAST.h"
 #include "../utils/HwUxProbe.h"
@@ -53,7 +54,7 @@ static constexpr uint32_t COL_DERIV_HEX   = 0xE05500;  // Orange for d/dx
 static constexpr uint32_t COL_INTEG_HEX   = 0x6A1B9A;  // Purple for ∫dx
 
 static constexpr int SCREEN_W  = 320;
-static constexpr int SCREEN_H  = 240;
+static constexpr int SCREEN_H  = SCREEN_HEIGHT;  // canvas (Config.h)
 static constexpr int BAR_H     = ui::StatusBar::HEIGHT + 1;
 static constexpr int PAD       = 6;
 static constexpr int TAB_H     = 26;   // Tab strip height

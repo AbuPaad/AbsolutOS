@@ -156,17 +156,28 @@ static_assert(NUMOS_BACKLIGHT_LOW_LEVEL ==
 #else
 
 // ── Pantalla TFT (ESP32-S3 CAM, bus SPI2 / FSPI) ───────────────────────────
-// Deben coincidir con los -DTFT_xxx de platformio.ini.
-static const int PIN_TFT_MOSI =  13;
+// Deben coincidir con los -DTFT_xxx de platformio.ini.  Pines = bench ILI9341
+// bring-up (fuente de verdad).  BL no es un GPIO: la retroiluminación va a un
+// rail fijo, así que no hay PIN_TFT_BL.
+static const int PIN_TFT_MISO =  13;   // declarado, no cableado
+static const int PIN_TFT_MOSI =  11;
 static const int PIN_TFT_SCLK =  12;
 static const int PIN_TFT_CS   =  10;
 static const int PIN_TFT_DC   =   4;
 static const int PIN_TFT_RST  =   5;
-static const int PIN_TFT_BL   =  45;   // Backlight (PWM)
+static const int PIN_TFT_BL   =  -1;   // backlight en rail fijo, sin GPIO
 
-// Tamaño lógico después de la rotación 1 (landscape: 320 w × 240 h)
-static const uint16_t SCREEN_WIDTH    = 320;
-static const uint16_t SCREEN_HEIGHT   = 240;
+// Tamaño lógico después de la rotación 1 (landscape: 320 w × 180 h).
+// El panel físico tiene 240 filas; el shell fx-82 solo expone 180, así que LVGL
+// se crea a 320×180 y el flush se desplaza SCREEN_OFFSET_Y px hacia abajo — las
+// barras negras las produce ese offset, nunca el código de las apps.
+// Mantener en sincronía con kPanel*/kLogicalDisplay* en
+// display/ProductionDisplayProfile.h, kProductionBoard.display.logical* en
+// hardware/BoardProfile.h y SCREEN_W/H en hal/NativeHal.cpp (el static_assert de
+// DisplayDriver.cpp falla la compilación si se separan).
+inline constexpr uint16_t SCREEN_WIDTH    = 320;
+inline constexpr uint16_t SCREEN_HEIGHT   = 180;
+inline constexpr uint16_t SCREEN_OFFSET_Y = 30;   // (240 panel - 180 canvas) / 2
 static const uint8_t  SCREEN_ROTATION = 1;
 
 // ── Teclado físico 5×10 — hardware actual (PCB en progreso) ────────────────
@@ -188,6 +199,14 @@ static const uint8_t KBD_ROWS           = 5;
 static const uint8_t KBD_COLS           = 10;
 static const uint8_t KBD_CONNECTED_COLS = 3;   // ← Aumentar al conectar más columnas
 
+// ── Bus I²C del TCA9555 (escáner de teclado) ───────────────────────────────
+// Restaurado desde el valor que Keyboard::begin() usaba inline antes del
+// refactor de teclado (commit 2ecf162 move Wire.begin(47,6) → estas macros,
+// pero las macros nunca llegaron a Config.h).
+static const int KBD_I2C_SDA_PIN = 47;
+static const int KBD_I2C_SCL_PIN = 6;
+static const int KBD_I2C_INT_PIN = 14;   // TCA9555 /INT -> ESP32-S3 GPIO14
+
 #define NUMOS_PRODUCTION_KEYPAD_MAPPING_READY 1
 
 #endif
@@ -204,11 +223,11 @@ extern int  setting_decimal_precision;  // number of decimal digits (6, 8, 10, 1
 extern bool setting_edu_steps;          // true = step-by-step educational mode for arithmetic
 extern uint8_t setting_brightness;      // production PWM duty, clamped by DisplayDriver
 
-// ── Matriz legacy 6×8 (reservada / compatibilidad con KeyMatrix.h) ───────────
-// Filas: INPUT_PULLUP.  Columnas: OUTPUT activo-LOW.
+// ── Matriz legacy 9×6 (reservada / compatibilidad con KeyMatrix.h) ───────────
+// 6 columnas (salidas, activo-LOW) × 9 filas (entradas con pull-up).
 // Solo usado por la clase KeyMatrix; no conectado en el hardware actual.
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
-// No audited production 6x8 mapping exists. Invalid sentinels prevent the
+// No audited production 9x6 mapping exists. Invalid sentinels prevent the
 // dormant legacy driver from acquiring production GPIOs by accident.
 static const int PIN_KEY_R0 = -1;
 static const int PIN_KEY_R1 = -1;
@@ -216,6 +235,9 @@ static const int PIN_KEY_R2 = -1;
 static const int PIN_KEY_R3 = -1;
 static const int PIN_KEY_R4 = -1;
 static const int PIN_KEY_R5 = -1;
+static const int PIN_KEY_R6 = -1;
+static const int PIN_KEY_R7 = -1;
+static const int PIN_KEY_R8 = -1;
 
 static const int PIN_KEY_C0 = -1;
 static const int PIN_KEY_C1 = -1;
@@ -223,8 +245,6 @@ static const int PIN_KEY_C2 = -1;
 static const int PIN_KEY_C3 = -1;
 static const int PIN_KEY_C4 = -1;
 static const int PIN_KEY_C5 = -1;
-static const int PIN_KEY_C6 = -1;
-static const int PIN_KEY_C7 = -1;
 #else
 static const int PIN_KEY_R0 =  1;
 static const int PIN_KEY_R1 =  2;
@@ -232,6 +252,9 @@ static const int PIN_KEY_R2 =  3;
 static const int PIN_KEY_R3 =  4;
 static const int PIN_KEY_R4 =  5;
 static const int PIN_KEY_R5 =  6;
+static const int PIN_KEY_R6 = -1;   // TODO: sensed rows 6..8 need 3 free GPIOs
+static const int PIN_KEY_R7 = -1;
+static const int PIN_KEY_R8 = -1;
 
 static const int PIN_KEY_C0 = 38;
 static const int PIN_KEY_C1 = 39;
@@ -239,10 +262,8 @@ static const int PIN_KEY_C2 = 40;
 static const int PIN_KEY_C3 = 41;
 static const int PIN_KEY_C4 = 42;
 static const int PIN_KEY_C5 = 47;
-static const int PIN_KEY_C6 = 48;
-static const int PIN_KEY_C7 = 21;
 #endif
 
-static const uint8_t KEY_ROWS = 6;
-static const uint8_t KEY_COLS = 9;
+static const uint8_t KEY_ROWS = 9;
+static const uint8_t KEY_COLS = 6;
 

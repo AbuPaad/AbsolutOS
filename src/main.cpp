@@ -46,6 +46,7 @@ uint8_t setting_brightness = 96;
 #include "SystemApp.h"
 #include "ui/SplashScreen.h"
 #include "utils/MemProbe.h"
+#include "net/Wifi.h"          // system-owned Wi-Fi service (device-networking.md §1.1)
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 #include "hardware/ProductionSafeStartup.h"
@@ -353,6 +354,18 @@ void setup() {
     // MT-01: boot steady-state probe (menu loaded, splash freed, apps constructed).
     NUMOS_MEM_PROBE("boot");
 
+    // -- 10. Wi-Fi (a system service, not an app's) ------------------------
+    // LAST on purpose. esp_wifi_init + RF calibration grab a large internal-RAM
+    // block and take ~1-3 s; doing that before the DMA draw-buffer allocation
+    // (step 4) risks that allocation failing, and a failed draw-buffer
+    // allocation is the silent black screen. Radio after display, always.
+    //
+    // begin() returns immediately (association completes via events), and it
+    // touches nothing at all when the persistent toggle is off or no
+    // credentials are stored. Apps never call in here — they read
+    // net::Wifi::state().
+    net::Wifi::begin();
+
 #if NUMOS_PRODUCTION_DEMO_PROFILE
     numos::demo::enableUiLoopWatchdog();
 #endif
@@ -407,6 +420,10 @@ void loop() {
 #if NUMOS_PRODUCTION_DEMO_PROFILE
     numos::demo::noteUiLoopProgress();
 #endif
+
+    // Reconnect/backoff lives in exactly one place, on the loop task, so no app
+    // can start a retry storm. Non-blocking: this path has no delay().
+    net::Wifi::tick(millis());
 
     // Heartbeat cada 5s (confirma que el loop corre y Serial TX funciona).
     // MT-01: the old internal-only "[HB] heap=" line is replaced by the full

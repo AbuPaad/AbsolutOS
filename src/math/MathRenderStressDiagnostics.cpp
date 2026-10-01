@@ -16,11 +16,14 @@
 #include "../ui/MathTypography.h"
 #include "MathStressExpressions.h"
 
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
+
 namespace vpam {
 namespace {
 
-constexpr int16_t kScreenW = 320;
-constexpr int16_t kScreenH = 240;
+constexpr int16_t kScreenW = SCREEN_WIDTH;
+constexpr int16_t kScreenH = SCREEN_HEIGHT;
 constexpr int16_t kTitleH = 20;
 constexpr int64_t kFrameBudgetUs = 16000;
 

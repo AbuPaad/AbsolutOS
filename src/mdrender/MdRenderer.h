@@ -35,6 +35,8 @@
  */
 
 #pragma once
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
 
 #include <cstdint>
 #include <cstddef>
@@ -47,12 +49,14 @@ namespace mdrender {
 // ═══════════════════════════════════════════════════════════════════════════
 // Geometry — the constraint that drives everything (renderer.md §1)
 // ═══════════════════════════════════════════════════════════════════════════
-constexpr int SCREEN_W     = 320;                    ///< panel native width
-constexpr int SCREEN_H     = 240;                    ///< panel native height
-constexpr int SHELL_CROP_H = 40;                     ///< px hidden by the fx-82 shell
-constexpr int VISIBLE_H    = SCREEN_H - SHELL_CROP_H; ///< 200 px actually visible
+constexpr int SCREEN_W     = SCREEN_WIDTH;           ///< canvas width (Config.h)
+constexpr int SCREEN_H     = SCREEN_HEIGHT;          ///< canvas height (Config.h)
+// The fx-82 letterbox is applied by the display driver as a flush offset, so the
+// renderer's canvas IS the visible area and crops nothing itself.
+constexpr int SHELL_CROP_H = 0;                      ///< px hidden by the fx-82 shell (offset lives in DisplayDriver)
+constexpr int VISIBLE_H    = SCREEN_H - SHELL_CROP_H; ///< 180 px actually visible
 constexpr int STATUS_BAR_H = 24;                     ///< ui::StatusBar::HEIGHT
-constexpr int CONTENT_H    = VISIBLE_H - STATUS_BAR_H; ///< 176 ≈ 175 reading px
+constexpr int CONTENT_H    = VISIBLE_H - STATUS_BAR_H; ///< 156 reading px
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NoteSource — the byte seam (parser.md §2, renderer.md §2)

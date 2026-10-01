@@ -161,6 +161,12 @@ private:
     bool configureProductionController(
         const numos::display::ProductionDisplayProfile& profile);
     void invalidateLvglFrame();
+#else
+    // Canvas-to-panel translation.  The logical canvas (320x180) is smaller than
+    // the panel (320x240), so every flush is shifted down by the bar height and
+    // the bars stay empty glass instead of being drawn by app code.
+    int16_t     _xOffset             = 0;
+    int16_t     _yOffset             = 0;
 #endif
     #endif
 

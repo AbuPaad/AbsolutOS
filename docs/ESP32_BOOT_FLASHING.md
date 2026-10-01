@@ -65,11 +65,15 @@ Never pass `--flash-mode qio` while merging or writing an image at offset zero.
 | `0x00000000` | `bootloader.bin` | before `0x8000` |
 | `0x00008000` | `partitions.bin` | one 4 KiB sector |
 | `0x0000e000` | `boot_app0.bin` / initial OTA data | 8 KiB `otadata` partition |
-| `0x00010000` | production `firmware.bin` | 6,400 KiB `app0` partition |
-| `0x00c90000` | optional `littlefs.bin` | 3,456 KiB filesystem partition |
+| `0x00010000` | production `firmware.bin` | 6,144 KiB `app0` partition |
+| `0x00610000` | optional `littlefs.bin` | 9,875 KiB filesystem partition |
 
-The 16 MB partition layout remains unchanged: two 6,400 KiB OTA application
-slots, a 3,456 KiB filesystem partition, and a 64 KiB coredump partition.
+The 16 MB partition layout is `boards/numos-16mb.csv`: **one** 6,144 KiB
+application slot, a 9,875 KiB filesystem partition, an 8 KiB `otadata` slot
+kept for a future OTA repartition, and a 64 KiB coredump partition. The
+framework's `default_16MB.csv` reserved a second, never-used OTA slot; NumOS
+ships no OTA workflow, and with the SD card DOA the filesystem is what needs
+the room.
 
 ## Build and package
 

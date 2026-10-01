@@ -83,3 +83,17 @@ When generating or modifying code for this project, AI agents MUST follow these 
 ### 5.5 Source File Registry Maintenance
 - The PC native emulator environment (`[env:emulator_pc]`) uses explicit source filtering (`build_src_filter`).
 - **Important**: When creating new application files (`src/apps/*.cpp`) or math components (`src/math/*.cpp`), the corresponding path **MUST** be added to `build_src_filter` in `platformio.ini` if it is intended to run on the emulator. Firmware environments compile via `+<*>`.
+
+---
+
+## 6. Notes, Devlogs & Change Records
+
+- **Canonical location**: all Absolut-CAS notes, devlogs, and change records for this project **MUST** be written to the Paadshi Obsidian vault, not into this repo's tree.
+- **Vault root**: `/home/fih/musings/paadshi` — equivalently `../../../paadshi/` relative to this repo root (`firmware/AbsolutOS/`). Both spellings resolve to the same path.
+- **Vault layout**:
+  - `Notes/Hardware/` — PCB stackup, power regulators, mechanical/mounting, hardware hypotheses.
+  - `Notes/Software/` — app behavior, parser/CAS work, render and latency observations, unresolved-issue checklists.
+  - `Journal/YYYYMMDD.md` — the daily entry.
+  - `start-index.md` and `Notes/README.md` — routing rules; read them before adding a note in a folder you have not written to before.
+- **Wikilink convention**: reference other notes as `[[Folder/NoteName]]` (no `.md`, first letter capitalised), placed in the first substantive section where the note is mentioned. Use the vault's frontmatter fields (`sys`, `tags`, `last-updated`) when creating a new file.
+- **Keep the repo clean**: devlogs, journals, and debugging notes do not belong loose in `AbsolutOS/`; repo markdown is limited to build/architecture references such as this file.

@@ -189,7 +189,7 @@ void GameBoyApp::buildPicker() {
     lv_obj_align(_message, LV_ALIGN_BOTTOM_MID, 0, -PAD);
 
     _picker = lv_obj_create(_screen);
-    lv_obj_set_size(_picker, lv_pct(100), 240 - 2 * PAD - 24);
+    lv_obj_set_size(_picker, lv_pct(100), kScreenH - 2 * PAD - 24);
     lv_obj_align(_picker, LV_ALIGN_TOP_LEFT, 0, PAD + 22);
     lv_obj_set_style_bg_opa(_picker, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(_picker, 0, LV_PART_MAIN);
@@ -324,8 +324,28 @@ void GameBoyApp::publishFrame() {
 void GameBoyApp::update() {
     if (_state != State::Playing || !_core.ready()) return;
 
+#ifdef ARDUINO
+    // Device pacing: the main loop is not VSYNC-pinned, so step as many frames
+    // as real elapsed time allows. A capped catch-up stops a stall (SD read,
+    // Wi-Fi task) from turning into an unbounded emulation burst.
+    const uint32_t now = micros();
+    if (_lastTickUs == 0) _lastTickUs = now;
+    _frameAccumUs += now - _lastTickUs;
+    _lastTickUs = now;
+
+    uint32_t frames = _frameAccumUs / kFrameUs;
+    if (frames > kMaxCatchUpFrames) {
+        frames = kMaxCatchUpFrames;
+        _frameAccumUs = 0;   // drop the backlog rather than play catch-up forever
+    } else {
+        _frameAccumUs -= frames * kFrameUs;
+    }
+    for (uint32_t i = 0; i < frames; ++i) _core.stepFrame();
+#else
     // One emulated frame per main-loop iteration (PC pacing — see the header).
     _core.stepFrame();
+#endif
+
     publishFrame();
 }
 
@@ -343,6 +363,7 @@ bool GameBoyApp::loadSelectedRom() {
     const size_t size = f.size();
     if (size < kMinRomBytes || size > kMaxRomBytes) {
         GBLOG("[GB] rejected %s: %u bytes\n", path.c_str(), static_cast<unsigned>(size));
+        f.close();
         setMessage("ROM size not supported");
         _state = State::Error;
         return false;
@@ -368,6 +389,8 @@ bool GameBoyApp::loadSelectedRom() {
     _romPath = path;
     loadCartRam();
 
+    _frameAccumUs = 0;
+    _lastTickUs   = 0;
     _state = State::Playing;
     buildPlayer();
 
@@ -430,6 +453,7 @@ void GameBoyApp::loadCartRam() {
     if (size != _core.saveSize()) {
         GBLOG("[GB] ignoring %s: %u B, expected %u B\n", sav.c_str(),
               static_cast<unsigned>(size), static_cast<unsigned>(_core.saveSize()));
+        f.close();
         return;
     }
 

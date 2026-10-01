@@ -62,7 +62,7 @@ private:
     static constexpr int NUM_ITEMS =
         NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 5 : 4;
     static constexpr int SCREEN_W  = 320;
-    static constexpr int SCREEN_H  = 240;
+    static constexpr int SCREEN_H  = SCREEN_HEIGHT;  // canvas (Config.h)
     static constexpr int PAD       = 12;
     static constexpr int ROW_H     =
         NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 34 : 44;

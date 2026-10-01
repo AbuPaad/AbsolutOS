@@ -25,10 +25,31 @@ inline constexpr uint8_t kMinimumPersistedBacklight = 1;
 inline constexpr uint8_t kZeroBrightnessFallbackBacklight = 32;
 inline constexpr uint8_t kMaximumBacklight = 192;
 inline constexpr uint8_t kMadctlBgr = 0x08;
-inline constexpr uint8_t kMadctlRotation1 = 0x20;
-inline constexpr uint8_t kMadctlRotation3 = 0xE0;
+// Landscape axis bits for THIS glass, taken from the bench ILI9341 bring-up:
+// MADCTL is the vendor's 0x08 (BGR) base with only MY/MX/MV toggled.  This does
+// NOT match TFT_eSPI's built-in ILI9341 rotation table, whose rotation 1 = 0x20
+// omits MX and mirrors the image horizontally on this panel.
+inline constexpr uint8_t kMadctlRotation1 = 0x60;  // MX | MV
+inline constexpr uint8_t kMadctlRotation3 = 0xA0;  // MY | MV
+// Physical glass (rotation 1): exactly what TFT_eSPI's own rotation table
+// reports, and what the controller's frame memory holds.
+inline constexpr uint16_t kPanelWidth = 320;
+inline constexpr uint16_t kPanelHeight = 240;
+
+// Logical canvas LVGL is created at.  The fx-82 shell exposes only 180 of the
+// panel's 240 rows, so the canvas IS the usable area and the flush is offset by
+// the bar height instead of the bars being drawn in app code; apps lay out
+// inside 320x180 and never see the letterbox.
+// KEEP IN STEP with kProductionBoard.display.logicalWidth/Height (BoardProfile.h),
+// SCREEN_WIDTH/HEIGHT (Config.h) and SCREEN_W/H (hal/NativeHal.cpp); the
+// static_assert in DisplayDriver.cpp fails the build if they drift.
 inline constexpr uint16_t kLogicalDisplayWidth = 320;
-inline constexpr uint16_t kLogicalDisplayHeight = 240;
+inline constexpr uint16_t kLogicalDisplayHeight = 180;
+inline constexpr int16_t kLogicalDisplayOffsetY =
+    static_cast<int16_t>(kPanelHeight - kLogicalDisplayHeight) / 2;
+static_assert(kLogicalDisplayOffsetY >= kMinimumOffset &&
+                  kLogicalDisplayOffsetY <= kMaximumOffset,
+              "Centring offset must fit the profile offset bounds");
 
 enum class ProfileId : uint8_t {
     Safe = 0,
@@ -64,7 +85,7 @@ inline constexpr ProductionDisplayProfile kSafeDisplayProfile = {
     ColorOrder::Bgr,
     false,
     0,
-    0,
+    kLogicalDisplayOffsetY,
     40'000'000U,
     10'000'000U,
     10,
@@ -87,15 +108,15 @@ inline constexpr std::array<ProductionDisplayProfile, 4>
         kSafeDisplayProfile,
         {
             ProfileId::Rotate3Bgr, 3, ColorOrder::Bgr, false,
-            0, 0, 40'000'000U, 10'000'000U, 10, 120, 96, 192
+            0, kLogicalDisplayOffsetY, 40'000'000U, 10'000'000U, 10, 120, 96, 192
         },
         {
             ProfileId::Rotate1Rgb, 1, ColorOrder::Rgb, false,
-            0, 0, 40'000'000U, 10'000'000U, 10, 120, 96, 192
+            0, kLogicalDisplayOffsetY, 40'000'000U, 10'000'000U, 10, 120, 96, 192
         },
         {
             ProfileId::Rotate1BgrInverted, 1, ColorOrder::Bgr, true,
-            0, 0, 40'000'000U, 10'000'000U, 10, 120, 96, 192
+            0, kLogicalDisplayOffsetY, 40'000'000U, 10'000'000U, 10, 120, 96, 192
         }
     }};
 
@@ -104,9 +125,13 @@ struct DisplayGeometry {
     uint16_t height;
 };
 
-constexpr DisplayGeometry logicalDisplayGeometry(const uint8_t rotation) {
+// Physical panel geometry for a rotation - NOT the logical canvas size.  The
+// caller compares this against TFT_eSPI's rotation-derived width()/height(),
+// which is always the 320x240 frame memory, so the logical 320x180 must never
+// be used here.
+constexpr DisplayGeometry panelDisplayGeometry(const uint8_t rotation) {
     return (rotation == 1 || rotation == 3)
-        ? DisplayGeometry{kLogicalDisplayWidth, kLogicalDisplayHeight}
+        ? DisplayGeometry{kPanelWidth, kPanelHeight}
         : DisplayGeometry{0, 0};
 }
 

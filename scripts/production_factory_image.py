@@ -20,6 +20,12 @@ Import("env")  # noqa: F821 - supplied by PlatformIO/SCons
 
 FLASH_BYTES = 16 * 1024 * 1024
 BOARD_IDENTIFIER = "numos-esp32-s3-wroom-1u-n16r8"
+# Offsets here must track boards/numos-16mb.csv, which drops the unused ota_1
+# slot (NumOS has no OTA workflow) and gives the space to LittleFS.
+APP_OFFSET = 0x010000
+APP_MAX_BYTES = 0x600000          # app0 size in boards/numos-16mb.csv
+FS_OFFSET = 0x610000              # spiffs offset in boards/numos-16mb.csv
+FS_MAX_BYTES = 0x9E0000           # spiffs size in boards/numos-16mb.csv
 PROFILES = {
     "numos-esp32-s3-wroom-1u-n16r8": "normal",
     "numos-esp32-s3-wroom-1u-n16r8-bringup": "bringup",
@@ -29,7 +35,7 @@ FLASH_COMPONENTS = (
     ("bootloader.bin", 0x000000, 0x008000),
     ("partitions.bin", 0x008000, 0x001000),
     ("boot_app0.bin", 0x00E000, 0x002000),
-    ("firmware.bin", 0x010000, 0x640000),
+    ("firmware.bin", APP_OFFSET, APP_MAX_BYTES),
 )
 
 
@@ -120,8 +126,10 @@ def merge_factory_image(source, target, env):
             raise RuntimeError(
                 f"NUMOS_REVIEWED_FS_IMAGE does not exist: {reviewed_path}"
             )
-        if reviewed_path.stat().st_size > 0x360000:
-            raise RuntimeError("reviewed filesystem image exceeds 0x360000 bytes")
+        if reviewed_path.stat().st_size > FS_MAX_BYTES:
+            raise RuntimeError(
+                f"reviewed filesystem image exceeds 0x{FS_MAX_BYTES:x} bytes"
+            )
 
     command = [
         sys.executable,
@@ -143,7 +151,7 @@ def merge_factory_image(source, target, env):
     for name, offset, _ in FLASH_COMPONENTS:
         command.extend((hex(offset), str(inputs[name])))
     if reviewed_path is not None:
-        command.extend(("0xc90000", str(reviewed_path)))
+        command.extend((hex(FS_OFFSET), str(reviewed_path)))
     subprocess.run(command, check=True)
     if output.stat().st_size != FLASH_BYTES:
         raise RuntimeError(
@@ -172,7 +180,7 @@ def merge_factory_image(source, target, env):
         copied.append(filesystem_path)
         filesystem = {
             "filename": filesystem_path.name,
-            "offset": "0xc90000",
+            "offset": hex(FS_OFFSET),
             "reviewed": True,
             "source_sha256": sha256(reviewed_path),
         }

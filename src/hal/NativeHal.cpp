@@ -25,7 +25,7 @@
  *   4. MODE (Home/m) vuelve al launcher
  *
  * Responsabilidades:
- *   · Crear ventana SDL2 de 320×240 (escalada ×2)
+ *   · Crear ventana SDL2 de 320×180 (escalada ×2)
  *   · Inicializar LVGL con flush callback a SDL texture
  *   · Mapear el teclado del PC a KeyCode de la calculadora
  *   · Gestionar el ciclo de vida: Splash → Menú → App → Menú
@@ -72,7 +72,7 @@
  *
  * Notas Phase 3A (solo emulador, sin impacto en firmware):
  *   · SDL_KEYDOWN → PRESS/REPEAT, SDL_KEYUP → RELEASE (antes solo KEYDOWN).
- *   · Coordenadas logicas 320×240 + integer scale (ventana ×N nitida).
+ *   · Coordenadas logicas 320×180 + integer scale (ventana ×N nitida).
  *   · Auto-salida CLI: --frames N | --run-for-ms N | --headless | --scale N.
  *
  * Notas Phase 4A (solo emulador, sin impacto en firmware):
@@ -97,6 +97,12 @@
 #include <filesystem>   // FIX-01: sandbox del filesystem emulado (C++17)
 #include <algorithm>
 #include "FileSystem.h" // FIX-01: LittleFSClass::setRoot (raíz configurable)
+// Canvas geometry: single source of truth.  Config.h is PC-safe (it falls back to
+// hal/ArduinoCompat.h when ARDUINO is undefined), and the display profile header is
+// standalone constexpr, so the emulator can share the firmware's numbers and be
+// asserted against them instead of carrying its own copy.
+#include "../Config.h"
+#include "../display/ProductionDisplayProfile.h"
 
 #ifdef __EMSCRIPTEN__
     #include <emscripten.h>
@@ -127,6 +133,7 @@
 #include "../apps/MathRenderVisualTestApp.h" // Candidate-only renderer verification
 #include "../apps/GameBoyApp.h"             // Game Boy / GBC front-end (Walnut-CGB)
 #include "../apps/NotesApp.h"         // Shared Markdown renderer demo host (mdrender)
+#include "../apps/AiApp.h"             // AI wrapper (ai/AiClient + shared mdrender)
 #if defined(NUMOS_NEO_APP_SMOKE)
 #include "../apps/NeoLanguageApp.h"        // GIAC-N01 opt-in lifecycle smoke only
 #endif
@@ -166,16 +173,25 @@ void DisplayDriver::lvglFlushCb(lv_display_t*, const lv_area_t*, uint8_t*) {}
 // ════════════════════════════════════════════════════════════════════════════
 // Constantes
 //
-// SCREEN_W/H son la resolucion LOGICA del dispositivo (ILI9341 320×240). NUNCA
-// cambian: la textura LVGL y el "logical size" del renderer se fijan a este
-// tamaño para que el emulador presente exactamente el mismo sistema de
-// coordenadas que el firmware. El escalado a la ventana del PC lo gestiona SDL
-// (logical size + integer scale), NO el codigo de dibujo de formulas.
+// SCREEN_W/H son la resolucion LOGICA del dispositivo (canvas ILI9341 320x180:
+// el shell fx-82 solo expone 180 de las 240 filas del panel; el letterbox se
+// aplica como offset de flush en el firmware, no aqui). NUNCA cambian: la
+// textura LVGL y el "logical size" del renderer se fijan a este tamaño para que
+// el emulador presente exactamente el mismo sistema de coordenadas que el
+// firmware. El escalado a la ventana del PC lo gestiona SDL (logical size +
+// integer scale), NO el codigo de dibujo de formulas.
+// Ambas constantes se derivan de Config.h / ProductionDisplayProfile.h y los
+// static_assert de abajo hacen fallar la compilacion si alguna se separa.
 // ════════════════════════════════════════════════════════════════════════════
-static constexpr int SCREEN_W             = 320;  // ancho logico (NO tocar)
-static constexpr int SCREEN_H             = 240;  // alto  logico (NO tocar)
+static constexpr int SCREEN_W             = SCREEN_WIDTH;
+static constexpr int SCREEN_H             = SCREEN_HEIGHT;
+
+static_assert(SCREEN_W == numos::display::kLogicalDisplayWidth,
+              "emulator canvas width must match the display profile");
+static_assert(SCREEN_H == numos::display::kLogicalDisplayHeight,
+              "emulator canvas height must match the display profile");
 #ifdef __EMSCRIPTEN__
-static constexpr int DEFAULT_WINDOW_SCALE = 1;    // canvas backing store 320×240
+static constexpr int DEFAULT_WINDOW_SCALE = 1;    // canvas backing store 320x180
 #else
 static constexpr int DEFAULT_WINDOW_SCALE = 2;    // factor por defecto (×2)
 #endif
@@ -203,6 +219,12 @@ struct EmuOptions {
     bool deterministic       = false;         // tick sintetico de paso fijo
     long stepMs              = 16;            // ms por frame en modo determinista
     const char* screenshotPath = nullptr;     // volcar PPM al salir si != null
+    // ── Grabacion de frames (solo emulador) ────────────────────────────────
+    // Vuelca TODOS los frames como DIR/frame_NNNNNN.ppm para montar un video
+    // con ffmpeg. Util sin display (headless): la fuente es g_lvBuf, el mismo
+    // buffer compuesto que usa --screenshot.
+    const char* recordDir      = nullptr;     // --record DIR
+    long        recordEvery    = 1;           // --record-every N (1 = todos)
     // ── Phase 4A (solo emulador) ────────────────────────────────────────────
     const char* scriptPath     = nullptr;     // reproducir script .numos si != null
     // ── FIX-01/FIX-02 (solo emulador): raíz del filesystem emulado ──────────
@@ -246,6 +268,7 @@ enum class AppMode : uint8_t {
     GRAPHER,        // Grapher (LVGL-native; Phase 8G, emulador)
     GAMEBOY,        // Game Boy / GBC front-end (Walnut-CGB; emulador)
     NOTES_READER,   // Shared Markdown render module demo host (mdrender)
+    AI_WRAPPER,     // AI wrapper: action menu, ask/capture, streaming answer
     MATH_VISUAL,    // Full MathRenderer verification canvas
 #if defined(NUMOS_NEO_APP_SMOKE)
     NEO_LANGUAGE    // Opt-in: excluded from the normal emulator whitelist
@@ -273,7 +296,7 @@ static uint32_t      g_frameTimeCount = 0;
 static uint32_t      g_frameTimeCursor = 0;
 
 // In the browser, SDL mouse/touch coordinates are converted into the immutable
-// logical 320x240 coordinate space before LVGL sees them. The pointer indev is
+// logical 320x180 coordinate space before LVGL sees them. The pointer indev is
 // registered only by the Emscripten build, preserving desktop input semantics.
 static lv_indev_t*   g_pointerIndev = nullptr;
 static lv_point_t    g_pointerPoint = {0, 0};
@@ -327,6 +350,7 @@ static GrapherApp*      g_grapherApp = nullptr;    // Phase 8G (emulador)
 static MathRenderVisualTestApp* g_mathVisualApp = nullptr;
 static GameBoyApp*      g_gameboyApp   = nullptr;   // Game Boy front-end (emulador)
 static NotesApp*  g_notesApp     = nullptr;   // mdrender demo host (emulador)
+static AiApp*     g_aiApp        = nullptr;   // AI wrapper (emulador)
 #if defined(NUMOS_NEO_APP_SMOKE)
 static NeoLanguageApp*  g_neoLangApp = nullptr;
 static uint32_t         g_neoGiacCountSnapshot = 0;
@@ -346,7 +370,7 @@ static vpam::NodePtr     g_showcaseRoot;            // AST de la expresión acti
 static int               g_showcaseIndex   = 0;
 
 // Buffer de LVGL (pantalla completa, RGB565)
-// 320×240 × 2 bytes = 153 600 bytes → trivial en PC
+// 320×180 × 2 bytes = 115 200 bytes → trivial en PC
 static uint8_t g_lvBuf[SCREEN_W * SCREEN_H * sizeof(uint16_t)];
 
 // Forward declarations
@@ -986,6 +1010,25 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
             }
             break;
 
+        case AppMode::AI_WRAPPER:
+            // AI wrapper: MODE sale (y end() aborta el stream, sin guardar);
+            // UP/DOWN mueven, ENTER elige o envia, LEFT/RIGHT pasan de pagina
+            // en la respuesta, el teclado de calculadora escribe en Ask.
+            if (isDown && kc == KeyCode::MODE) {
+                returnToMenu();
+                break;
+            }
+            if (g_aiApp) {
+                KeyEvent ke;
+                ke.code   = kc;
+                ke.action = action;
+                ke.row    = -1;
+                ke.col    = -1;
+                g_aiApp->handleKey(ke);
+                if (g_aiApp->consumeExitRequest()) returnToMenu();
+            }
+            break;
+
 #if defined(NUMOS_NEO_APP_SMOKE)
         case AppMode::NEO_LANGUAGE:
             if (isDown && kc == KeyCode::MODE) {
@@ -1191,6 +1234,7 @@ static void transitionToMenu()
     g_mathVisualApp = new MathRenderVisualTestApp();
     g_gameboyApp    = new GameBoyApp();
     g_notesApp      = new NotesApp();
+    g_aiApp         = new AiApp();
 #if defined(NUMOS_NEO_APP_SMOKE)
     // Opt-in only: the full Neo stack still contains native file() routes
     // outside the emulator LittleFS sandbox. This smoke never invokes them.
@@ -1301,6 +1345,14 @@ static void launchApp(int appId)
             }
             break;
 
+        case 23: // AI wrapper (ai/AiClient + the shared mdrender pipeline)
+            if (g_aiApp) {
+                g_aiApp->load();
+                g_mode = AppMode::AI_WRAPPER;
+                std::printf("[APP] AiApp activa\n");
+            }
+            break;
+
         case 20: // Full MathRenderer verification app
             if (g_mathVisualApp) {
                 g_mathVisualApp->load();
@@ -1396,6 +1448,11 @@ static void performAppTeardown(AppMode m)
         case AppMode::NOTES_READER:
             // NotesApp::load() vuelve a llamar begin() perezosamente.
             if (g_notesApp) g_notesApp->end();
+            break;
+        case AppMode::AI_WRAPPER:
+            // AiApp::load() vuelve a llamar begin() perezosamente. end() aborta
+            // cualquier stream en curso: mid-stream nunca deja archivo.
+            if (g_aiApp) g_aiApp->end();
             break;
 #if defined(NUMOS_NEO_APP_SMOKE)
         case AppMode::NEO_LANGUAGE:
@@ -1610,8 +1667,10 @@ static void printUsage(const char* prog)
         "  --quiet          silencia el log por-tecla/por-iteracion\n"
         "  --deterministic  tick sintetico de paso fijo (reproducible); usar con --frames\n"
         "  --step-ms N      ms virtuales por frame en --deterministic 1..1000 (def. %d)\n"
-        "  --screenshot P   vuelca el frame final 320x240 a un PPM (P6) en la ruta P\n"
+        "  --screenshot P   vuelca el frame final 320x180 a un PPM (P6) en la ruta P\n"
         "  --dump-frame P   alias de --screenshot\n"
+        "  --record DIR     vuelca TODOS los frames a DIR/frame_NNNNNN.ppm (video)\n"
+        "  --record-every N con --record: uno de cada N frames (def. 1)\n"
         "  --script P       reproduce un script de entrada determinista (.numos) desde P\n"
         "  --fs-root P      usa P como raiz del filesystem emulado (sin copia)\n"
         "  --fs-sandbox     raiz temporal limpia por ejecucion (borrada al salir con exit 0)\n"
@@ -1651,6 +1710,11 @@ static bool parseArgs(int argc, char** argv, EmuOptions& opt)
         }
         else if (std::strcmp(a, "--screenshot") == 0 ||
                  std::strcmp(a, "--dump-frame") == 0) needStr(opt.screenshotPath);
+        else if (std::strcmp(a, "--record") == 0)       needStr(opt.recordDir);
+        else if (std::strcmp(a, "--record-every") == 0) {
+            long n = opt.recordEvery; needVal(n);
+            if (n >= 1) opt.recordEvery = n;
+        }
         else if (std::strcmp(a, "--script") == 0)     needStr(opt.scriptPath);
         else if (std::strcmp(a, "--fs-root") == 0)    needStr(opt.fsRoot);
         else if (std::strcmp(a, "--fs-sandbox-dir") == 0) needStr(opt.fsSandboxDir);
@@ -1783,9 +1847,9 @@ static void cleanupFsSandbox(int exitCode)
 //   saveScreenshotPPM — vuelca el framebuffer logico (g_lvBuf) a PPM (P6)
 //
 // Fuente: g_lvBuf, el buffer CPU de pantalla completa que LVGL compone en modo
-// LV_DISPLAY_RENDER_MODE_FULL (siempre contiene el frame 320x240 actual). NO se
+// LV_DISPLAY_RENDER_MODE_FULL (siempre contiene el frame 320x180 actual). NO se
 // lee la textura ni el renderer, por lo que funciona identico en --headless y
-// con cualquier --scale (la captura es SIEMPRE la geometria logica 320x240, no
+// con cualquier --scale (la captura es SIEMPRE la geometria logica 320x180, no
 // la ventana escalada). Formato PPM P6: sin dependencias (cabecera ASCII + RGB
 // crudo). Conversion RGB565 (little-endian host) -> RGB888 por pixel.
 // ════════════════════════════════════════════════════════════════════════════
@@ -1812,6 +1876,26 @@ static bool saveScreenshotPPM(const char* path)
     }
     std::fclose(f);
     return true;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//   recordFrameIfEnabled — grabacion de frames a PPM (video con ffmpeg)
+//
+// Se llama DESPUES de lv_timer_handler() (junto a scriptCaptureIfPending), que
+// es cuando g_lvBuf ya contiene el frame compuesto. Silencioso en exito: una
+// linea de log por frame arruinaria el log de un run de 900 frames.
+// ════════════════════════════════════════════════════════════════════════════
+static void recordFrameIfEnabled()
+{
+    if (!g_opts.recordDir) return;
+    if (g_opts.recordEvery > 1 &&
+        (static_cast<long>(g_loopCount) % g_opts.recordEvery) != 0) return;
+
+    static unsigned long s_recordIndex = 0;
+    char path[1024];
+    std::snprintf(path, sizeof(path), "%s/frame_%06lu.ppm",
+                  g_opts.recordDir, s_recordIndex++);
+    saveScreenshotPPM(path);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2002,6 +2086,8 @@ static const char* canonicalAppName(const std::string& name)
         lc == "game_boy")                         return "Game Boy";
     if (lc == "notes" || lc == "notesreader" ||
         lc == "mdrender")                         return "Notes";
+    if (lc == "ai" || lc == "aiwrapper" ||
+        lc == "aiapp")                            return "AI";
 #if defined(NUMOS_NEO_APP_SMOKE)
     if (lc == "neolanguage" || lc == "neolang" || lc == "neo")
                                                     return "NeoLanguage";
@@ -2028,6 +2114,7 @@ static int scriptAppNameToId(const std::string& name)
     if (lc == "settings")                                             return 10;
     if (lc == "gameboy" || lc == "gb" || lc == "game_boy")            return 21;   // Walnut-CGB front-end
     if (lc == "notes" || lc == "notesreader" || lc == "mdrender")     return 22;   // mdrender demo host
+    if (lc == "ai" || lc == "aiwrapper" || lc == "aiapp")             return 23;   // AI wrapper
 #if defined(NUMOS_NEO_APP_SMOKE)
     if (lc == "neolanguage" || lc == "neolang" || lc == "neo")         return 18;
 #endif
@@ -2124,7 +2211,7 @@ static bool loadScript(const char* path)
             if (iss >> extra)   return scriptErr(path, lineNo, "open_app: demasiados argumentos");
             int id = scriptAppNameToId(name);
             if (id < 0) return scriptErr(path, lineNo,
-                                         "open_app: app no lanzable (Calculation|Grapher|Statistics|Probability|Sequences|Regression|Settings|MathShowcase|MathVisual|GameBoy|Notes)");
+                                         "open_app: app no lanzable (Calculation|Grapher|Statistics|Probability|Sequences|Regression|Settings|MathShowcase|MathVisual|GameBoy|Notes|AI)");
             sc.type   = ScriptCmdType::OpenApp;
             sc.waitN  = id;
             const char* canon = canonicalAppName(name);
@@ -2794,6 +2881,7 @@ static const char* activeAppName()
          : (g_mode == AppMode::MATH_VISUAL)   ? "Math Visual"
          : (g_mode == AppMode::GAMEBOY)       ? "Game Boy"
          : (g_mode == AppMode::NOTES_READER)  ? "Notes"
+         : (g_mode == AppMode::AI_WRAPPER)    ? "AI"
          : (g_mode == AppMode::EQUATIONS)     ? "Equations"
          : (g_mode == AppMode::CALCULUS)      ? "Calculus"
 #if defined(NUMOS_NEO_APP_SMOKE)
@@ -3604,7 +3692,7 @@ static int emulatorInitialize(int argc, char** argv)
 
     std::printf("╔═══════════════════════════════════════╗\n");
     std::printf("║   NumOS Simulator  (PC / SDL2)        ║\n");
-    std::printf("║   320×240  RGB565  —  LVGL 9.x        ║\n");
+    std::printf("║   320×180  RGB565  —  LVGL 9.x        ║\n");
     std::printf("╚═══════════════════════════════════════╝\n\n");
 
     // ── 1. Inicializar SDL2 ─────────────────────────────────────────────
@@ -3677,8 +3765,8 @@ static int emulatorInitialize(int argc, char** argv)
         return 1;
     }
 
-    // ── Coordenadas logicas 320×240 + escalado entero nitido ────────────────
-    // logical size fija el sistema de coordenadas del renderer a 320×240
+    // ── Coordenadas logicas 320×180 + escalado entero nitido ────────────────
+    // logical size fija el sistema de coordenadas del renderer a 320×180
     // (identico al firmware); SDL escala a la ventana. integer scale evita
     // medias muestras → pixeles nitidos en ×2/×3/×4. Esto es puro escalado de
     // SALIDA: la geometria del renderizador de formulas NO se toca.
@@ -3745,7 +3833,7 @@ static int emulatorInitialize(int argc, char** argv)
     g_pointerIndev = lv_indev_create();
     lv_indev_set_type(g_pointerIndev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(g_pointerIndev, sdl_pointer_read_cb);
-    std::printf("[LVGL] Pointer indev registrado (logical 320x240)\n");
+    std::printf("[LVGL] Pointer indev registrado (logical 320x180)\n");
 #endif
 
     // ── 4. Inicializar filesystem emulado ───────────────────────────────
@@ -3827,6 +3915,10 @@ static void emulatorRunFrame()
         if (g_mode == AppMode::GAMEBOY && g_gameboyApp) {
             g_gameboyApp->update();
         }
+        // AI wrapper: bombea el stream (transporte -> escaner -> tarjeta viva).
+        if (g_mode == AppMode::AI_WRAPPER && g_aiApp) {
+            g_aiApp->update();
+        }
         lv_timer_handler();
         if (g_pointerReleasePending && g_pointerPressObserved) {
             g_pointerReleasePending = false;
@@ -3844,6 +3936,9 @@ static void emulatorRunFrame()
         // Phase 4A: captura diferida pedida por el script, DESPUES del render
         // (g_lvBuf ya contiene el frame compuesto por lv_timer_handler).
         scriptCaptureIfPending();
+
+        // Grabacion de frames (--record): mismo punto, mismo buffer.
+        recordFrameIfEnabled();
 
         // Phase 9F: teardown diferido de la app que dejamos al volver al launcher.
         // Se hace FUERA de lv_timer_handler y solo cuando el fade-in del menu ya
@@ -3911,7 +4006,7 @@ static int emulatorShutdown()
 
     // ── Screenshot opcional (Phase 3B) ──────────────────────────────────
     // Tras el ultimo frame y ANTES del teardown: g_lvBuf aun contiene la imagen
-    // logica 320x240 final. Solo se activa con --screenshot/--dump-frame.
+    // logica 320x180 final. Solo se activa con --screenshot/--dump-frame.
     if (g_opts.screenshotPath) {
         if (saveScreenshotPPM(g_opts.screenshotPath)) {
             std::printf("[SHOT] PPM %dx%d escrito: %s\n",

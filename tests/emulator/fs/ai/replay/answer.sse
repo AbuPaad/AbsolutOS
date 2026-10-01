@@ -1,0 +1,61 @@
+: OPENROUTER PROCESSING
+
+data: {"choices":[{"delta":{"content":"{\"title\":\"Quadratic roots\",\"answer\":\""}}]}
+
+data: {"choices":[{"delta":{"content":"# Solving x^2 - 5x + 6 = 0\\n\\nThis is"}}]}
+
+data: {"choices":[{"delta":{"content":" a monic quadratic, so factor it: loo"}}]}
+
+data: {"choices":[{"delta":{"content":"k for two numbers that multiply to\\n*"}}]}
+
+data: {"choices":[{"delta":{"content":"*6** and add to **-5**. They are -2 a"}}]}
+
+data: {"choices":[{"delta":{"content":"nd -3.\\n\\nSo the left side factors as"}}]}
+
+data: {"choices":[{"delta":{"content":":\\n\\n(x - 2)(x - 3) = 0\\n\\nA product "}}]}
+
+data: {"choices":[{"delta":{"content":"is zero when either factor is zero, w"}}]}
+
+data: {"choices":[{"delta":{"content":"hich gives x = 2 or x = 3.\\n\\n---\\n\\n"}}]}
+
+data: {"choices":[{"delta":{"content":"# Checking the roots\\n\\nSubstitute ea"}}]}
+
+data: {"choices":[{"delta":{"content":"ch root back into the original expres"}}]}
+
+data: {"choices":[{"delta":{"content":"sion.\\n\\nFor x = 2: 4 - 10 + 6 = 0. G"}}]}
+
+data: {"choices":[{"delta":{"content":"ood.\\n\\nFor x = 3: 9 - 15 + 6 = 0. Go"}}]}
+
+data: {"choices":[{"delta":{"content":"od.\\n\\nBoth roots check out, so the s"}}]}
+
+data: {"choices":[{"delta":{"content":"olution set is {2, 3}.\\n\\n---\\n\\n# Wh"}}]}
+
+data: {"choices":[{"delta":{"content":"at this tells you\\n\\n- The discrimina"}}]}
+
+data: {"choices":[{"delta":{"content":"nt is 25 - 24 = 1, a perfect square, "}}]}
+
+data: {"choices":[{"delta":{"content":"so the roots are rational.\\n- The ver"}}]}
+
+data: {"choices":[{"delta":{"content":"tex sits at x = 2.5, exactly between "}}]}
+
+data: {"choices":[{"delta":{"content":"the two roots.\\n- The parabola opens "}}]}
+
+data: {"choices":[{"delta":{"content":"upward because the leading coefficien"}}]}
+
+data: {"choices":[{"delta":{"content":"t is positive.\\n\\n```\\nb^2 - 4ac = (-"}}]}
+
+data: {"choices":[{"delta":{"content":"5)^2 - 4*1*6 = 1\\n```\\n\",\"followups\":"}}]}
+
+data: {"choices":[{"delta":{"content":"[\"graph y = x^2 - 5x + 6\",\"solve x^2 "}}]}
+
+data: {"choices":[{"delta":{"content":"+ x - 6 = 0\",\"what is the discriminan"}}]}
+
+data: {"choices":[{"delta":{"content":"t for?\"],\"confidence\":0.92,\"tool_quer"}}]}
+
+data: {"choices":[{"delta":{"content":"y\":\"\",\"tool_server\":\"\",\"transcribed_q"}}]}
+
+data: {"choices":[{"delta":{"content":"uestion\":\"solve x^2 - 5x + 6 = 0 and "}}]}
+
+data: {"choices":[{"delta":{"content":"check the roots\"}"}}]}
+
+data: [DONE]

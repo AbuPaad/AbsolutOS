@@ -74,7 +74,7 @@ static constexpr uint32_t COL_STEP_HEX    = 0x1A1A1A;
 static constexpr uint32_t COL_DESC_HEX    = 0x2E7D32;
 
 static constexpr int SCREEN_W  = 320;
-static constexpr int SCREEN_H  = 240;
+static constexpr int SCREEN_H  = SCREEN_HEIGHT;  // canvas (Config.h)
 static constexpr int BAR_H     = ui::StatusBar::HEIGHT + 1;
 static constexpr int PAD       = 8;
 static constexpr int ROW_H     = 36;   // Height of each equation row

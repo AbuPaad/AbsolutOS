@@ -28,6 +28,8 @@
  */
 
 #pragma once
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
 
 #include <lvgl.h>
 #include "../ui/StatusBar.h"
@@ -53,7 +55,7 @@ private:
     enum class Tab : uint8_t { TABLE, MOLAR, BALANCE };
 
     static constexpr int SCREEN_W = 320;
-    static constexpr int SCREEN_H = 240;
+    static constexpr int SCREEN_H = SCREEN_HEIGHT;  // canvas (Config.h)
 
     // ── Grid layout constants ────────────────────────────────────────────
     static constexpr int GRID_COLS   = 18;

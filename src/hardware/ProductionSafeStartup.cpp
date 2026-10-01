@@ -16,8 +16,11 @@ void applyProductionSafeStartup() {
     digitalWrite(display.chipSelect.gpio, HIGH);
     pinMode(display.chipSelect.gpio, OUTPUT);
 
-    digitalWrite(display.backlight.gpio, LOW);
-    pinMode(display.backlight.gpio, OUTPUT);
+    // Backlight is on a fixed rail: no GPIO is allocated for it (-1).
+    if (display.backlight.gpio >= 0) {
+        digitalWrite(display.backlight.gpio, LOW);
+        pinMode(display.backlight.gpio, OUTPUT);
+    }
 
     digitalWrite(display.reset.gpio, HIGH);
     pinMode(display.reset.gpio, OUTPUT);

@@ -51,7 +51,7 @@ static constexpr uint32_t COL_SEP_HEX    = 0x333333;   // Gris separador
 
 // ── Dimensiones ──
 static constexpr int SCREEN_W      = 320;
-static constexpr int SCREEN_H      = 240;
+static constexpr int SCREEN_H      = SCREEN_HEIGHT;  // canvas (Config.h)
 static constexpr int BAR_H         = ui::StatusBar::HEIGHT + 1;  // 24 + 1 separator
 static constexpr int PAD           = 6;     // Safety margin on all edges
 static constexpr int CONTENT_TOP   = BAR_H;                     // y = 25: top of content area

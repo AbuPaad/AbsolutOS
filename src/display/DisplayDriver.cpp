@@ -31,6 +31,21 @@
 #include "ProductionDisplayRuntimeConfig.h"
 #endif
 
+#include "Ili9341VendorInit.h"
+
+// Canonical rotation -> MADCTL mapping, shared by both the CAM and production
+// paths.  Standalone (constexpr only), so it is safe to include on any target.
+#include "ProductionDisplayProfile.h"
+
+// The logical canvas is declared in three places that must never drift apart:
+// this profile header, Config.h (production builds derive SCREEN_WIDTH/HEIGHT
+// from kProductionBoard.display.logical*), and hal/NativeHal.cpp for the PC
+// emulator.  These two asserts cover the firmware pair at compile time.
+static_assert(SCREEN_WIDTH == numos::display::kLogicalDisplayWidth,
+              "SCREEN_WIDTH must match the display profile's logical width");
+static_assert(SCREEN_HEIGHT == numos::display::kLogicalDisplayHeight,
+              "SCREEN_HEIGHT must match the display profile's logical height");
+
 // Diagnostic and strict-sync helpers — enable during debugging.
 // Uncomment to enable verbose display diagnostics during development.
 // #define DISPLAY_DRIVER_DIAG
@@ -64,8 +79,9 @@ void DisplayDriver::begin() {
                   productionProfile.readSpiHz);
 #endif
 
-    // Production BL is an active-high NPN drive and must never float or flash.
-#ifdef TFT_BL
+    // Backlight is tied to a fixed rail: no GPIO is defined or driven.  Guard
+    // on TFT_BL so a board that does wire one can still opt in.
+#if defined(TFT_BL) && (TFT_BL >= 0)
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     digitalWrite(TFT_BL, LOW);
     pinMode(TFT_BL, OUTPUT);
@@ -73,8 +89,6 @@ void DisplayDriver::begin() {
     // Existing CAM behavior remains unchanged pending production validation.
     pinMode(TFT_BL, INPUT);
 #endif
-#else
-    (void)0;
 #endif
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
@@ -138,7 +152,12 @@ void DisplayDriver::begin() {
 #endif
 
     _tft.init();
-    // Reverted to simple init logic that previously worked with display_test_patterns.
+
+    // Replay the OEM vendor init after TFT_eSPI's own table.  It must run
+    // before setRotation()/the final MADCTL write below so the product's
+    // rotation and colour-order decision remains the last writer.
+    Serial.printf("[TFT] vendor init: %u commands\n",
+                  (unsigned)numos::display::vendorPanelInit(_tft));
 
 #ifdef DISPLAY_DRIVER_DIAG
     // Diagnostic: attempt to read controller ID using available readcommand API.
@@ -155,7 +174,23 @@ void DisplayDriver::begin() {
     (void)configureProductionController(productionProfile);
 #else
     _tft.setRotation(SCREEN_ROTATION);
-    _tft.invertDisplay(true); // colors inverted
+    // Override TFT_eSPI's rotation MADCTL with the bench-proven value.  TFT_eSPI
+    // omits MX for rotation 1 (0x20+COLOR_ORDER), which mirrors this glass
+    // horizontally; the bench derives MADCTL from the vendor's 0x08 base.
+    _tft.startWrite();
+    _tft.writecommand(0x36);
+    _tft.writedata(numos::display::displayMadctl(
+        SCREEN_ROTATION, numos::display::ColorOrder::Bgr));
+    _tft.endWrite();
+    // No colour inversion: the vendor sequence + gamma are authored for a
+    // non-inverted panel (the bench never sent INVOFF/INVON).
+    _tft.invertDisplay(false);
+
+    // Logical canvas is 320x180 on 240 rows of glass: shift the flush down by
+    // half the remainder so the letterbox is even top and bottom.  The bars come
+    // from this offset - never from app-drawn pixels.
+    _xOffset = 0;
+    _yOffset = static_cast<int16_t>(SCREEN_OFFSET_Y);
 #endif
 
     // Ensure CS and DC pins are correctly configured for manual control
@@ -248,10 +283,12 @@ void DisplayDriver::initLvgl(void* buf1, void* buf2, uint32_t bufBytes) {
     }
     */
 
-#ifdef TFT_BL
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8 || (defined(TFT_BL) && (TFT_BL >= 0))
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     // The GRAM is black before the bounded PWM level is enabled. This avoids a
     // full-brightness flash while retaining enough light for first bring-up.
+    // With the backlight on a fixed rail setBacklightLevel() only records the
+    // level; there is no GPIO to drive.
     const auto& profile =
         numos::display::activeProductionDisplayProfile();
     setBacklightLevel(profile.initialBacklight);
@@ -280,9 +317,13 @@ void DisplayDriver::initLvgl(void* buf1, void* buf2, uint32_t bufBytes) {
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 
 void DisplayDriver::forceBacklightOff() {
+#if defined(TFT_BL) && (TFT_BL >= 0)
     analogWrite(TFT_BL, 0);
     digitalWrite(TFT_BL, LOW);
     pinMode(TFT_BL, OUTPUT);
+#endif
+    // Backlight on a fixed rail: nothing to drive, but keep the tracked level
+    // meaningful for the UI/reporting.
     _backlightLevel = 0;
 }
 
@@ -291,8 +332,10 @@ void DisplayDriver::setBacklightLevel(uint8_t level) {
         numos::display::activeProductionDisplayProfile().maximumBacklight;
     const uint8_t bounded =
         level > maximum ? maximum : level;
+#if defined(TFT_BL) && (TFT_BL >= 0)
     pinMode(TFT_BL, OUTPUT);
     analogWrite(TFT_BL, bounded);
+#endif
     _backlightLevel = bounded;
 }
 
@@ -306,6 +349,9 @@ void DisplayDriver::resetProductionController(
     digitalWrite(TFT_RST, HIGH);
     delay(profile.resetRecoveryMs);
     _tft.init();
+    // Re-apply the OEM table after every controller reset so a runtime profile
+    // change does not silently drop the vendor power/VCOM/gamma tuning.
+    (void)numos::display::vendorPanelInit(_tft);
 }
 
 bool DisplayDriver::configureProductionController(
@@ -316,7 +362,7 @@ bool DisplayDriver::configureProductionController(
     // plus the independently validated color-order bit.
     _tft.setRotation(profile.rotation);
     const numos::display::DisplayGeometry geometry =
-        numos::display::logicalDisplayGeometry(profile.rotation);
+        numos::display::panelDisplayGeometry(profile.rotation);
     if (_tft.width() != geometry.width ||
         _tft.height() != geometry.height) {
         return false;
@@ -517,7 +563,12 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
             numos::display::makeClippedFlushPlan(
                 {area->x1, area->y1, area->x2, area->y2},
                 self->_xOffset, self->_yOffset,
-                SCREEN_WIDTH, SCREEN_HEIGHT);
+                // The destination bounds are the PHYSICAL panel, not the canvas:
+                // the plan clips the offset-translated area so nothing is written
+                // past the glass.  Passing the 320x180 canvas here would clip the
+                // bottom SCREEN_OFFSET_Y rows of every flush.
+                numos::display::kPanelWidth,
+                numos::display::kPanelHeight);
         numos::display::executeClippedFlush(
             plan,
             src,
@@ -560,7 +611,14 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
         digitalWrite(TFT_CS, LOW);
 
         self->_tft.startWrite();
-    self->_tft.setAddrWindow(area->x1, area->y1, w, h);
+    // Translate the canvas area onto the physical panel.  LVGL only ever emits
+    // areas inside the logical canvas (320x180), so a plain shift is enough: the
+    // lowest row lands at y = 179 + SCREEN_OFFSET_Y(30) = 209, inside the
+    // 240-row glass, and no clipping is needed.
+    self->_tft.setAddrWindow(
+        static_cast<int16_t>(area->x1 + self->_xOffset),
+        static_cast<int16_t>(area->y1 + self->_yOffset),
+        w, h);
 #ifdef DISPLAY_DRIVER_DIAG
     Serial.printf("C startWrite win=%d,%d %dx%d\n", area->x1, area->y1, w, h);
 #endif

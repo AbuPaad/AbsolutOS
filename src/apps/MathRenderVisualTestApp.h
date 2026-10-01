@@ -1,4 +1,6 @@
 #pragma once
+// SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
+#include "../Config.h"
 
 #include <cstdint>
 
@@ -24,7 +26,7 @@ public:
 
 private:
     static constexpr int16_t SCREEN_W = 320;
-    static constexpr int16_t SCREEN_H = 240;
+    static constexpr int16_t SCREEN_H = SCREEN_HEIGHT;  // canvas (Config.h)
     static constexpr int16_t PAD = 8;
     static constexpr int16_t CANVAS_W = SCREEN_W - 2 * PAD;
     static constexpr int16_t CANVAS_Y = 54;

@@ -270,7 +270,7 @@ build_src_filter = +<*> +<../tests/CASTest.cpp>
 | Componente | Especificación |
 |:-----------|:--------------|
 | **MCU** | ESP32-S3 N16R8 CAM — Dual-core Xtensa LX7 @ 240 MHz |
-| **Flash** | 16 MB QIO (`default_16MB.csv`) |
+| **Flash** | 16 MB QIO (`boards/numos-16mb.csv` — un slot de app de 6 MB + ~9,9 MB LittleFS; **sin tarjeta SD, está DOA**) |
 | **PSRAM** | 8 MB OPI (`qio_opi` — crítico para evitar boot panic) |
 | **Pantalla** | ILI9341 IPS TFT 3.2" — 320×240 px — SPI @ 10 MHz |
 | **Bus SPI** | FSPI (SPI2): MOSI=13, SCLK=12, CS=10, DC=4, RST=5 |
