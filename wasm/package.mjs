@@ -53,10 +53,31 @@ async function buildPackage() {
   const cssData = await readFile(join(sourceDir, "numos-component.css"));
   const persistenceData = await readFile(join(sourceDir, "numos-persistence.js"));
   const keypadData = await readFile(join(sourceDir, "numos-keypad.js"));
+  // GENERATED from src/ui/KeyContext.h by scripts/gen_key_context.py. Packaged
+  // as its own asset (like the keypad catalog) rather than inlined, so the
+  // standalone dev server and the packaged build read the same file.
+  const keyContextData = await readFile(
+    join(sourceDir, "numos-keycontext.js"));
+
+  // Preloaded filesystem image (numos-emulator.data): the replay fixture and
+  // /ai/config.json that let the AI app answer with no network, no key and no
+  // cost. Optional on purpose — a build without --preload-file never asks for
+  // it, and packaging must not fail just because the link skipped it.
+  let fsImageData = null;
+  try {
+    fsImageData = await readFile(join(rawDir, "numos-emulator.data"));
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
 
   const assets = {};
   assets.wasm = await assetRecord(
     "wasm", "numos-emulator.wasm", wasmData, "application/wasm");
+  if (fsImageData) {
+    assets.fsImage = await assetRecord(
+      "fsImage", "numos-emulator.data", fsImageData,
+      "application/octet-stream");
+  }
   assets.runtime = await assetRecord(
     "runtime", "numos-runtime.js", runtimeData, "text/javascript");
   assets.componentCss = await assetRecord(
@@ -65,12 +86,15 @@ async function buildPackage() {
     "persistence", "numos-persistence.js", persistenceData, "text/javascript");
   assets.keypad = await assetRecord(
     "keypad", "numos-keypad.js", keypadData, "text/javascript");
+  assets.keyContext = await assetRecord(
+    "keyContext", "numos-keycontext.js", keyContextData, "text/javascript");
 
   let componentText = await readFile(
     join(sourceDir, "numos-emulator-element.js"), "utf8");
   componentText = componentText
     .replace('"__NUMOS_INLINE_CSS__"', JSON.stringify(cssData.toString("utf8")))
     .replace("./numos-keypad.js", assets.keypad.url)
+    .replace("./numos-keycontext.js", assets.keyContext.url)
     .replace("./numos-persistence.js", assets.persistence.url);
   assets.component = await assetRecord(
     "component", "numos-component.js", Buffer.from(componentText),

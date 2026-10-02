@@ -156,13 +156,20 @@ target_link_options(emulator_web PRIVATE
     "-sINCOMING_MODULE_JS_API=['canvas','noInitialRun','locateFile','print','printErr','onAbort','wasmBinary']"
     -sFILESYSTEM=1
     -lidbfs.js
+    # Fixture del transporte replay + config de la app de IA, montados en la
+    # raiz del FS de Emscripten. Es el "HTTP de mentira" del demo: la app de IA
+    # lee /ai/replay/answer.sse y /ai/config.json de aqui, sin red, sin clave y
+    # sin coste. Equivale al --fs-root del emulador de PC.
+    # Genera numos-emulator.data, que package.mjs publica y el elemento resuelve
+    # por locateFile (igual que el .wasm).
+    "--preload-file=${NUMOS_ROOT}/tests/emulator/fs@/"
     -sALLOW_MEMORY_GROWTH=1
     -sINITIAL_MEMORY=67108864
     -sMAXIMUM_MEMORY=536870912
     -sSTACK_SIZE=1048576
     -sEXIT_RUNTIME=0
     -sDISABLE_DEPRECATED_FIND_EVENT_TARGET_BEHAVIOR=0
-    "-sEXPORTED_FUNCTIONS=['_main','_numos_is_ready','_numos_request_shutdown','_numos_send_logical_key','_numos_diagnostic_state']"
+    "-sEXPORTED_FUNCTIONS=['_main','_numos_is_ready','_numos_request_shutdown','_numos_send_logical_key','_numos_context_id','_numos_diagnostic_state']"
     "-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString','callMain','FS','IDBFS']"
     -Wl,--gc-sections
 )

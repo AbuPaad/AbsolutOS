@@ -186,9 +186,10 @@ void DisplayDriver::begin() {
     // non-inverted panel (the bench never sent INVOFF/INVON).
     _tft.invertDisplay(false);
 
-    // Logical canvas is 320x180 on 240 rows of glass: shift the flush down by
-    // half the remainder so the letterbox is even top and bottom.  The bars come
-    // from this offset - never from app-drawn pixels.
+    // Logical canvas is 320x156 on 240 rows of glass.  MEASURED: the cut-out is
+    // NOT centred — 54 px bar above, 30 px below — so the flush is shifted down
+    // by SCREEN_OFFSET_Y, not by half the remainder.  The bars come from this
+    // offset - never from app-drawn pixels.
     _xOffset = 0;
     _yOffset = static_cast<int16_t>(SCREEN_OFFSET_Y);
 #endif
@@ -565,8 +566,8 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
                 self->_xOffset, self->_yOffset,
                 // The destination bounds are the PHYSICAL panel, not the canvas:
                 // the plan clips the offset-translated area so nothing is written
-                // past the glass.  Passing the 320x180 canvas here would clip the
-                // bottom SCREEN_OFFSET_Y rows of every flush.
+                // past the glass.  Passing the 320x156 canvas here would clip the
+                // bottom bar rows of every flush.
                 numos::display::kPanelWidth,
                 numos::display::kPanelHeight);
         numos::display::executeClippedFlush(
@@ -612,8 +613,8 @@ void DisplayDriver::lvglFlushCb(lv_display_t* disp,
 
         self->_tft.startWrite();
     // Translate the canvas area onto the physical panel.  LVGL only ever emits
-    // areas inside the logical canvas (320x180), so a plain shift is enough: the
-    // lowest row lands at y = 179 + SCREEN_OFFSET_Y(30) = 209, inside the
+    // areas inside the logical canvas (320x156), so a plain shift is enough: the
+    // lowest row lands at y = 155 + SCREEN_OFFSET_Y(54) = 209, inside the
     // 240-row glass, and no clipping is needed.
     self->_tft.setAddrWindow(
         static_cast<int16_t>(area->x1 + self->_xOffset),

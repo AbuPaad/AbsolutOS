@@ -2,6 +2,12 @@ import {
   NUMOS_LOGICAL_KEY_MAX,
   NUMOS_WEB_KEYPAD_LAYOUT,
 } from "./numos-keypad.js";
+import {
+  NUMOS_KEY_CONTEXT_SLUGS,
+  contextName,
+  contextPrimaryKeys,
+  contextRoleFor,
+} from "./numos-keycontext.js";
 import { createPersistenceController } from "./numos-persistence.js";
 
 const COMPONENT_CSS = "__NUMOS_INLINE_CSS__";
@@ -10,6 +16,30 @@ const LOGICAL_HEIGHT = 240;
 const KEY_PRESS = 1;
 const KEY_RELEASE = 2;
 const ACTIVE_BY_DOCUMENT = new WeakMap();
+
+/**
+ * Logical key id -> numeric code, built from the keypad catalog.
+ *
+ * The firmware's KeyCode values are the only authority for those numbers, and
+ * the catalog is already audited against src/input/KeyCodes.h by
+ * tests/wasm/keycode-catalog.mjs — so this derives them instead of restating
+ * them. The generated context table carries ids, never codes, for that reason.
+ */
+const KEY_CODE_BY_ID = new Map();
+for (const group of NUMOS_WEB_KEYPAD_LAYOUT) {
+  for (const key of group.keys) KEY_CODE_BY_ID.set(key.logicalId, key.code);
+}
+
+/**
+ * The firmware's context line, emitted on change (src/hal/NativeHal.cpp):
+ *
+ *   @ctx <id> <slug> <modifier>
+ *
+ * `modifier` is the literal "none" when nothing is held, so splitting on
+ * whitespace never has to special-case a missing field. The slug is validated
+ * against the generated context list before it is trusted.
+ */
+const CONTEXT_LINE = /^@ctx\s+(\d+)\s+([a-z0-9]+)\s+(\S+)$/;
 
 const ACTIVE_STATES = new Set([
   "loading_manifest", "loading_runtime", "downloading_wasm", "instantiating",
@@ -181,6 +211,8 @@ export class NumosEmulatorElement extends HTMLElement {
   #controlsOverride = null;
   #haptics = false;
   #modifierMode = "none";
+  #contextSlug = "";
+  #contextModifier = "none";
   #lastError = null;
   #lastPersistenceState = null;
   #timings = {};
@@ -220,6 +252,11 @@ export class NumosEmulatorElement extends HTMLElement {
                 <button type="button" data-action="overlay-start">Start NumOS</button>
               </div>
             </div>
+          </div>
+          <div class="context-strip" data-context-strip hidden>
+            <span class="context-strip-app" data-context-name>NumOS</span>
+            <span class="context-strip-mod" data-context-mod hidden></span>
+            <span class="context-strip-keys" data-context-keys></span>
           </div>
           <div class="status-row">
             <output data-status>Not started</output>
@@ -393,10 +430,28 @@ export class NumosEmulatorElement extends HTMLElement {
         canvas: this.#canvas,
         noInitialRun: true,
         wasmBinary,
-        locateFile: (path) => path.endsWith(".wasm") ? wasmUrl :
-          new URL(path, runtimeUrl).href,
-        print: (line) => console.debug(`[NumOS] ${line}`),
-        printErr: (line) => console.warn(`[NumOS] ${line}`),
+        locateFile: (path) => {
+          if (path.endsWith(".wasm")) return wasmUrl;
+          // The preloaded filesystem image (replay fixture + /ai/config.json).
+          // Emscripten asks for it by its original name, but packaging renames
+          // every asset to a content hash, so it has to be resolved through the
+          // manifest exactly like the wasm binary is.
+          if (path.endsWith(".data")) {
+            const packaged = manifest.assets?.fsImage;
+            if (packaged?.url) {
+              return new URL(packaged.url, this.#manifestUrl).href;
+            }
+            this.#warn(
+              "the runtime asked for a preloaded filesystem image but the " +
+              "package does not carry one; the AI replay fixture will be " +
+              "missing",
+            );
+            return new URL(path, runtimeUrl).href;
+          }
+          return new URL(path, runtimeUrl).href;
+        },
+        print: (line) => this.#onRuntimeLine(line, false),
+        printErr: (line) => this.#onRuntimeLine(line, true),
         onAbort: (reason) => this.#runtimeAborted(token, reason),
         numosPersistenceDirty: (operation) =>
           this.#persistence?.markDirty(operation),
@@ -1355,6 +1410,117 @@ export class NumosEmulatorElement extends HTMLElement {
       details: boundedText(error.details),
       recoverable: error.recoverable !== false,
     });
+  }
+
+  /**
+   * Handles one line of the runtime's stdout/stderr and keeps the default
+   * behaviour for everything it does not recognise, so this hook cannot swallow
+   * diagnostics.
+   *
+   * The line that matters is the context heartbeat. It is a PUSH channel: the
+   * firmware emits one line when the active app or the SHIFT/ALPHA modifier
+   * changes (src/hal/NativeHal.cpp), so nothing here polls and there is no
+   * per-frame work. The initial state is not lost either — the firmware starts
+   * from "nothing emitted yet", so the very first frame emits.
+   */
+  #onRuntimeLine(line, isError) {
+    const text = String(line ?? "");
+    const match = CONTEXT_LINE.exec(text);
+    if (match) {
+      this.#applyContext(Number(match[1]), match[2], match[3]);
+      return;
+    }
+    if (isError) console.warn(`[NumOS] ${text}`);
+    else console.debug(`[NumOS] ${text}`);
+  }
+
+  /**
+   * Applies the contextual key relevance for the app the device just entered.
+   *
+   * The host element carries the state and CSS does the dimming: recomputing it
+   * is an attribute sweep over the existing buttons, never a DOM rebuild. That
+   * keeps the layout stable, the listeners intact and a held key unbroken —
+   * rebuilding the pad mid-press would drop the release event and leave the
+   * firmware holding a key down forever.
+   */
+  #applyContext(id, slug, modifier) {
+    if (!NUMOS_KEY_CONTEXT_SLUGS.includes(slug)) {
+      this.#warn(
+        `the runtime reported app context "${slug}" (id ${id}) which this ` +
+        `build of the component does not know; the pad is unchanged`,
+      );
+      return;
+    }
+    const previous = this.#contextSlug;
+    if (slug === previous && modifier === this.#contextModifier) return;
+    this.#contextSlug = slug;
+    this.#contextModifier = modifier;
+
+    this.dataset.ctx = slug;
+    this.dataset.ctxModifier = modifier;
+
+    const roles = new Map();
+    for (const button of this.#shadow.querySelectorAll(".key")) {
+      const keyId = button.dataset.keyId;
+      let role = roles.get(keyId);
+      if (role === undefined) {
+        role = contextRoleFor(slug, keyId);
+        roles.set(keyId, role);
+      }
+      button.dataset.contextRole = role;
+      // A dimmed key stays OPERABLE. The physical mat cannot lose keys, so a
+      // demo that disabled them would misrepresent the device and could
+      // dead-end a visitor; aria-disabled reports the state without that risk.
+      if (role === "disabled") button.setAttribute("aria-disabled", "true");
+      else button.removeAttribute("aria-disabled");
+    }
+
+    this.#renderContextStrip();
+    this.#emit("numos-contextchange", {
+      id,
+      slug,
+      modifier,
+      previous,
+      name: contextName(slug),
+      primaryKeys: contextPrimaryKeys(slug).map((entry) => entry.id),
+    });
+  }
+
+  /**
+   * The strip above the pad: the app name, the held modifier, and the keys that
+   * actually do something here. It is the web twin of the on-device soft-key
+   * bar, both driven by the one generated table.
+   */
+  #renderContextStrip() {
+    const strip = this.#shadow.querySelector("[data-context-strip]");
+    if (!strip) return;
+    const entries = contextPrimaryKeys(this.#contextSlug);
+    const modifier = this.#shadow.querySelector("[data-context-mod]");
+    if (modifier) {
+      const held = this.#contextModifier && this.#contextModifier !== "none";
+      modifier.textContent = held ? this.#contextModifier.toUpperCase() : "";
+      modifier.hidden = !held;
+    }
+    const slots = this.#shadow.querySelector("[data-context-keys]");
+    if (slots) {
+      slots.textContent = "";
+      for (const entry of entries) {
+        const chip = document.createElement("span");
+        chip.className = "context-chip";
+        chip.dataset.keyId = entry.id;
+        chip.textContent = entry.legend || entry.id;
+        slots.append(chip);
+      }
+    }
+    strip.hidden = entries.length === 0;
+    if (!strip.hidden) {
+      const label = this.#shadow.querySelector("[data-context-name]");
+      if (label) label.textContent = contextName(this.#contextSlug);
+    }
+  }
+
+  #warn(message) {
+    console.warn(`[NumOS] ${message}`);
   }
 
   #emit(type, detail) {

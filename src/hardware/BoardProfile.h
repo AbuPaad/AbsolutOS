@@ -109,11 +109,13 @@ inline constexpr ProductionBoardProfile kProductionBoard = {
         // display source of truth for this hardware.  The backlight is tied to
         // a fixed rail, so there is no backlight GPIO (-1).
         320,
-        // Logical canvas height: the fx-82 shell exposes 180 of the panel's 240
-        // rows (32 px bars top and bottom, applied as a flush offset, not drawn
-        // in app code). Keep in step with kLogicalDisplayHeight in
-        // display/ProductionDisplayProfile.h and SCREEN_W/H in hal/NativeHal.cpp.
-        180,
+        // Logical canvas height (MEASURED 2026-10-02): the fx-82 shell exposes
+        // 156 of the panel's 240 rows — 54 px of bar above, 30 px below, applied
+        // as a flush offset, not drawn in app code.  Now equal to
+        // kLogicalDisplayHeight, so enabling the production branch no longer
+        // detonates the DisplayDriver static_assert.  Keep in step with
+        // kLogicalDisplayHeight in display/ProductionDisplayProfile.h.
+        156,
         40'000'000U,
         {"LCD CS", 10, Direction::Output, ActiveLevel::Low, Pull::None},
         {"LCD SCLK", 12, Direction::Output, ActiveLevel::None, Pull::None},

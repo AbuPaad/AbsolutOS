@@ -25,7 +25,7 @@
  *   4. MODE (Home/m) vuelve al launcher
  *
  * Responsabilidades:
- *   · Crear ventana SDL2 de 320×180 (escalada ×2)
+ *   · Crear ventana SDL2 de 320×156 (escalada ×2)
  *   · Inicializar LVGL con flush callback a SDL texture
  *   · Mapear el teclado del PC a KeyCode de la calculadora
  *   · Gestionar el ciclo de vida: Splash → Menú → App → Menú
@@ -72,7 +72,7 @@
  *
  * Notas Phase 3A (solo emulador, sin impacto en firmware):
  *   · SDL_KEYDOWN → PRESS/REPEAT, SDL_KEYUP → RELEASE (antes solo KEYDOWN).
- *   · Coordenadas logicas 320×180 + integer scale (ventana ×N nitida).
+ *   · Coordenadas logicas 320×156 + integer scale (ventana ×N nitida).
  *   · Auto-salida CLI: --frames N | --run-for-ms N | --headless | --scale N.
  *
  * Notas Phase 4A (solo emulador, sin impacto en firmware):
@@ -119,6 +119,11 @@
 #endif
 
 #include "../input/KeyCodes.h"
+// Identidad de app + tabla de relevancia de teclas. Compartidos con el firmware
+// real (son codigo de modelo sin LVGL ni Arduino), para que el emulador y el
+// dispositivo no mantengan dos listas distintas.
+#include "../ui/AppContext.h"
+#include "../ui/KeyContext.h"
 #include "../input/LvglKeypad.h"
 #include "../input/KeyboardManager.h"
 #include "../apps/CalculationApp.h"
@@ -173,10 +178,11 @@ void DisplayDriver::lvglFlushCb(lv_display_t*, const lv_area_t*, uint8_t*) {}
 // ════════════════════════════════════════════════════════════════════════════
 // Constantes
 //
-// SCREEN_W/H son la resolucion LOGICA del dispositivo (canvas ILI9341 320x180:
-// el shell fx-82 solo expone 180 de las 240 filas del panel; el letterbox se
-// aplica como offset de flush en el firmware, no aqui). NUNCA cambian: la
-// textura LVGL y el "logical size" del renderer se fijan a este tamaño para que
+// SCREEN_W/H son la resolucion LOGICA del dispositivo (canvas ILI9341 320x156:
+// el shell fx-82 solo expone 156 de las 240 filas del panel, medido por el rig;
+// el letterbox se aplica como offset de flush en el firmware, no aqui). NUNCA
+// cambian: la textura LVGL y el "logical size" del renderer se fijan a este
+// tamaño para que
 // el emulador presente exactamente el mismo sistema de coordenadas que el
 // firmware. El escalado a la ventana del PC lo gestiona SDL (logical size +
 // integer scale), NO el codigo de dibujo de formulas.
@@ -191,7 +197,7 @@ static_assert(SCREEN_W == numos::display::kLogicalDisplayWidth,
 static_assert(SCREEN_H == numos::display::kLogicalDisplayHeight,
               "emulator canvas height must match the display profile");
 #ifdef __EMSCRIPTEN__
-static constexpr int DEFAULT_WINDOW_SCALE = 1;    // canvas backing store 320x180
+static constexpr int DEFAULT_WINDOW_SCALE = 1;    // canvas backing store 320x156
 #else
 static constexpr int DEFAULT_WINDOW_SCALE = 2;    // factor por defecto (×2)
 #endif
@@ -287,6 +293,15 @@ static bool          g_splashDone = false;   // Flag para transición diferida
 static bool          g_initialized = false;
 static bool          g_shutdownComplete = false;
 static uint32_t      g_loopCount = 0;
+
+// ── Latido de contexto (@ctx) ───────────────────────────────────────────────
+// El canal empuja, no sondea: se emite UNA linea cuando cambia la app o el
+// modificador (SHIFT/ALPHA), no por frame. Los consumidores (diagnostico,
+// web) no tienen que releer nada ni trocear prosa en espanol.
+// Ctx::Count = "todavia no se ha emitido nada", asi que el primer frame
+// siempre emite y el estado inicial nunca se pierde.
+static numos::Ctx g_lastCtx       = numos::Ctx::Count;
+static char       g_lastCtxMod[16] = {0};
 static uint32_t      g_startTicks = 0;
 static uint32_t      g_launcherReadyTicks = 0;
 static uint32_t      g_appLaunchCount = 0;
@@ -370,7 +385,7 @@ static vpam::NodePtr     g_showcaseRoot;            // AST de la expresión acti
 static int               g_showcaseIndex   = 0;
 
 // Buffer de LVGL (pantalla completa, RGB565)
-// 320×180 × 2 bytes = 115 200 bytes → trivial en PC
+// 320×156 × 2 bytes = 99 840 bytes → trivial en PC
 static uint8_t g_lvBuf[SCREEN_W * SCREEN_H * sizeof(uint16_t)];
 
 // Forward declarations
@@ -1667,7 +1682,7 @@ static void printUsage(const char* prog)
         "  --quiet          silencia el log por-tecla/por-iteracion\n"
         "  --deterministic  tick sintetico de paso fijo (reproducible); usar con --frames\n"
         "  --step-ms N      ms virtuales por frame en --deterministic 1..1000 (def. %d)\n"
-        "  --screenshot P   vuelca el frame final 320x180 a un PPM (P6) en la ruta P\n"
+        "  --screenshot P   vuelca el frame final 320x156 a un PPM (P6) en la ruta P\n"
         "  --dump-frame P   alias de --screenshot\n"
         "  --record DIR     vuelca TODOS los frames a DIR/frame_NNNNNN.ppm (video)\n"
         "  --record-every N con --record: uno de cada N frames (def. 1)\n"
@@ -1849,7 +1864,7 @@ static void cleanupFsSandbox(int exitCode)
 // Fuente: g_lvBuf, el buffer CPU de pantalla completa que LVGL compone en modo
 // LV_DISPLAY_RENDER_MODE_FULL (siempre contiene el frame 320x180 actual). NO se
 // lee la textura ni el renderer, por lo que funciona identico en --headless y
-// con cualquier --scale (la captura es SIEMPRE la geometria logica 320x180, no
+// con cualquier --scale (la captura es SIEMPRE la geometria logica 320x156, no
 // la ventana escalada). Formato PPM P6: sin dependencias (cabecera ASCII + RGB
 // crudo). Conversion RGB565 (little-endian host) -> RGB888 por pixel.
 // ════════════════════════════════════════════════════════════════════════════
@@ -2866,28 +2881,61 @@ static std::string formatExactVal(const vpam::ExactVal& v)
     return s;
 }
 
+/**
+ * Traduccion AppMode -> Ctx. Es la UNICA: activeAppName(), el canal @ctx y el
+ * JSON de diagnostico salen todos de aqui.
+ */
+static numos::Ctx currentCtx()
+{
+    switch (g_mode) {
+        case AppMode::SPLASH:        return numos::Ctx::Splash;
+        case AppMode::MENU:          return numos::Ctx::Menu;
+        case AppMode::CALCULATION:   return numos::Ctx::Calculation;
+        case AppMode::GRAPHER:       return numos::Ctx::Grapher;
+        case AppMode::EQUATIONS:     return numos::Ctx::Equations;
+        case AppMode::CALCULUS:      return numos::Ctx::Calculus;
+        case AppMode::STATISTICS:    return numos::Ctx::Statistics;
+        case AppMode::PROBABILITY:   return numos::Ctx::Probability;
+        case AppMode::REGRESSION:    return numos::Ctx::Regression;
+        case AppMode::SEQUENCES:     return numos::Ctx::Sequences;
+        case AppMode::GAMEBOY:       return numos::Ctx::GameBoy;
+        case AppMode::NOTES_READER:  return numos::Ctx::Notes;
+        case AppMode::AI_WRAPPER:    return numos::Ctx::Ai;
+        case AppMode::SETTINGS:      return numos::Ctx::Settings;
+        case AppMode::MATH_SHOWCASE: return numos::Ctx::MathShowcase;
+        case AppMode::MATH_VISUAL:   return numos::Ctx::MathVisual;
+#if defined(NUMOS_NEO_APP_SMOKE)
+        case AppMode::NEO_LANGUAGE:  return numos::Ctx::NeoLanguage;
+#endif
+    }
+    // Sin default: un AppMode nuevo sin traducir tiene que salir como aviso del
+    // compilador, no caer en silencio a "Calculation".
+    return numos::Ctx::Calculation;
+}
+
 // Nombre canonico de la app activa (coherente con canonicalAppName()).
+// Sale de la MISMA traduccion que el canal @ctx y el diagnostico, para que el
+// nombre mostrado y el slug que consume la web no puedan divergir.
 static const char* activeAppName()
 {
-    return (g_mode == AppMode::SPLASH)        ? "Splash"
-         : (g_mode == AppMode::MENU)          ? "Menu"
-         : (g_mode == AppMode::SETTINGS)      ? "Settings"
-         : (g_mode == AppMode::MATH_SHOWCASE) ? "MathShowcase"
-         : (g_mode == AppMode::STATISTICS)    ? "Statistics"
-         : (g_mode == AppMode::PROBABILITY)   ? "Probability"
-         : (g_mode == AppMode::SEQUENCES)     ? "Sequences"
-         : (g_mode == AppMode::REGRESSION)    ? "Regression"
-         : (g_mode == AppMode::GRAPHER)       ? "Grapher"
-         : (g_mode == AppMode::MATH_VISUAL)   ? "Math Visual"
-         : (g_mode == AppMode::GAMEBOY)       ? "Game Boy"
-         : (g_mode == AppMode::NOTES_READER)  ? "Notes"
-         : (g_mode == AppMode::AI_WRAPPER)    ? "AI"
-         : (g_mode == AppMode::EQUATIONS)     ? "Equations"
-         : (g_mode == AppMode::CALCULUS)      ? "Calculus"
-#if defined(NUMOS_NEO_APP_SMOKE)
-         : (g_mode == AppMode::NEO_LANGUAGE)  ? "NeoLanguage"
-#endif
-                                              : "Calculation";
+    return numos::ctxName(currentCtx());
+}
+
+static void emitContextLineIfChanged()
+{
+    const numos::Ctx ctx = currentCtx();
+    const char* raw = vpam::KeyboardManager::instance().indicatorText();
+    const char* mod = (raw && *raw) ? raw : "none";
+
+    if (ctx == g_lastCtx && std::strcmp(mod, g_lastCtxMod) == 0) return;
+    g_lastCtx = ctx;
+    std::snprintf(g_lastCtxMod, sizeof(g_lastCtxMod), "%s", mod);
+
+    // Formato congelado: "@ctx <id> <slug> <modificador>".
+    // Tres campos siempre presentes ("none" cuando no hay modificador) para que
+    // el consumidor parta por espacios sin ramas de caso especial.
+    std::printf("@ctx %d %s %s\n",
+                static_cast<int>(ctx), numos::ctxSlug(ctx), g_lastCtxMod);
 }
 
 // Diagnostico de asercion: SIEMPRE se imprime (independiente de --quiet, que
@@ -3983,6 +4031,11 @@ static void emulatorRunFrame()
             std::printf("[SIM] auto-exit: %ld ms alcanzados\n", g_opts.maxMs);
             g_quit = true;
         }
+    // Latido de contexto: al final del frame, cuando la app y el gestor de
+    // teclado (SHIFT/ALPHA) ya han procesado la entrada de ESTE frame. Emite
+    // solo si cambio, asi que un frame normal no escribe nada.
+    emitContextLineIfChanged();
+
     const uint64_t frameEnd = SDL_GetPerformanceCounter();
     const uint64_t frequency = SDL_GetPerformanceFrequency();
     const double elapsedMs = frequency
@@ -4146,6 +4199,16 @@ extern "C" EMSCRIPTEN_KEEPALIVE int numos_is_ready()
            !g_shutdownComplete;
 }
 
+/**
+ * Contexto actual como entero (Ctx). Igual que el campo ctx del JSON de
+ * diagnostico, pero sin construir ni parsear JSON: existe para que un
+ * consumidor pueda comparar un int en lugar de releer el estado completo.
+ */
+extern "C" EMSCRIPTEN_KEEPALIVE int numos_context_id()
+{
+    return static_cast<int>(currentCtx());
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE void numos_request_shutdown()
 {
     emulatorRequestShutdown();
@@ -4194,6 +4257,11 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char* numos_diagnostic_state()
         << ",\"running\":" << (!g_quit ? "true" : "false")
         << ",\"shutdown\":" << (g_shutdownComplete ? "true" : "false")
         << ",\"app\":\"" << activeAppName() << "\""
+        // Contexto maquina-legible: el id y el slug vienen de la misma tabla que
+        // el canal @ctx, asi que el web puede elegir entre escuchar el push o
+        // leer el estado, y ambos coinciden siempre.
+        << ",\"ctx\":" << static_cast<int>(currentCtx())
+        << ",\"ctxSlug\":\"" << numos::ctxSlug(currentCtx()) << "\""
         << ",\"modifier\":\""
         << vpam::KeyboardManager::instance().indicatorText() << "\""
         << ",\"logicalWidth\":" << SCREEN_W

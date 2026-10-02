@@ -17,7 +17,7 @@ int main() {
     assert(board.expectedPsramBytes == 8U * 1024U * 1024U);
 
     assert(board.display.logicalWidth == 320);
-    assert(board.display.logicalHeight == 240);
+    assert(board.display.logicalHeight == 156);
     // Display pins = bench ILI9341 bring-up wiring (source of truth).
     assert(board.display.chipSelect.gpio == 10);
     assert(board.display.clock.gpio == 12);

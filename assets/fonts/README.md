@@ -1,7 +1,8 @@
 # Bundled font provenance
 
-The binary fonts in this directory are Font Software under the SIL Open Font
-License 1.1 (`OFL-1.1`). They are not relicensed under NumOS's GPL. Full,
+The binary fonts in this directory are Font Software, each under its own license
+(the SIL Open Font License 1.1 for Montserrat and STIX Two Math; CC BY-SA 3.0 for
+the CASIO Calculator Font). They are not relicensed under NumOS's GPL. Full,
 upstream-supplied licence and copyright notices are in `LICENSES/`.
 
 ## Montserrat
@@ -71,6 +72,39 @@ Derived files:
 Regenerate the LVGL raster data with
 `bash scripts/generate_stix_math_font.sh`. Regenerate the OpenType MATH tables
 with `python scripts/extract_stix_math.py`.
+
+## CASIO Calculator Font
+
+- Local file: `casio-calculator-font.otf`
+- Format: OpenType CFF (PostScript outlines), `unitsPerEm` 2000, 471 glyphs
+- SHA-256: `e347ec68a18845894ba398dc6a7d0688a08ab636f80d8e7a98fac5a5194af8b6`
+- FontStruction: `CASIO-Calculator-Font`
+- Author: `TH3_C0N-MAN`
+- Embedded name: family/full `CASIO-Calculator-Font` (`fc-query`); font version 65536
+- Source: <https://fontstruct.com/fontstructions/show/1475969>
+- License: `CC-BY-SA-3.0` (Creative Commons Attribution-ShareAlike 3.0 Unported)
+- License text: `LICENSES/CASIOCalculatorFont-CC-BY-SA-3.0.txt`
+- Attribution (as supplied by the author): *The FontStruction
+  "CASIO-Calculator-Font" (https://fontstruct.com/fontstructions/show/1475969) by
+  "TH3_C0N-MAN" is licensed under a Creative Commons Attribution Share Alike
+  license (http://creativecommons.org/licenses/by-sa/3.0/).*
+
+This font carries a different license from the OFL faces above: **attribution is
+required and ShareAlike applies** to adaptations of the font that are publicly
+shared, and there is no Reserved Font Name clause. It is not relicensed under
+NumOS's GPL; the CC BY-SA grant and the GPL apply to their respective works
+(bundling the font as an asset is not a relicensing of NumOS code or vice versa).
+
+Table inventory: only `CFF `, `DSIG`, `OS/2`, `cmap`, `head`, `hhea`, `hmtx`,
+`maxp`, `name`, `post`. There is **no `MATH` table, no `GPOS`, no `kern`** — so the
+OpenType MATH-derived layout tables used by the renderer stay STIX-authored; this
+face supplies glyph shapes only. Coverage is a hand-built ~200-codepoint set (see
+the font-recon notes in the theme-system plan doc `13-math-font.md`); it does not
+include the extensible-delimiter assembly glyphs, the double-struck sets (ℂℕℚℝℤ),
+`∪ ∩`, `∇`, or ceiling/floor fences.
+
+Generated LVGL subsets (to be produced) are CC BY-SA-derived and must carry this
+attribution in their provenance header.
 
 ## Licensing of generated data
 

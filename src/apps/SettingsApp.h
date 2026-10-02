@@ -22,6 +22,10 @@
  *   - Complex roots toggle (ON/OFF)
  *   - Decimal precision selector (6/8/10/12)
  *   - Step-by-step educational mode toggle (ON/OFF)
+ *   - Brightness (production WROOM-1U target only)
+ *   - Web portal toggle — raises the provisioning AP + file/config portal
+ *     (net/Portal.h). This is the ONLY way a blank unit can ever get Wi-Fi
+ *     credentials or an API key, so the row is always last and always present.
  *
  * Part of: NumOS — System Settings
  */
@@ -31,6 +35,7 @@
 #include <lvgl.h>
 #include "../Config.h"
 #include "BrightnessSettingPolicy.h"
+#include "../net/Wifi.h"
 #include "../ui/StatusBar.h"
 #include "../input/KeyCodes.h"
 #include "../input/KeyboardManager.h"
@@ -48,6 +53,13 @@ public:
     void prepareToLeave();
     void load();
     void handleKey(const KeyEvent& ev);
+    /**
+     * Called once per main-loop pass while this app is active. The settings
+     * screen is otherwise pure LVGL; this exists because the portal's state
+     * changes without any input — the AP is raised asynchronously and the STA
+     * association completes seconds later, so the row has to catch up on its own.
+     */
+    void update();
 
     bool isActive() const { return _screen != nullptr; }
     bool navigateBack() { return false; }
@@ -59,14 +71,30 @@ public:
 #endif
 
 private:
+    // Brightness keeps its slot on the production target; the Wi-Fi row is
+    // appended last on every target so existing row indexes never shift.
     static constexpr int NUM_ITEMS =
-        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 5 : 4;
+        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 6 : 5;
+    static constexpr int WIFI_ROW = NUM_ITEMS - 1;
     static constexpr int SCREEN_W  = 320;
     static constexpr int SCREEN_H  = SCREEN_HEIGHT;  // canvas (Config.h)
     static constexpr int PAD       = 12;
     static constexpr int ROW_H     =
-        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 34 : 44;
+        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 34 : 40;
     static constexpr int ROW_GAP   = 2;
+    // The hint strip is pinned to the screen, NOT inside the scrolling row
+    // container: it carries the portal's AP name/password and browser URL while
+    // the portal is up, and must stay readable no matter where the list is
+    // scrolled. Sized for two lines of the 12 px font.
+    static constexpr int HINT_H    = 32;
+
+    /// The Wi-Fi screen: row 0 is the portal toggle (the only way to ADD a
+    /// network — a 20-character password is not being typed on this keypad),
+    /// rows 1..n are the saved networks in priority order.
+    static constexpr int WIFI_ROWS_MAX = 1 + static_cast<int>(net::Wifi::kMaxNetworks);
+    static constexpr int WIFI_LIST_H   = 30;   ///< row height on that screen
+
+    enum class View { Main, Wifi };
 
     lv_obj_t*       _screen;
     ui::StatusBar   _statusBar;
@@ -79,13 +107,31 @@ private:
     lv_obj_t*       _hintLabel;
     lv_obj_t*       _brightnessSlider;
 
+    // Wi-Fi screen widgets (created on entry, destroyed on exit)
+    View            _view = View::Main;
+    lv_obj_t*       _wifiRows[WIFI_ROWS_MAX];
+    lv_obj_t*       _wifiLabels[WIFI_ROWS_MAX];
+    lv_obj_t*       _wifiValues[WIFI_ROWS_MAX];
+    int             _wifiRowCount = 0;
+    uint32_t        _lastPollMs   = 0;
+
     int             _focus;
     DisplayDriver*  _display;
     numos::settings::BrightnessSettingSession _brightnessSession;
 
     void createUI();
+    void createRows();          ///< (re)build the Settings rows in _container
     void updateFocus();
     void updateValues();
     void toggleCurrent();
     void adjustBrightness(int delta);
+    void refreshHint();         ///< nav hint, or the portal's AP/URL block
+
+    // ── Wi-Fi screen ────────────────────────────────────────────────────────
+    void buildWifiView();       ///< enter: tears the Settings rows down
+    void closeWifiView();       ///< leave: rebuilds them
+    void refreshWifiView();     ///< statuses + focus highlight
+    void updateWifiFocus();
+    void wifiActivate(int row); ///< connect / promote the selected network
+    void wifiForget(int row);
 };

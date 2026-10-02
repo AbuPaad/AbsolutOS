@@ -17,8 +17,14 @@ static_assert(kMaximumSpiHz > kValidatedMaximumSpiHz &&
 #else
 inline constexpr uint32_t kMaximumSpiHz = kValidatedMaximumSpiHz;
 #endif
+// Offsets are the flush shift that positions the logical canvas on the physical
+// panel.  The fitted canvas sits LOW in the fx-82 cut-out (measured top bar
+// 54 px, bottom bar 30 px), so the positive direction needs much more room than
+// the negative one.  The physical limit for a 156-row canvas is +84 (240-156);
+// the cap is 64 — enough headroom to tune the measured value, still a hard stop
+// against a nonsensical shift.
 inline constexpr int16_t kMinimumOffset = -32;
-inline constexpr int16_t kMaximumOffset = 32;
+inline constexpr int16_t kMaximumOffset = 64;
 // Settings never offers a black-screen value. The existing SAFE low level is
 // retained as the recovery value for legacy/corrupt records that contain zero.
 inline constexpr uint8_t kMinimumPersistedBacklight = 1;
@@ -36,20 +42,27 @@ inline constexpr uint8_t kMadctlRotation3 = 0xA0;  // MY | MV
 inline constexpr uint16_t kPanelWidth = 320;
 inline constexpr uint16_t kPanelHeight = 240;
 
-// Logical canvas LVGL is created at.  The fx-82 shell exposes only 180 of the
-// panel's 240 rows, so the canvas IS the usable area and the flush is offset by
-// the bar height instead of the bars being drawn in app code; apps lay out
-// inside 320x180 and never see the letterbox.
+// Logical canvas LVGL is created at.  The fx-82 shell exposes only the cut-out
+// area of the panel's 240 rows, so the canvas IS the usable area and the flush
+// is offset by the bar height instead of the bars being drawn in app code;
+// apps lay out inside 320x156 and never see the letterbox.
+// MEASURED (fit rig, 2026-10-02): 320 px wide x 156 px tall, top bar 54 px.
 // KEEP IN STEP with kProductionBoard.display.logicalWidth/Height (BoardProfile.h),
 // SCREEN_WIDTH/HEIGHT (Config.h) and SCREEN_W/H (hal/NativeHal.cpp); the
 // static_assert in DisplayDriver.cpp fails the build if they drift.
 inline constexpr uint16_t kLogicalDisplayWidth = 320;
-inline constexpr uint16_t kLogicalDisplayHeight = 180;
-inline constexpr int16_t kLogicalDisplayOffsetY =
-    static_cast<int16_t>(kPanelHeight - kLogicalDisplayHeight) / 2;
+inline constexpr uint16_t kLogicalDisplayHeight = 156;
+// Top flush offset.  This is a MEASURED constant, NOT the centring formula:
+// the cut-out is not vertically centred on the 240-row panel.  (240-156)/2 = 42
+// would be wrong by 12 px; the rig measured 54.  A centring offset can never be
+// used for a canvas below 176 rows anyway — it would exceed even the widened cap.
+inline constexpr int16_t kLogicalDisplayOffsetY = 54;
 static_assert(kLogicalDisplayOffsetY >= kMinimumOffset &&
                   kLogicalDisplayOffsetY <= kMaximumOffset,
               "Centring offset must fit the profile offset bounds");
+// A 156-row canvas plus its 54 px top offset must still land inside the panel.
+static_assert(kLogicalDisplayOffsetY + kLogicalDisplayHeight <= kPanelHeight,
+              "Canvas plus offset must fit inside the physical panel");
 
 enum class ProfileId : uint8_t {
     Safe = 0,

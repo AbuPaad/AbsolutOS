@@ -133,6 +133,27 @@ The generated files carry OFL provenance notices. NumOS-authored table
 scaffolding in the generated headers is marked
 `GPL-3.0-or-later AND OFL-1.1`; the glyph/font data itself is marked OFL-1.1.
 
+### CASIO Calculator Font
+
+- Source: `assets/fonts/casio-calculator-font.otf` (OpenType CFF, `unitsPerEm` 2000, 471 glyphs)
+- SHA-256: `e347ec68a18845894ba398dc6a7d0688a08ab636f80d8e7a98fac5a5194af8b6`
+- FontStruction: `CASIO-Calculator-Font`
+- Author: `TH3_C0N-MAN`
+- Upstream: <https://fontstruct.com/fontstructions/show/1475969>
+- License: CC-BY-SA-3.0 (Creative Commons Attribution-ShareAlike 3.0 Unported); no
+  Reserved Font Name clause
+- License text: `assets/fonts/LICENSES/CASIOCalculatorFont-CC-BY-SA-3.0.txt`
+- Attribution notice as supplied by the author: *The FontStruction
+  "CASIO-Calculator-Font" (https://fontstruct.com/fontstructions/show/1475969) by
+  "TH3_C0N-MAN" is licensed under a Creative Commons Attribution Share Alike
+  license (http://creativecommons.org/licenses/by-sa/3.0/).*
+
+Unlike the OFL faces, this font requires attribution and applies ShareAlike to
+publicly shared adaptations of the font. It is not relicensed under NumOS's
+GPL-3.0-or-later. The face has no OpenType `MATH` table, so the renderer's
+STIX-derived layout tables remain STIX-authored; generated LVGL subsets are
+CC BY-SA-derived and record this attribution. See `assets/fonts/README.md`.
+
 ## Package-manager and build-time dependencies
 
 `platformio.ini` resolves LVGL and TFT_eSPI through PlatformIO rather than

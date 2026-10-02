@@ -25,6 +25,9 @@
 #include "../Config.h"
 #include "../display/DisplayDriver.h"
 #include "../math/AngleModeRuntime.h"
+#include "../net/Portal.h"
+
+#include <cstdio>
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 #if NUMOS_PRODUCTION_DEMO_PROFILE
@@ -236,6 +239,7 @@ void SettingsApp::begin() {
 
 void SettingsApp::end() {
     prepareToLeave();
+    _view = View::Main;
     if (_screen) {
         _statusBar.destroy();   // nullify dangling pointers before parent screen is freed
         lv_obj_delete(_screen);
@@ -248,6 +252,12 @@ void SettingsApp::end() {
             _labels[i] = nullptr;
             _values[i] = nullptr;
         }
+        for (int i = 0; i < WIFI_ROWS_MAX; ++i) {
+            _wifiRows[i] = nullptr;
+            _wifiLabels[i] = nullptr;
+            _wifiValues[i] = nullptr;
+        }
+        _wifiRowCount = 0;
     }
 }
 
@@ -257,6 +267,9 @@ void SettingsApp::end() {
 
 void SettingsApp::load() {
     if (!_screen) begin();
+    // Always open on the Settings rows, never mid-way through the Wi-Fi screen:
+    // the container is torn down on teardown, so _view has to agree with it.
+    if (_view == View::Wifi) closeWifiView();
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     _brightnessSession.begin(setting_brightness);
     setting_brightness = _brightnessSession.runtimeBrightness();
@@ -267,10 +280,16 @@ void SettingsApp::load() {
     _focus = 0;
     updateValues();
     updateFocus();
+    refreshHint();
     lv_screen_load_anim(_screen, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
 }
 
 void SettingsApp::prepareToLeave() {
+    // The portal is transient by design: leaving Settings drops the AP and the
+    // server. Portal::stop() is idempotent and, if credentials are stored, it is
+    // also what hands the radio back to the STA so a freshly provisioned unit
+    // joins the network without a power cycle.
+    net::Portal::stop();
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     if (!_brightnessSession.active()) return;
 
@@ -304,12 +323,41 @@ void SettingsApp::createUI() {
     int barH = ui::StatusBar::HEIGHT + 1;
 
     _container = lv_obj_create(_screen);
-    lv_obj_set_size(_container, SCREEN_W, SCREEN_H - barH);
+    lv_obj_set_size(_container, SCREEN_W, SCREEN_H - barH - HINT_H);
     lv_obj_set_pos(_container, 0, barH);
     lv_obj_set_style_bg_opa(_container, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(_container, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_container, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_container, LV_OBJ_FLAG_SCROLLABLE);
+    // The rows are taller than this container on the 180 px canvas and the Wi-Fi
+    // screen rebuilds them, so the list scrolls and updateFocus() brings the
+    // focused row into view. Scrolling is driven by the keypad only — there is no
+    // touch input — so the scrollbar would be noise.
+    lv_obj_add_flag(_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(_container, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(_container, LV_SCROLLBAR_MODE_OFF);
+
+    // The hint strip lives on the SCREEN, not in the container: it must not
+    // scroll away, because while the portal is up it is the only place the AP
+    // name, its password and the browser URL are shown.
+    _hintLabel = lv_label_create(_screen);
+    lv_obj_set_width(_hintLabel, SCREEN_W - 2 * PAD);
+    lv_obj_set_height(_hintLabel, LV_SIZE_CONTENT);
+    lv_label_set_long_mode(_hintLabel, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(_hintLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_hintLabel, lv_color_hex(COL_HINT), LV_PART_MAIN);
+    lv_obj_set_pos(_hintLabel, PAD, SCREEN_H - HINT_H + 2);
+
+    createRows();
+}
+
+void SettingsApp::createRows() {
+    lv_obj_clean(_container);
+    for (int i = 0; i < NUM_ITEMS; ++i) {
+        _rows[i]   = nullptr;
+        _labels[i] = nullptr;
+        _values[i] = nullptr;
+    }
+    _brightnessSlider = nullptr;
 
     const char* labels[NUM_ITEMS] = {
         "Angle mode",          // row 0 per SET spec §E.3.4 (highest-priority row)
@@ -319,6 +367,9 @@ void SettingsApp::createUI() {
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
         "Brightness",
 #endif
+        // Opens the Wi-Fi screen: saved networks, signal, connect/forget, and the
+        // provisioning portal that puts networks on the list in the first place.
+        "Wi-Fi",
     };
 
     for (int i = 0; i < NUM_ITEMS; ++i) {
@@ -365,18 +416,6 @@ void SettingsApp::createUI() {
     lv_obj_remove_flag(_brightnessSlider, LV_OBJ_FLAG_CLICKABLE);
 #endif
 
-    // Hint at bottom
-    // Phase 7I: plain UI hint → lv_font_montserrat_14 (stix_math_18 has no U+0020
-    // space glyph → tofu at every space). The LV_SYMBOL_UP/DOWN arrows
-    // (U+F077/U+F078) are absent from BOTH stix_math_18 and lv_font_montserrat_14
-    // in this build, so they already rendered as tofu — dropped here (the words
-    // convey navigation just as the re-blessed RegressionApp hint does).
-    _hintLabel = lv_label_create(_container);
-    lv_label_set_text(_hintLabel, "Navigate   Left/Right Adjust   MODE Back");
-    lv_obj_set_style_text_font(_hintLabel, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_hintLabel, lv_color_hex(COL_HINT), LV_PART_MAIN);
-    lv_obj_set_pos(_hintLabel, PAD, SCREEN_H - barH - 22);
-
     updateValues();
     updateFocus();
 }
@@ -397,6 +436,8 @@ void SettingsApp::updateFocus() {
             lv_obj_set_style_border_width(_rows[i], 1, LV_PART_MAIN);
         }
     }
+    // The row list can be taller than the container; keep the cursor visible.
+    if (_rows[_focus]) lv_obj_scroll_to_view(_rows[_focus], LV_ANIM_OFF);
     lv_obj_invalidate(_screen);
 }
 
@@ -444,6 +485,267 @@ void SettingsApp::updateValues() {
     lv_obj_set_style_text_color(_values[4], lv_color_hex(COL_VALUE), LV_PART_MAIN);
     lv_slider_set_value(_brightnessSlider, setting_brightness, LV_ANIM_OFF);
 #endif
+
+    // Wi-Fi row. Deliberately short: the SSID itself belongs on the Wi-Fi screen
+    // and in the hint strip, which have more room than this row's value field.
+    {
+        char wbuf[20];
+        const size_t nets = net::Wifi::networkCount();
+        const net::WifiState ws = net::Wifi::state();
+        if (ws.connected) {
+            std::snprintf(wbuf, sizeof(wbuf), "connected");
+            lv_obj_set_style_text_color(_values[WIFI_ROW], lv_color_hex(COL_VALUE_ON), LV_PART_MAIN);
+        } else if (nets > 0) {
+            std::snprintf(wbuf, sizeof(wbuf), "%u saved", static_cast<unsigned>(nets));
+            lv_obj_set_style_text_color(_values[WIFI_ROW], lv_color_hex(COL_VALUE), LV_PART_MAIN);
+        } else {
+            std::snprintf(wbuf, sizeof(wbuf), "none");
+            lv_obj_set_style_text_color(_values[WIFI_ROW], lv_color_hex(COL_VALUE_OFF), LV_PART_MAIN);
+        }
+        lv_label_set_text(_values[WIFI_ROW], wbuf);
+    }
+}
+
+/**
+ * The hint strip: the nav line, the portal's AP/URL block, or the Wi-Fi screen's
+ * own keys. One place, because it is the only strip the user can always see.
+ */
+void SettingsApp::refreshHint() {
+    if (!_hintLabel) return;
+    char buf[140];
+
+    const net::PortalState ps = net::Portal::state();
+
+    if (_view == View::Wifi) {
+        // The credentials belong HERE, next to the row that raises the AP: this
+        // is where the toggle is pressed, so this is where they get read. Two
+        // lines, 12 px font, inside HINT_H.
+        if (ps.running) {
+            std::snprintf(buf, sizeof(buf), "%s   pass %s\n%s   stations %d",
+                          ps.apSsid.c_str(), ps.apPass.c_str(),
+                          ps.url.c_str(), ps.stations);
+        } else if (const char* why = net::Portal::unavailableReason()) {
+            std::snprintf(buf, sizeof(buf), "%s", why);
+        } else if (!ps.lastError.empty()) {
+            // start() was tried and failed on this build: say why instead of
+            // leaving a dead-looking toggle. The row would otherwise just stay
+            // OFF with no explanation (the reason used to reach the serial log
+            // only).
+            std::snprintf(buf, sizeof(buf), "portal failed: %s",
+                          ps.lastError.c_str());
+        } else {
+            std::snprintf(buf, sizeof(buf),
+                          "EXE portal   DEL forget   RIGHT rescan   LEFT back");
+        }
+        lv_label_set_text(_hintLabel, buf);
+        return;
+    }
+
+    // Main Settings screen: how to get in, or what the device is doing. The AP
+    // credentials are one level down (the Wi-Fi row) and are not duplicated here.
+    if (ps.running) {
+        std::snprintf(buf, sizeof(buf), "Portal ON - open Wi-Fi for SSID/pass");
+    } else if (ps.staConnected) {
+        std::snprintf(buf, sizeof(buf), "Wi-Fi %s %s", ps.staSsid.c_str(), ps.staIp.c_str());
+    } else if (net::Wifi::networkCount() == 0) {
+        std::snprintf(buf, sizeof(buf), "Wi-Fi: none saved - open Wi-Fi to provision");
+    } else {
+        std::snprintf(buf, sizeof(buf), "Navigate   Left/Right Adjust   MODE Back");
+    }
+    lv_label_set_text(_hintLabel, buf);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Wi-Fi screen — saved networks with their signal, and the provisioning portal
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Row 0 is the portal toggle, rows 1..n are the saved networks in priority
+// order. The portal is row 0 and not a separate Settings row because it is what
+// PUTS networks on this list — a 20-character WPA2 password is not being typed
+// on a 5x10 keypad, so the phone does it and the device stores the result.
+//
+// Keys: UP/DOWN move, EXE toggles the portal (row 0), ENTER connects to the
+// focused network, DEL forgets, RIGHT rescans, LEFT/AC goes back. MODE still
+// leaves Settings entirely — that interception happens in SystemApp before this
+// app sees the key.
+
+void SettingsApp::buildWifiView() {
+    _view  = View::Wifi;
+    _focus = 0;
+
+    // A scan takes 1-2 s and is collected asynchronously by Wifi::tick(), so the
+    // screen appears immediately and fills in signal as the results land.
+    net::Wifi::startScan();
+
+    lv_obj_clean(_container);
+    for (int i = 0; i < NUM_ITEMS; ++i) {
+        _rows[i]   = nullptr;
+        _labels[i] = nullptr;
+        _values[i] = nullptr;
+    }
+    _brightnessSlider = nullptr;
+
+    const size_t nets = net::Wifi::networkCount();
+    _wifiRowCount = 1 + static_cast<int>(nets > 0 ? nets : 1);
+    if (_wifiRowCount > WIFI_ROWS_MAX) _wifiRowCount = WIFI_ROWS_MAX;
+
+    for (int i = 0; i < _wifiRowCount; ++i) {
+        const int y = 4 + i * (WIFI_LIST_H + ROW_GAP);
+
+        _wifiRows[i] = lv_obj_create(_container);
+        lv_obj_set_size(_wifiRows[i], SCREEN_W - 2 * PAD, WIFI_LIST_H);
+        lv_obj_set_pos(_wifiRows[i], PAD, y);
+        lv_obj_set_style_bg_color(_wifiRows[i], lv_color_hex(COL_ROW_BG), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_wifiRows[i], LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_color(_wifiRows[i], lv_color_hex(COL_BORDER), LV_PART_MAIN);
+        lv_obj_set_style_border_width(_wifiRows[i], 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(_wifiRows[i], 6, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(_wifiRows[i], 0, LV_PART_MAIN);
+        lv_obj_remove_flag(_wifiRows[i], LV_OBJ_FLAG_SCROLLABLE);
+
+        _wifiLabels[i] = lv_label_create(_wifiRows[i]);
+        lv_obj_set_width(_wifiLabels[i], 176);
+        // An SSID can be 32 characters; ellipsize rather than overflow the row.
+        lv_label_set_long_mode(_wifiLabels[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_style_text_font(_wifiLabels[i], &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(_wifiLabels[i], lv_color_hex(COL_TEXT), LV_PART_MAIN);
+        lv_obj_align(_wifiLabels[i], LV_ALIGN_LEFT_MID, 10, 0);
+
+        _wifiValues[i] = lv_label_create(_wifiRows[i]);
+        lv_obj_set_style_text_font(_wifiValues[i], &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_align(_wifiValues[i], LV_ALIGN_RIGHT_MID, -10, 0);
+    }
+
+    refreshWifiView();
+    refreshHint();
+}
+
+void SettingsApp::closeWifiView() {
+    _view  = View::Main;
+    _focus = WIFI_ROW;   // come back with the cursor on the row that opened it
+    createRows();        // rebuilds the Settings rows + calls updateValues/Focus
+    refreshHint();
+}
+
+void SettingsApp::updateWifiFocus() {
+    for (int i = 0; i < _wifiRowCount; ++i) {
+        if (!_wifiRows[i]) continue;
+        if (i == _focus) {
+            lv_obj_set_style_bg_color(_wifiRows[i], lv_color_hex(COL_ROW_FOCUS), LV_PART_MAIN);
+            lv_obj_set_style_border_color(_wifiRows[i], lv_color_hex(COL_FOCUS_BD), LV_PART_MAIN);
+            lv_obj_set_style_border_width(_wifiRows[i], 2, LV_PART_MAIN);
+        } else {
+            lv_obj_set_style_bg_color(_wifiRows[i], lv_color_hex(COL_ROW_BG), LV_PART_MAIN);
+            lv_obj_set_style_border_color(_wifiRows[i], lv_color_hex(COL_BORDER), LV_PART_MAIN);
+            lv_obj_set_style_border_width(_wifiRows[i], 1, LV_PART_MAIN);
+        }
+    }
+    if (_wifiRows[_focus]) lv_obj_scroll_to_view(_wifiRows[_focus], LV_ANIM_OFF);
+    lv_obj_invalidate(_screen);
+}
+
+void SettingsApp::refreshWifiView() {
+    if (_view != View::Wifi || !_wifiRows[0]) return;
+    char text[80];
+
+    // Row 0: the portal.
+    const net::PortalState ps = net::Portal::state();
+    lv_label_set_text(_wifiLabels[0], "Web portal");
+    lv_label_set_text(_wifiValues[0], ps.running ? "ON" : "OFF");
+    lv_obj_set_style_text_color(_wifiValues[0],
+                                lv_color_hex(ps.running ? COL_VALUE_ON : COL_VALUE_OFF),
+                                LV_PART_MAIN);
+
+    const size_t nets = net::Wifi::networkCount();
+    const net::WifiState ws = net::Wifi::state();
+    if (nets == 0) {
+        if (_wifiRowCount > 1) {
+            lv_label_set_text(_wifiLabels[1], "no networks saved");
+            lv_obj_set_style_text_color(_wifiLabels[1], lv_color_hex(COL_HINT), LV_PART_MAIN);
+            lv_label_set_text(_wifiValues[1], "use portal");
+            lv_obj_set_style_text_color(_wifiValues[1], lv_color_hex(COL_HINT), LV_PART_MAIN);
+        }
+        updateWifiFocus();
+        return;
+    }
+
+    for (size_t i = 0; i < nets && static_cast<int>(i + 1) < _wifiRowCount; ++i) {
+        net::WifiNetwork n;
+        if (!net::Wifi::networkAt(i, n)) continue;
+        const int row = static_cast<int>(i) + 1;
+
+        std::snprintf(text, sizeof(text), "%u. %s", static_cast<unsigned>(i + 1), n.ssid.c_str());
+        lv_label_set_text(_wifiLabels[row], text);
+        lv_obj_set_style_text_color(_wifiLabels[row], lv_color_hex(COL_TEXT), LV_PART_MAIN);
+
+        // Availability, in this order: the live link beats a scan sighting, and a
+        // scan sighting beats "not seen" — but "not seen" is only honest once a
+        // scan has actually finished.
+        const int rssi = net::Wifi::signalFor(n.ssid);
+        if (ws.connected && ws.ssid == n.ssid) {
+            std::snprintf(text, sizeof(text), "connected %d dBm", ws.rssi);
+            lv_obj_set_style_text_color(_wifiValues[row], lv_color_hex(COL_VALUE_ON), LV_PART_MAIN);
+        } else if (rssi < 0) {
+            std::snprintf(text, sizeof(text), "%d dBm", rssi);
+            lv_obj_set_style_text_color(_wifiValues[row], lv_color_hex(COL_VALUE), LV_PART_MAIN);
+        } else if (net::Wifi::scanRunning()) {
+            std::snprintf(text, sizeof(text), "scanning");
+            lv_obj_set_style_text_color(_wifiValues[row], lv_color_hex(COL_HINT), LV_PART_MAIN);
+        } else {
+            std::snprintf(text, sizeof(text), "not in range");
+            lv_obj_set_style_text_color(_wifiValues[row], lv_color_hex(COL_VALUE_OFF), LV_PART_MAIN);
+        }
+        lv_label_set_text(_wifiValues[row], text);
+    }
+    updateWifiFocus();
+}
+
+void SettingsApp::wifiActivate(int row) {
+    net::WifiNetwork n;
+    if (!net::Wifi::networkAt(static_cast<size_t>(row), n)) return;
+
+    // Promoting to slot 0 is the whole "connect to this one" story: Wifi::tick()
+    // walks the list from the front. Restarting the STA makes it take effect now
+    // instead of after a retry cycle — and it stays non-blocking, because a
+    // 12-second join on the loop task would freeze the UI and the keypad.
+    if (!net::Wifi::saveNetwork(n.ssid, n.pass, /*makePrimary=*/true)) return;
+    net::Wifi::disconnect(/*eraseCreds=*/false);
+    net::Wifi::begin();
+    Serial.printf("[SETTINGS] wifi connect requested: '%s'\n", n.ssid.c_str());
+    refreshWifiView();
+    refreshHint();
+}
+
+void SettingsApp::wifiForget(int row) {
+    if (row <= 0) return;   // row 0 is the portal toggle
+    net::WifiNetwork n;
+    if (!net::Wifi::networkAt(static_cast<size_t>(row - 1), n)) return;
+    if (!net::Wifi::forgetNetwork(n.ssid)) return;
+    Serial.printf("[SETTINGS] wifi forgotten: '%s'\n", n.ssid.c_str());
+
+    // The list just changed size; rebuild it so the rows match it exactly.
+    const int keep = (row >= _wifiRowCount - 1) ? _wifiRowCount - 2 : row;
+    buildWifiView();
+    _focus = (keep < 0) ? 0 : keep;
+    if (_focus >= _wifiRowCount) _focus = _wifiRowCount - 1;
+    updateWifiFocus();
+}
+
+void SettingsApp::update() {
+    const uint32_t now = lv_tick_get();
+    if ((now - _lastPollMs) < 1000u) return;
+    _lastPollMs = now;
+
+    // Both the portal's state and the Wi-Fi association change with no user
+    // input (the AP comes up, the STA lands, a scan completes), so the screen
+    // catches up by itself. LVGL is only ever touched from here, on the loop task.
+    if (_view == View::Wifi) {
+        refreshWifiView();
+        refreshHint();   // the AP's station count/error text moves while it runs
+    } else {
+        updateValues();
+        refreshHint();
+    }
 }
 
 void SettingsApp::adjustBrightness(const int delta) {
@@ -511,6 +813,10 @@ void SettingsApp::toggleCurrent() {
             }
             break;
 #endif
+
+        case WIFI_ROW:  // opens the Wi-Fi screen; nothing to persist here
+            buildWifiView();
+            return;     // the rows this function would refresh were just deleted
     }
 
     updateValues();
@@ -532,6 +838,55 @@ void SettingsApp::toggleCurrent() {
 void SettingsApp::handleKey(const KeyEvent& ev) {
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
 
+    // ── the Wi-Fi screen has its own keymap ─────────────────────────────────
+    if (_view == View::Wifi) {
+        switch (ev.code) {
+            case KeyCode::UP:
+                if (_focus > 0) { --_focus; updateWifiFocus(); }
+                return;
+            case KeyCode::DOWN:
+                if (_focus + 1 < _wifiRowCount) { ++_focus; updateWifiFocus(); }
+                return;
+            case KeyCode::RIGHT:
+                net::Wifi::startScan();   // results arrive via Wifi::tick()
+                refreshWifiView();
+                return;
+            case KeyCode::DEL:
+                wifiForget(_focus);
+                return;
+            case KeyCode::LEFT:
+            case KeyCode::AC:
+                closeWifiView();
+                return;
+            case KeyCode::EXE:
+            case KeyCode::ENTER:
+                // Row 0 is the portal toggle; rows 1..n connect.
+                //
+                // Both codes are handled because on the production target the
+                // execute key is run through KeySemanticResolver, whose plane
+                // definitions rewrite KeyCode::EXE to KeyCode::ENTER. So EXE is
+                // emulator/serial only — on the real device the toggle arrives
+                // as ENTER. FractalApp handles the pair the same way.
+                if (_focus == 0) {
+                    // Raising the portal is also how a network gets ON this
+                    // list, since the password has to be typed on a phone.
+                    if (net::Portal::running()) {
+                        net::Portal::stop();
+                    } else if (!net::Portal::start()) {
+                        Serial.printf("[SETTINGS] portal start failed: %s\n",
+                                      net::Portal::state().lastError.c_str());
+                    }
+                    refreshWifiView();
+                    refreshHint();
+                    return;
+                }
+                wifiActivate(_focus - 1);
+                return;
+            default:
+                return;
+        }
+    }
+
     switch (ev.code) {
         case KeyCode::UP:
             if (_focus > 0) {
@@ -548,6 +903,8 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
             break;
 
         case KeyCode::ENTER:
+        case KeyCode::EXE:   // Prod resolver rewrites EXE->ENTER; on non-Prod
+                             // builds EXE arrives raw, so treat it as confirm too.
             toggleCurrent();
             break;
 

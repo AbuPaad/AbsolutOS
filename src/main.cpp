@@ -47,6 +47,7 @@ uint8_t setting_brightness = 96;
 #include "ui/SplashScreen.h"
 #include "utils/MemProbe.h"
 #include "net/Wifi.h"          // system-owned Wi-Fi service (device-networking.md §1.1)
+#include "net/Portal.h"        // provisioning + file portal (Settings -> Wi-Fi)
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 #include "hardware/ProductionSafeStartup.h"
@@ -299,6 +300,13 @@ void setup() {
     // Deliberate GPIO ownership point. Safe startup leaves every matrix pin
     // untouched until the complete generated mapping is compiled.
     g_keypad.begin();
+#else
+    // Bench build (TCA9555 expander keypad). Without this call the driver is
+    // never initialised in the non-production branch: no Wire.begin(47, 6),
+    // no /INT attach, `_initialized == false` -> Keyboard::update() returns
+    // immediately and every key is silently dead. This was the only call site
+    // and it used to be production-only.
+    g_keypad.begin();
 #endif
 
     // -- 7b. Splash teardown (MT-03) --
@@ -424,6 +432,11 @@ void loop() {
     // Reconnect/backoff lives in exactly one place, on the loop task, so no app
     // can start a retry storm. Non-blocking: this path has no delay().
     net::Wifi::tick(millis());
+
+    // The provisioning portal's idle auto-stop. It owns its own task; this only
+    // closes it after kIdleStopMs with no request, so a forgotten portal cannot
+    // sit there holding the radio up.
+    net::Portal::tick(millis());
 
     // Heartbeat cada 5s (confirma que el loop corre y Serial TX funciona).
     // MT-01: the old internal-only "[HB] heap=" line is replaced by the full

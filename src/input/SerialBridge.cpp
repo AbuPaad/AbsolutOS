@@ -28,6 +28,77 @@
 
 #define Serial NUMOS_SERIAL
 
+namespace {
+
+// Named keys, shared by the bare-word form ("DEL") and the hold/release forms
+// ("+DEL" / "-DEL") so the two spellings can never drift apart.
+struct NamedKey {
+    const char* name;
+    KeyCode code;
+};
+
+const NamedKey kNamedKeys[] = {
+    {"HOME", KeyCode::MODE},   {"AC", KeyCode::AC},   {"DEL", KeyCode::DEL},
+    {"ENTER", KeyCode::ENTER}, {"EXE", KeyCode::EXE}, {"F1", KeyCode::F1},
+    {"F2", KeyCode::F2},       {"F3", KeyCode::F3},   {"F4", KeyCode::F4},
+    {"F5", KeyCode::F5},       {"SIN", KeyCode::SIN}, {"COS", KeyCode::COS},
+    {"TAN", KeyCode::TAN},     {"LN", KeyCode::LN},   {"LOG", KeyCode::LOG},
+    {"SQRT", KeyCode::SQRT},   {"ANS", KeyCode::ANS}, {"PI", KeyCode::CONST_PI},
+};
+
+bool lookupNamedKey(const std::string& upper, KeyCode& out) {
+    for (const NamedKey& entry : kNamedKeys) {
+        if (upper == entry.name) { out = entry.code; return true; }
+    }
+    return false;
+}
+
+// Arrow shortcut letters, for "+w"/"-d" style hold/release.
+bool lookupArrowKey(char upperChar, KeyCode& out) {
+    switch (upperChar) {
+        case 'W': out = KeyCode::UP;    return true;
+        case 'S': out = KeyCode::DOWN;  return true;
+        case 'A': out = KeyCode::LEFT;  return true;
+        case 'D': out = KeyCode::RIGHT; return true;
+        default:  return false;
+    }
+}
+
+// Keys whose consumers act on edges, so a PRESS must be followed by a RELEASE.
+// SHIFT and ALPHA are deliberately absent: SystemApp handles them as latches and
+// toggles the modifier on ANY matching event regardless of action
+// (SystemApp.cpp handleKey), so an injected RELEASE would toggle them back off.
+bool isMomentary(KeyCode code) {
+    switch (code) {
+        case KeyCode::UP:
+        case KeyCode::DOWN:
+        case KeyCode::LEFT:
+        case KeyCode::RIGHT:
+        case KeyCode::ENTER:
+        case KeyCode::EXE:
+        case KeyCode::DEL:
+        case KeyCode::F1:
+        case KeyCode::F2:
+        case KeyCode::F3:
+        case KeyCode::F4:
+        case KeyCode::F5:
+            return true;
+        default:
+            return false;
+    }
+}
+
+const char* keyActionName(KeyAction action) {
+    switch (action) {
+        case KeyAction::PRESS:   return "PRESS";
+        case KeyAction::RELEASE: return "RELEASE";
+        case KeyAction::REPEAT:  return "REPEAT";
+        default:                 return "?";
+    }
+}
+
+} // namespace
+
 SerialBridge::SerialBridge()
     : _head(0), _tail(0)
 {
@@ -60,6 +131,10 @@ void SerialBridge::begin() {
     Serial.println("│  t               │  SIN                      │");
     Serial.println("└──────────────┴────────────────────────────────┘");
     Serial.println("[SerialBridge] Type a key and press Enter.");
+    Serial.printf("[SerialBridge] Momentary keys auto-release after %ums.\n",
+                  static_cast<unsigned>(kPulseMs));
+    Serial.println("[SerialBridge] Hold: '+KEY' (e.g. +D, +ENTER) | "
+                   "Release: '-KEY' | 'RELEASE ALL'");
 }
 
 void SerialBridge::setLineHandler(LineHandler handler, void* context) {
@@ -69,10 +144,11 @@ void SerialBridge::setLineHandler(LineHandler handler, void* context) {
 
 // ── Circular buffer helpers ──
 
-void SerialBridge::push(KeyCode code, const char* label) {
+void SerialBridge::push(KeyCode code, const char* label,
+                        KeyAction action, bool autoRelease) {
     KeyEvent ev;
     ev.code   = code;
-    ev.action = KeyAction::PRESS;
+    ev.action = action;
     ev.row    = -1;  // Virtual key (no physical row/col)
     ev.col    = -1;
 
@@ -82,10 +158,18 @@ void SerialBridge::push(KeyCode code, const char* label) {
     _buf[_head] = ev;
     _head = next;
 
+    // Remember what the bridge still owes a RELEASE for: a PRESS alone latches
+    // in every edge-driven consumer (Game Boy core, pickers).
+    if (action == KeyAction::PRESS) {
+        if (!autoRelease) {
+            trackHeld(code, 0);            // held until "-KEY" / "RELEASE ALL"
+        } else if (isMomentary(code)) {
+            trackHeld(code, millis() + kPulseMs);
+        }
+    }
+
     // Debug feedback
-    Serial.print("[Key] PC Input: '");
-    Serial.print(label);
-    Serial.println("'");
+    Serial.printf("[Key] PC Input: '%s' (%s)\n", label, keyActionName(action));
 }
 
 bool SerialBridge::pop(KeyEvent &out) {
@@ -93,6 +177,56 @@ bool SerialBridge::pop(KeyEvent &out) {
     out = _buf[_tail];
     _tail = (_tail + 1) % BUF_SIZE;
     return true;
+}
+
+// ── Held-key bookkeeping ──
+
+void SerialBridge::trackHeld(KeyCode code, uint32_t dueMs) {
+    for (int i = 0; i < _heldCount; ++i) {
+        if (_held[i].code == code) {
+            _held[i].dueMs = dueMs;  // re-press refreshes the hold window
+            return;
+        }
+    }
+    if (_heldCount >= MAX_HELD) return;  // full: drop the bookkeeping, not the key
+    _held[_heldCount].code  = code;
+    _held[_heldCount].dueMs = dueMs;
+    ++_heldCount;
+}
+
+void SerialBridge::releaseCode(KeyCode code, const char* label) {
+    for (int i = 0; i < _heldCount; ++i) {
+        if (_held[i].code == code) {
+            _held[i] = _held[_heldCount - 1];
+            --_heldCount;
+            break;
+        }
+    }
+    push(code, label, KeyAction::RELEASE, /*autoRelease=*/false);
+}
+
+void SerialBridge::releaseAllHeld() {
+    for (int i = 0; i < _heldCount; ++i) {
+        push(_held[i].code, "(release all)", KeyAction::RELEASE,
+             /*autoRelease=*/false);
+    }
+    _heldCount = 0;
+    Serial.println("[SB] released all held keys");
+}
+
+void SerialBridge::servicePendingReleases() {
+    const uint32_t now = millis();
+    for (int i = 0; i < _heldCount; ) {
+        if (_held[i].dueMs != 0 &&
+            static_cast<int32_t>(now - _held[i].dueMs) >= 0) {
+            push(_held[i].code, "(pulse)", KeyAction::RELEASE,
+                 /*autoRelease=*/false);
+            _held[i] = _held[_heldCount - 1];
+            --_heldCount;
+        } else {
+            ++i;
+        }
+    }
 }
 
 // ── Main API ──
@@ -104,7 +238,10 @@ bool SerialBridge::pollEvent(KeyEvent &outEvent) {
         processChar(ch);
     }
 
-    // 2. Pop one event from queue
+    // 2. Turn elapsed hold windows into RELEASE events
+    servicePendingReleases();
+
+    // 3. Pop one event from queue
     return pop(outEvent);
 }
 
@@ -174,24 +311,44 @@ void SerialBridge::processChar(int ch) {
         // for keys that have no unambiguous single-character representation.
         std::string upper = line;
         std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c){ return std::toupper(c); });
-        if (upper == "HOME") { push(KeyCode::MODE, "MODE/HOME"); inputBuffer.clear(); return; }
-        if (upper == "AC")   { push(KeyCode::AC, "AC"); inputBuffer.clear(); return; }
-        if (upper == "DEL")  { push(KeyCode::DEL, "DEL"); inputBuffer.clear(); return; }
-        if (upper == "ENTER") { push(KeyCode::ENTER, "ENTER (PC-Enter)"); inputBuffer.clear(); return; }
-        if (upper == "EXE")  { push(KeyCode::EXE, "EXE"); inputBuffer.clear(); return; }
-        if (upper == "F1")   { push(KeyCode::F1, "F1"); inputBuffer.clear(); return; }
-        if (upper == "F2")   { push(KeyCode::F2, "F2"); inputBuffer.clear(); return; }
-        if (upper == "F3")   { push(KeyCode::F3, "F3"); inputBuffer.clear(); return; }
-        if (upper == "F4")   { push(KeyCode::F4, "F4"); inputBuffer.clear(); return; }
-        if (upper == "F5")   { push(KeyCode::F5, "F5"); inputBuffer.clear(); return; }
-        if (upper == "SIN")  { push(KeyCode::SIN, "SIN"); inputBuffer.clear(); return; }
-        if (upper == "COS")  { push(KeyCode::COS, "COS"); inputBuffer.clear(); return; }
-        if (upper == "TAN")  { push(KeyCode::TAN, "TAN"); inputBuffer.clear(); return; }
-        if (upper == "LN")   { push(KeyCode::LN, "LN"); inputBuffer.clear(); return; }
-        if (upper == "LOG")  { push(KeyCode::LOG, "LOG"); inputBuffer.clear(); return; }
-        if (upper == "SQRT") { push(KeyCode::SQRT, "SQRT"); inputBuffer.clear(); return; }
-        if (upper == "ANS")  { push(KeyCode::ANS, "ANS"); inputBuffer.clear(); return; }
-        if (upper == "PI")   { push(KeyCode::CONST_PI, "PI"); inputBuffer.clear(); return; }
+
+        // "RELEASE ALL" — drop every key the bridge still holds down.
+        if (upper == "RELEASE ALL" || upper == "RELALL") {
+            releaseAllHeld();
+            inputBuffer.clear();
+            return;
+        }
+
+        // Hold / release forms: "+KEY" presses and holds, "-KEY" releases.
+        // Needed for held input (the Game Boy core) because a plain press is
+        // auto-released after kPulseMs.
+        if (line.size() >= 2 && (line[0] == '+' || line[0] == '-')) {
+            const std::string name = upper.substr(1);
+            KeyCode code = KeyCode::NONE;
+            bool known = name.size() == 1 && lookupArrowKey(name[0], code);
+            if (!known) known = lookupNamedKey(name, code);
+            if (!known) {
+                Serial.printf("[SB] Unknown hold/release key: %s\n",
+                              name.c_str());
+                inputBuffer.clear();
+                return;
+            }
+            if (line[0] == '+') {
+                push(code, name.c_str(), KeyAction::PRESS,
+                     /*autoRelease=*/false);
+            } else {
+                releaseCode(code, name.c_str());
+            }
+            inputBuffer.clear();
+            return;
+        }
+
+        KeyCode named = KeyCode::NONE;
+        if (lookupNamedKey(upper, named)) {
+            push(named, upper.c_str());
+            inputBuffer.clear();
+            return;
+        }
 
         // Single character line: map to key codes (preserve previous mappings)
         if (line.size() == 1) {

@@ -6,6 +6,7 @@
     "smoke": "node smoke.mjs",
     "persistence": "node persistence.mjs",
     "keycode-catalog": "node keycode-catalog.mjs",
+    "keycontext-parity": "node keycontext-parity.mjs",
     "component": "node component.mjs",
     "screenshots": "node screenshots.mjs",
     "performance": "node performance.mjs",

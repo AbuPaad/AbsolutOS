@@ -195,6 +195,74 @@ canvas {
 .dot.warn { background: var(--numos-warn); }
 .dot.error { background: var(--numos-error); }
 
+/* ── Contextual pad ──────────────────────────────────────────────────────────
+   The app the device is in decides which keys mean something. The state lives
+   as data-ctx on the host, so the pad is never rebuilt — these rules alone do
+   the work, which is what keeps a held key's release event intact.
+
+   Dimmed, never hidden: the physical mat cannot lose keys, so the demo must not
+   pretend it can. Opacity carries "not relevant here", not "gone". */
+.context-strip {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  flex-wrap: wrap;
+  min-height: 2.2rem;
+  padding: .35rem .15rem .05rem;
+  color: var(--numos-muted);
+  font-size: .78rem;
+}
+.context-strip[hidden] { display: none; }
+.context-strip-app {
+  padding: .12rem .45rem;
+  border: 1px solid var(--numos-line-strong);
+  border-radius: .5rem;
+  background: var(--numos-panel-2);
+  color: var(--numos-text);
+  font-weight: 700;
+}
+.context-strip-mod {
+  padding: .12rem .4rem;
+  border-radius: .5rem;
+  background: var(--numos-accent);
+  color: #fff;
+  font: 700 .72rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .04em;
+}
+.context-strip-mod[hidden] { display: none; }
+.context-strip-keys { display: flex; flex-wrap: wrap; gap: .3rem; }
+.context-chip {
+  padding: .1rem .42rem;
+  border: 1px solid var(--numos-line);
+  border-radius: .45rem;
+  background: var(--numos-panel);
+  color: var(--numos-text);
+  font: 600 .72rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.key[data-context-role="disabled"] {
+  opacity: .34;
+  filter: saturate(.5) brightness(1.05);
+  border-color: #2a3037;
+  background: #262c33;
+}
+/* A disabled key still responds, so it must not pretend to be hoverable. */
+.key[data-context-role="disabled"]:hover {
+  border-color: #2a3037;
+  background: #262c33;
+}
+.key[data-context-role="secondary"] { opacity: .82; }
+/* Primary keys are what this screen is for: lift them off the panel. */
+.key[data-context-role="primary"] {
+  border-color: var(--numos-accent);
+  box-shadow:
+    0 3px 0 #1f252a,
+    0 0 0 2px var(--numos-accent-soft),
+    0 1px 0 rgb(255 255 255 / 11%) inset;
+}
+@media (prefers-contrast: more) {
+  .key[data-context-role="disabled"] { opacity: .6; }
+}
+
 .controls {
   display: grid;
   max-height: none;

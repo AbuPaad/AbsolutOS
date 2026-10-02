@@ -167,17 +167,19 @@ static const int PIN_TFT_DC   =   4;
 static const int PIN_TFT_RST  =   5;
 static const int PIN_TFT_BL   =  -1;   // backlight en rail fijo, sin GPIO
 
-// Tamaño lógico después de la rotación 1 (landscape: 320 w × 180 h).
-// El panel físico tiene 240 filas; el shell fx-82 solo expone 180, así que LVGL
-// se crea a 320×180 y el flush se desplaza SCREEN_OFFSET_Y px hacia abajo — las
-// barras negras las produce ese offset, nunca el código de las apps.
+// Tamaño lógico después de la rotación 1 (landscape: 320 w × 156 h). MEDIDO con
+// el rig de encaje (2026-10-02): el shell fx-82 solo expone 156 de las 240 filas
+// del panel y la ventana NO está centrada — el borde superior mide 54 px y el
+// inferior 30 px.  LVGL se crea a 320×156 y el flush se desplaza SCREEN_OFFSET_Y
+// px hacia abajo; las barras negras las produce ese offset, nunca el código de
+// las apps.
 // Mantener en sincronía con kPanel*/kLogicalDisplay* en
 // display/ProductionDisplayProfile.h, kProductionBoard.display.logical* en
 // hardware/BoardProfile.h y SCREEN_W/H en hal/NativeHal.cpp (el static_assert de
 // DisplayDriver.cpp falla la compilación si se separan).
 inline constexpr uint16_t SCREEN_WIDTH    = 320;
-inline constexpr uint16_t SCREEN_HEIGHT   = 180;
-inline constexpr uint16_t SCREEN_OFFSET_Y = 30;   // (240 panel - 180 canvas) / 2
+inline constexpr uint16_t SCREEN_HEIGHT   = 156;
+inline constexpr uint16_t SCREEN_OFFSET_Y = 54;   // medido por el rig (NO es (240-156)/2 = 42)
 static const uint8_t  SCREEN_ROTATION = 1;
 
 // ── Teclado físico 5×10 — hardware actual (PCB en progreso) ────────────────

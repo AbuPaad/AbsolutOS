@@ -77,6 +77,7 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _neoLangApp(nullptr),
       _fractalApp(nullptr),
       _gameboyApp(nullptr),
+    _aiApp(nullptr),
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
       _mathVisualApp(nullptr),
 #endif
@@ -157,6 +158,9 @@ void SystemApp::begin() {
     _neoLangApp   = new NeoLanguageApp();
     _fractalApp   = new FractalApp();
     _gameboyApp   = new GameBoyApp();
+    // Constructed with the recents repo empty; it allocates its LVGL widgets and
+    // loads the model catalog in load(), not here (boot-heap discipline above).
+    _aiApp        = new AiApp();
 #endif
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     _mathVisualApp = new MathRenderVisualTestApp();
@@ -326,6 +330,7 @@ void SystemApp::teardownModeNow(Mode mode) {
         case Mode::APP_NEO_LANGUAGE:   if (_neoLangApp)      _neoLangApp->end();      break;
         case Mode::APP_FRACTAL:        if (_fractalApp)      _fractalApp->end();      break;
         case Mode::APP_GAMEBOY:        if (_gameboyApp)      _gameboyApp->end();      break;
+        case Mode::APP_AI_WRAPPER:     if (_aiApp)           _aiApp->end();           break;
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
         case Mode::APP_MATH_VISUAL:     if (_mathVisualApp)   _mathVisualApp->end();   break;
 #endif
@@ -397,7 +402,9 @@ void SystemApp::update() {
     } else if (_mode == Mode::APP_GRAPHER) {
         // LVGL handles GrapherApp rendering
     } else if (_mode == Mode::APP_SETTINGS) {
-        // LVGL handles SettingsApp rendering
+        // SettingsApp is LVGL-native, but it now hosts the Wi-Fi screen, whose
+        // state (portal up, STA associated, scan finished) changes with no input.
+        if (_settingsApp && _settingsApp->isActive()) _settingsApp->update();
     } else if (_mode == Mode::APP_STATISTICS) {
         // LVGL handles StatisticsApp rendering
     } else if (_mode == Mode::APP_PROBABILITY) {
@@ -420,6 +427,10 @@ void SystemApp::update() {
     } else if (_mode == Mode::APP_GAMEBOY) {
         // GameBoyApp paces itself: exactly one emulated frame per loop pass.
         if (_gameboyApp && _gameboyApp->isActive()) _gameboyApp->update();
+    } else if (_mode == Mode::APP_AI_WRAPPER) {
+        // AiApp::update() pumps the transport stream (and nothing else) while a
+        // request is in flight; it is a no-op when idle.
+        if (_aiApp && _aiApp->isActive()) _aiApp->update();
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     } else if (_mode == Mode::APP_MATH_VISUAL) {
         // LVGL handles MathRenderVisualTestApp rendering.
@@ -496,6 +507,7 @@ void SystemApp::render() {
         case Mode::APP_NEO_LANGUAGE: break;    // LVGL-native — no-op
         case Mode::APP_FRACTAL:      break;    // LVGL-native — no-op
         case Mode::APP_GAMEBOY:      break;    // LVGL-native — no-op
+        case Mode::APP_AI_WRAPPER:   break;    // LVGL-native — no-op
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
         case Mode::APP_MATH_VISUAL:  break;    // LVGL-native — no-op
 #endif
@@ -886,6 +898,19 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
                 }
             }
             break;
+        // AiApp is LVGL-native too, but MODE is forwarded instead of intercepted:
+        // the app aborts an in-flight request and discards it (nothing partial is
+        // ever written), then asks to leave via consumeExitRequest().
+        case Mode::APP_AI_WRAPPER:
+            if (_aiApp) {
+                _aiApp->handleKey(ev);
+                if (_aiApp->consumeExitRequest()) {
+                    returnToMenu();
+                }
+            } else if (ev.code == KeyCode::MODE) {
+                returnToMenu();
+            }
+            break;
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
         case Mode::APP_MATH_VISUAL:
             if (ev.code == KeyCode::MODE || ev.code == KeyCode::AC) {
@@ -1086,6 +1111,11 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_gameboyApp) _gameboyApp->load();
+    } else if (id == 23) {
+        // AiApp es LVGL-native (wrapper de IA: ask / capture / recent answers)
+        g_lvglActive = true;
+        switchApp(id);
+        if (_aiApp) _aiApp->load();
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     } else if (id == 20) {
         // Math renderer visual verification is LVGL-native and debug-only.
@@ -1195,6 +1225,7 @@ void SystemApp::switchApp(int id) {
         case 18: _mode = Mode::APP_NEO_LANGUAGE; break;
         case 19: _mode = Mode::APP_FRACTAL;    break;
         case 21: _mode = Mode::APP_GAMEBOY;    break;
+        case 23: _mode = Mode::APP_AI_WRAPPER;  break;
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
         case 20: _mode = Mode::APP_MATH_VISUAL; break;
 #endif

@@ -60,10 +60,12 @@ struct FlushProbe {
 
     void write(const int32_t x, const int32_t y,
                const uint32_t width, uint16_t* const rowSource) {
-        assert(x >= 0 && x < kLogicalDisplayWidth);
-        assert(y >= 0 && y < kLogicalDisplayHeight);
+        // The clip plan works in PHYSICAL panel coordinates (the canvas is
+        // offset onto the panel), so bounds are the panel, not the canvas.
+        assert(x >= 0 && x < kPanelWidth);
+        assert(y >= 0 && y < kPanelHeight);
         assert(width > 0 &&
-               static_cast<uint32_t>(x) + width <= kLogicalDisplayWidth);
+               static_cast<uint32_t>(x) + width <= kPanelWidth);
         const uint32_t index =
             static_cast<uint32_t>(rowSource - source);
         assert(index < sourceCount);
@@ -82,7 +84,7 @@ void executeAndVerify(const ClippedFlushPlan& plan,
                       const uint32_t expectedRows,
                       const uint32_t expectedFirstSource,
                       const uint32_t expectedLastExclusive) {
-    static uint16_t pixels[kLogicalDisplayWidth * kLogicalDisplayHeight]{};
+    static uint16_t pixels[kPanelWidth * kPanelHeight]{};
     FlushProbe probe{pixels, plan.sourcePixelCount};
     const std::size_t allocationsBefore = gAllocationCount;
     executeClippedFlush(
@@ -111,22 +113,29 @@ int main() {
     static_assert(displayMadctl(kSafeDisplayProfile) == 0x68);
     static_assert(kSafeDisplayProfile.writeSpiHz == 40'000'000U);
     static_assert(kSafeDisplayProfile.xOffset == 0);
-    static_assert(kSafeDisplayProfile.yOffset == 0);
+    static_assert(kSafeDisplayProfile.yOffset == kLogicalDisplayOffsetY);
     static_assert(kSafeDisplayProfile.maximumBacklight == 192);
     static_assert(displayMadctl(kSafeDisplayProfile) ==
                   numos::hardware::kProductionBoard.display.provisionalMadctl);
-    static_assert(logicalDisplayGeometry(1).width == 320);
-    static_assert(logicalDisplayGeometry(1).height == 240);
-    static_assert(logicalDisplayGeometry(3).width == 320);
-    static_assert(logicalDisplayGeometry(3).height == 240);
+    // panelDisplayGeometry reports the PHYSICAL frame memory (rotation-derived),
+    // always 320x240 - never the logical canvas.
+    static_assert(panelDisplayGeometry(1).width == 320);
+    static_assert(panelDisplayGeometry(1).height == 240);
+    static_assert(panelDisplayGeometry(3).width == 320);
+    static_assert(panelDisplayGeometry(3).height == 240);
+    // The fitted geometry: 320x156 canvas, top flush offset 54 px (measured).
+    static_assert(kLogicalDisplayWidth == 320);
+    static_assert(kLogicalDisplayHeight == 156);
+    static_assert(kLogicalDisplayOffsetY == 54);
+    static_assert(kLogicalDisplayOffsetY + kLogicalDisplayHeight <= kPanelHeight);
 
     assert(validateDisplayProfile(kSafeDisplayProfile) ==
            ProfileValidation::Ok);
     for (const auto& preset : kProductionDisplayPresets) {
         assert(validateDisplayProfile(preset) == ProfileValidation::Ok);
-        const auto geometry = logicalDisplayGeometry(preset.rotation);
-        assert(geometry.width == kLogicalDisplayWidth);
-        assert(geometry.height == kLogicalDisplayHeight);
+        // Every preset carries the logical canvas offset, not a centring value.
+        assert(preset.xOffset == 0);
+        assert(preset.yOffset == kLogicalDisplayOffsetY);
     }
 
     // Rotation owns MX/MY/MV. BGR is the only independently variable bit.

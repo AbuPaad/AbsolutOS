@@ -33,16 +33,15 @@ KeyMatrix::KeyMatrix() {
     // 9 sensed rows x 6 driven columns. Kept in sync with the production
     // TCA9555 layout in drivers/Keyboard.cpp (Keyboard::_map) so both drivers
     // agree on which physical key sits at each (row, col).
-    _map[0][0] = KeyCode::SHIFT;      _map[0][1] = KeyCode::ALPHA;      _map[0][2] = KeyCode::MODE;   _map[0][3] = KeyCode::SETUP;  _map[0][4] = KeyCode::F1;    _map[0][5] = KeyCode::F2;
-    _map[1][0] = KeyCode::F3;         _map[1][1] = KeyCode::F4;         _map[1][2] = KeyCode::F5;     _map[1][3] = KeyCode::EXE;    _map[1][4] = KeyCode::ON;    _map[1][5] = KeyCode::AC;
-    _map[2][0] = KeyCode::DEL;        _map[2][1] = KeyCode::FREE_EQ;    _map[2][2] = KeyCode::LEFT;   _map[2][3] = KeyCode::UP;     _map[2][4] = KeyCode::DOWN;  _map[2][5] = KeyCode::RIGHT;
-    _map[3][0] = KeyCode::VAR_X;      _map[3][1] = KeyCode::VAR_Y;      _map[3][2] = KeyCode::TABLE;  _map[3][3] = KeyCode::GRAPH;  _map[3][4] = KeyCode::ZOOM;  _map[3][5] = KeyCode::TRACE;
-    _map[4][0] = KeyCode::SHOW_STEPS; _map[4][1] = KeyCode::SOLVE;      _map[4][2] = KeyCode::NUM_7;  _map[4][3] = KeyCode::NUM_8;  _map[4][4] = KeyCode::NUM_9; _map[4][5] = KeyCode::LPAREN;
-    _map[5][0] = KeyCode::RPAREN;     _map[5][1] = KeyCode::DIV;        _map[5][2] = KeyCode::POW;    _map[5][3] = KeyCode::SQRT;   _map[5][4] = KeyCode::NUM_4; _map[5][5] = KeyCode::NUM_5;
-    _map[6][0] = KeyCode::NUM_6;      _map[6][1] = KeyCode::MUL;        _map[6][2] = KeyCode::SUB;    _map[6][3] = KeyCode::SIN;    _map[6][4] = KeyCode::COS;   _map[6][5] = KeyCode::TAN;
-    _map[7][0] = KeyCode::NUM_1;      _map[7][1] = KeyCode::NUM_2;      _map[7][2] = KeyCode::NUM_3;  _map[7][3] = KeyCode::ADD;    _map[7][4] = KeyCode::NEG;   _map[7][5] = KeyCode::NUM_0;
-    // Row 8: only two keys populated; the rest stay KeyCode::NONE from the reset above.
-    _map[8][0] = KeyCode::DOT;        _map[8][1] = KeyCode::ENTER;
+    _map[0][0] = KeyCode::SHIFT;      _map[0][1] = KeyCode::ALPHA;      _map[0][2] = KeyCode::UP;     _map[0][3] = KeyCode::RIGHT;  _map[0][4] = KeyCode::MODE;  _map[0][5] = KeyCode::ON;
+    _map[1][0] = KeyCode::NONE;       _map[1][1] = KeyCode::POW;        _map[1][2] = KeyCode::LEFT;   _map[1][3] = KeyCode::DOWN;   _map[1][4] = KeyCode::NONE;  _map[1][5] = KeyCode::NONE;
+    _map[2][0] = KeyCode::DIV;        _map[2][1] = KeyCode::NONE;       _map[2][2] = KeyCode::NONE;   _map[2][3] = KeyCode::NONE;   _map[2][4] = KeyCode::NONE;  _map[2][5] = KeyCode::NONE;
+    _map[3][0] = KeyCode::NONE;       _map[3][1] = KeyCode::NONE;       _map[3][2] = KeyCode::NONE;   _map[3][3] = KeyCode::SIN;    _map[3][4] = KeyCode::COS;   _map[3][5] = KeyCode::TAN;
+    _map[4][0] = KeyCode::NONE;       _map[4][1] = KeyCode::NONE;       _map[4][2] = KeyCode::LPAREN; _map[4][3] = KeyCode::RPAREN; _map[4][4] = KeyCode::NONE;  _map[4][5] = KeyCode::NONE;
+    _map[5][0] = KeyCode::NUM_7;      _map[5][1] = KeyCode::NUM_8;      _map[5][2] = KeyCode::NUM_9;  _map[5][3] = KeyCode::DEL;    _map[5][4] = KeyCode::AC;    _map[5][5] = KeyCode::NONE;
+    _map[6][0] = KeyCode::NONE;       _map[6][1] = KeyCode::NUM_5;      _map[6][2] = KeyCode::NUM_6;  _map[6][3] = KeyCode::NUM_6;  _map[6][4] = KeyCode::DIV;   _map[6][5] = KeyCode::NONE;
+    _map[7][0] = KeyCode::NUM_1;      _map[7][1] = KeyCode::NUM_2;      _map[7][2] = KeyCode::NONE;   _map[7][3] = KeyCode::ADD;    _map[7][4] = KeyCode::SUB;   _map[7][5] = KeyCode::NONE;
+    _map[8][0] = KeyCode::NUM_0;      _map[8][1] = KeyCode::DOT;        _map[8][2] = KeyCode::NONE;   _map[8][3] = KeyCode::EXE;    _map[8][4] = KeyCode::ENTER; _map[8][5] = KeyCode::NONE;
 }
 
 void KeyMatrix::begin() {

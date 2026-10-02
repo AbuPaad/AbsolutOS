@@ -225,25 +225,23 @@ uint16_t Keyboard::diagnosticActiveColumns(const uint8_t row) const {
 //  R3 (GPIO 42)   0          AC         ENTER
 //  R4 (GPIO 40)   +           -           ×
 //
-// Full 5×10 planned layout (C3-C9):
-//   R0 top row:  SHIFT ALPHA MODE SETUP F1 F2 F3 F4 F5 EXE
-//   Top row function keys F1-F5 mapped to C4-C8.
-//   Physical '<' key → EXE (Execute/Solve) at C9.
-//   Physical Enter → ENTER (Place/Select) remains at R3C2.
+// Key mapping for the 9×6 matrix, transcribed verbatim from docs/input/mappings
+// (9 sensed rows × 6 driven columns, indexed [row][col]).
 //
-// Placeholder key mapping for 6x9 matrix - TO BE UPDATED BY HUMAN LATER
-// Current mapping uses placeholder values since the original layout doesn't match the 6x9 configuration
+// TODO(human): the source table has gaps that look like typos — [6][2] and
+// [6][3] are both NUM_6, and NUM_3 / NUM_4 are not assigned anywhere. Left
+// exactly as supplied; fix the source table and re-transcribe if unintended.
 const KeyCode Keyboard::_map[Keyboard::ROWS][Keyboard::COLS] = {
     // C0               C1                |C2               |C3              |C4                |C5
-    { KeyCode::SHIFT,   KeyCode::ALPHA,   KeyCode::MODE,    KeyCode::SETUP,   KeyCode::F1,      KeyCode::F2    },  // Row 0
-    { KeyCode::F3,      KeyCode::F4,      KeyCode::F5,      KeyCode::EXE,     KeyCode::ON,      KeyCode::AC    },  // Row 1
-    { KeyCode::DEL,     KeyCode::FREE_EQ, KeyCode::LEFT,    KeyCode::UP,      KeyCode::DOWN,    KeyCode::RIGHT },  // Row 2
-    { KeyCode::VAR_X,   KeyCode::VAR_Y,   KeyCode::TABLE,   KeyCode::GRAPH,   KeyCode::ZOOM,    KeyCode::TRACE },  // Row 3
-    { KeyCode::SHOW_STEPS, KeyCode::SOLVE, KeyCode::NUM_7,  KeyCode::NUM_8,   KeyCode::NUM_9,   KeyCode::LPAREN},  // Row 4
-    { KeyCode::RPAREN,  KeyCode::DIV,     KeyCode::POW,     KeyCode::SQRT,    KeyCode::NUM_4,   KeyCode::NUM_5 },  // Row 5
-    { KeyCode::NUM_6,   KeyCode::MUL,     KeyCode::SUB,     KeyCode::SIN,     KeyCode::COS,     KeyCode::TAN   },  // Row 6
-    { KeyCode::NUM_1,   KeyCode::NUM_2,   KeyCode::NUM_3,   KeyCode::ADD,     KeyCode::NEG,     KeyCode::NUM_0 },  // Row 7
-    { KeyCode::DOT,     KeyCode::ENTER,   KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE  },  // Row 8
+    { KeyCode::SHIFT,   KeyCode::ALPHA,   KeyCode::UP,      KeyCode::RIGHT,   KeyCode::MODE,    KeyCode::ON    },  // Row 0
+    { KeyCode::NONE,    KeyCode::POW,     KeyCode::LEFT,    KeyCode::DOWN,    KeyCode::NONE,    KeyCode::NONE  },  // Row 1
+    { KeyCode::DIV,     KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE  },  // Row 2
+    { KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE,    KeyCode::SIN,     KeyCode::COS,     KeyCode::TAN   },  // Row 3
+    { KeyCode::NONE,    KeyCode::NONE,    KeyCode::LPAREN,  KeyCode::RPAREN,  KeyCode::NONE,    KeyCode::NONE  },  // Row 4
+    { KeyCode::NUM_7,   KeyCode::NUM_8,   KeyCode::NUM_9,   KeyCode::DEL,     KeyCode::AC,      KeyCode::NONE  },  // Row 5
+    { KeyCode::NONE,    KeyCode::NUM_5,   KeyCode::NUM_6,   KeyCode::NUM_6,   KeyCode::DIV,     KeyCode::NONE  },  // Row 6
+    { KeyCode::NUM_1,   KeyCode::NUM_2,   KeyCode::NONE,    KeyCode::ADD,     KeyCode::SUB,     KeyCode::NONE  },  // Row 7
+    { KeyCode::NUM_0,   KeyCode::DOT,     KeyCode::NONE,    KeyCode::EXE,     KeyCode::ENTER,   KeyCode::NONE  },  // Row 8
 };
 
 namespace {
