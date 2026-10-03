@@ -51,6 +51,18 @@ public:
     void setLaunchCallback(std::function<void(int)> cb);
     bool moveFocusByDelta(int dCol, int dRow);
 
+    /// True when the active interaction profile renders the launcher as the
+    /// casio MenuList (4×2 numbered pages) instead of the numos card grid.
+    bool isListMode() const { return _listMode; }
+
+    /// List mode: launch the focused slot's app (positional N:LABEL → APPS[] id).
+    bool launchFocusedSlot();
+
+    /// List mode: launch a POSITIONAL slot (0-based) on the current page. This is
+    /// the Casio primary path: digit keys launch directly, no focus walk (SPEC-stageC
+    /// §C2/C6). Resolves the id through generated kCasioSlots, never a name list.
+    bool launchSlot(int slot);
+
     // ── Accessors ────────────────────────────────────────────────────────
     lv_group_t* group()  const { return _group; }
     lv_obj_t*   screen() const { return _screen; }
@@ -73,10 +85,14 @@ public:
     //                               source of truth, so names never drift.
     //   * debugCardNameById()     — canonical card name for an id, or nullptr if the
     //                               id is out of range (for friendly diagnostics).
+    //   * debugLauncherPage()     — casio list launcher page (1-based), or 1 when the
+    //                               grid is active (assert_launcher_page reads this).
     int                debugFocusedCardId() const { return focusedCardId(); }
     bool               debugFocusedCardCenter(int& x, int& y) const;
     static int         debugResolveCardToken(const char* token);
     static const char* debugCardNameById(int id);
+    int                debugLauncherPage() const { return _listPage + 1; }
+    int                debugFocusedListSlot() const { return _listMode ? _listSlot : -1; }
 #endif
 
 private:
@@ -98,7 +114,16 @@ private:
     lv_obj_t* cardById(int appId) const;
     int focusedCardId() const;
 
-    /** Creates a geometric vector icon inside `parent` based on app id. */
+    // ── Casio MenuList (4×2 numbered pages; ThemeManager interaction) ────
+    void buildMenuList();       ///< full-bleed 4×2 N:NAME list (no status bar)
+    void rebuildListPage();     ///< (re)fill slot labels + edge arrows for _listPage
+    void updateListFocus();     ///< move the focus box to the focused slot
+    void setListPage(int page); ///< clamp + rebuild + keep slot valid
+    void moveListRow(int dRow); ///< UP/DOWN: adjacent row, no wrap
+    static int menuListSlotsOnPage(int page);  ///< p1/p2=8, p3=6
+    static int menuListPageCount();            ///< ceil(APP_COUNT/8) = 3
+
+    /// Creates a geometric vector icon inside `parent` based on app id.
     void createAppIcon(lv_obj_t* parent, const AppEntry& app);
 
     // Flex layout: col/row params no longer required (dynamic wrapping)
@@ -129,10 +154,26 @@ private:
     // ── Members ──────────────────────────────────────────────────────────
     DisplayDriver& _display;
 
+    // Casio MenuList state (page-turn launcher; interaction-driven, never the
+    // theme id — doc 12). _listPage is 0-based; _listSlot is the focused slot
+    // in [0 .. slotsOnPage), positional label = slot+1.
+    bool        _listMode   = false;
+    int         _listPage   = 0;
+    int         _listSlot   = 0;
+    lv_obj_t*   _listSlots[8] = {};      ///< N:NAME labels, slot 0..7
+    lv_obj_t*   _listArrowLeft  = nullptr;
+    lv_obj_t*   _listArrowRight = nullptr;
+
     lv_obj_t*   _screen    = nullptr;
     lv_obj_t*   _grid      = nullptr;
     lv_obj_t*   _firstCard = nullptr;   ///< First card — focused on create()
     lv_group_t* _group     = nullptr;
+
+    /// ThemeId the current widgets were built with (0xFF = nothing built yet).
+    /// create() latches the launcher's topology and every card's colours, so
+    /// load() rebuilds when the active theme has moved on — otherwise a theme
+    /// change made while an app was on screen leaves a stale launcher behind.
+    uint8_t     _builtThemeId = 0xFF;
 
     std::function<void(int)> _launchCb;
 };

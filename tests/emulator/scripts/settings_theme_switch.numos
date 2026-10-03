@@ -1,0 +1,70 @@
+# settings_theme_switch.numos — the Settings Theme row must actually switch the
+# WHOLE system, not just the screen the picker is drawn on.
+#
+# Regression target (observed on emulator_pc): picking Casio in Settings
+# appeared to do nothing. Two independent faults:
+#   (a) SystemApp::update()'s theme guard compared a STALE _pendingTheme against
+#       the live id and re-activated the old theme one frame later, so the picker
+#       was silently reverted;
+#   (b) the launcher latches its topology (grid vs 4x2 MenuList) and colours at
+#       MainMenu::create() time and returnToMenu() only calls load(), so even a
+#       theme that DID stick left the old launcher on screen.
+# This script fails if either comes back.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/settings_theme_switch.numos \
+#           --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse error · 3 screenshot error · 4 assertion failure.
+
+log "settings_theme_switch: waiting for launcher"
+wait 200
+
+assert_app Menu
+assert_theme numos
+
+# ── Switch to Casio from the Settings picker ────────────────────────────────
+open_app Settings
+wait 60
+assert_app Settings
+
+# Walk to the Theme row. In this (non-Production) build there is no Brightness
+# row, so rows are 0 Angle / 1 Complex / 2 Precision / 3 Steps / 4 Theme.
+key down
+key down
+key down
+key down
+wait 5
+key exe
+wait 30
+
+assert_app Settings
+assert_theme casio
+
+# Back to the launcher: the theme must have survived the trip and the launcher
+# must have been rebuilt for it (a stale grid screen is what (b) looked like).
+# The capture is the real proof: assert_theme reads ThemeManager, which was
+# always right even when the launcher on screen was not.
+key mode
+wait 60
+assert_app Menu
+assert_theme casio
+screenshot out/theme_via_settings.ppm
+
+# ── And back again, to prove the picker is not one-way ──────────────────────
+open_app Settings
+wait 60
+key down
+key down
+key down
+key down
+wait 5
+key exe
+wait 30
+assert_theme numos
+
+key mode
+wait 40
+assert_app Menu
+assert_theme numos
+
+log "settings_theme_switch: assertions passed"

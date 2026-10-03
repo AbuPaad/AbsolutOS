@@ -224,6 +224,8 @@ extern bool setting_complex_enabled;   // true = show complex roots, false = "No
 extern int  setting_decimal_precision;  // number of decimal digits (6, 8, 10, 12)
 extern bool setting_edu_steps;          // true = step-by-step educational mode for arithmetic
 extern uint8_t setting_brightness;      // production PWM duty, clamped by DisplayDriver
+extern uint8_t setting_theme;           // ThemeId (0 = NumOS, 1 = Casio); persisted in the
+                                        // SettingsApp LittleFS record at index 9 (doc 03)
 
 // ── Matriz legacy 9×6 (reservada / compatibilidad con KeyMatrix.h) ───────────
 // 6 columnas (salidas, activo-LOW) × 9 filas (entradas con pull-up).

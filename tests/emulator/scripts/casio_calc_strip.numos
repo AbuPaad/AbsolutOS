@@ -1,0 +1,43 @@
+# casio_calc_strip.numos — Stage C4: the casio Calculation chrome.
+# Under the casio theme, type 1+2, EXE, and assert the computed value is 3.
+# The strip's history arrow is a read-only view of navigateHistory() state:
+#   after EXE, history has entries and we are at the new-expression position
+#   -> "up" (older entries exist above);
+#   pressing UP pages back into history -> "down".
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/casio_calc_strip.numos \
+#           --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse error · 3 screenshot error · 4 assertion failure.
+
+log "casio_calc_strip: waiting for launcher"
+wait 200
+
+assert_app Menu
+
+# Toggle to casio and open Calculation.
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+open_app Calculation
+wait 60
+assert_app Calculation
+
+# 1 + 2 = 3
+key 1
+key +
+key 2
+key enter
+wait 100
+
+assert_result 3
+assert_no_error
+assert_history_arrow up
+screenshot out/casio/calc_strip_result.ppm
+
+key up
+assert_history_arrow down
+screenshot out/casio/calc_strip_history.ppm
+
+log "casio_calc_strip: assertions passed"

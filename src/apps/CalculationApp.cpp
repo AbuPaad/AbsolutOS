@@ -34,20 +34,26 @@
 #include "../input/KeyCodes.h"
 #include "../input/generated/ProductionKeypadMap.generated.h"
 #include "../Config.h"
+#include "../ui/ThemeManager.h"
+#include "../math/AngleModeRuntime.h"
 #include <cmath>
 #include <cstdlib>
 #include "../math/cas/ASTFlattener.h"
 #include "../math/cas/SymSimplify.h"
 #include "../math/cas/SymExprToAST.h"
 #include "../ui/MathTypography.h"
+#include "../ui/ThemeFonts.h"   // theme font ladder (no font face in app code)
+#include "../ui/generated/CasioArrowMasks.generated.h"   // history-hint bitmap
 #include "../utils/HwUxProbe.h"
 #ifdef NATIVE_SIM
   #include <cstdio>
 #endif
 
 // ── Colores ──
-static constexpr uint32_t COL_BG_HEX     = 0xFFFFFF;   // Blanco puro
-static constexpr uint32_t COL_SEP_HEX    = 0x333333;   // Gris separador
+// COL_BG_HEX is gone: the screen background is the theme's bg token. COL_SEP_HEX
+// survives only for the numos separator (its value is a numos pixel) — casio reads
+// the theme's ink instead.
+static constexpr uint32_t COL_SEP_HEX    = 0x333333;   // Gris separador (numos)
 
 // ── Dimensiones ──
 static constexpr int SCREEN_W      = 320;
@@ -61,6 +67,22 @@ static constexpr int CONTENT_W     = SCREEN_W - 2 * PAD;        // 308 px: usabl
 static constexpr int SEP_THICK     = 1;   // Separator line height (px)
 static constexpr int SEP_GAP       = 4;   // Gap on each side of the separator (band→sep and sep→band)
 static constexpr int BAND_MIN_H    = 8;   // Absolute minimum height for each result-mode band
+
+// ── Casio calculator bands (CASIO_SPEC §3b — measured, not re-measured) ──
+// Thin unfilled strip: text y ≈ 3..16. Input line y 30..63.
+// Fixed result band: numerator 86..109, rule 113..116, denominator 120..143.
+static constexpr int CASIO_STRIP_Y = 2;    // strip label top
+static constexpr int CASIO_IN_Y    = 30;   // input band top
+static constexpr int CASIO_IN_H    = 34;   // 30..63
+static constexpr int CASIO_RES_Y   = 86;   // result band top
+static constexpr int CASIO_RES_H   = 58;   // 86..143
+
+// Casio strip right corner: "Math" + the history hint, both on the TOP edge (the
+// mockup puts them in the corner, not at the vertical middle), the hint being the
+// page-arrow asset rotated a quarter turn and scaled down.
+static constexpr int CASIO_STRIP_R_PAD    = 4;   // gap from the right screen edge
+static constexpr int CASIO_STRIP_GAP      = 5;   // gap between "Math" and the hint
+static constexpr int CASIO_STRIP_ARROW_DY = 4;   // hint's y within the strip
 
 // ════════════════════════════════════════════════════════════════════════════
 // Constructor / Destructor
@@ -114,6 +136,8 @@ void CalculationApp::end() {
         _resultSep   = nullptr;
         _stepsContainer = nullptr;
         _resultTextLabel = nullptr;   // child of _screen, deleted with it
+        _casioModeLabel  = nullptr;   // child of _screen, deleted with it
+        _casioRightLabel = nullptr;   // child of _screen, deleted with it
     }
     _structuredResult.reset();
 
@@ -133,10 +157,18 @@ void CalculationApp::end() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void CalculationApp::load() {
+    // doc 10 recreate rule: createUI() latches _casioLayout (and with it the
+    // strip-vs-status-bar choice), so a theme swap that changed the LAYOUT must
+    // rebuild this screen. reloadActiveView() already does end()+load(); this is
+    // the belt-and-braces guard for any path that reaches load() directly.
+    const bool wantCasio =
+        ui::ThemeManager::instance().current().layout == ui::Layout::Casio;
+    if (_screen && wantCasio != _casioLayout) end();
     if (!_screen) begin();
     lv_screen_load_anim(_screen, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
     _mathCanvas.startCursorBlink();
     _statusBar.update();
+    updateCasioStrip();
     refreshExpression();
 }
 
@@ -147,16 +179,29 @@ void CalculationApp::load() {
 void CalculationApp::createUI() {
     ui::initMathTypography();
 
+    // Casio chrome: thin unfilled strip + fixed input/result bands (C3).
+    // The numos StatusBar is suppressed on this screen under Layout::Casio;
+    // the mode/theme is queried through ThemeManager, never the theme id.
+    _casioLayout =
+        ui::ThemeManager::instance().current().layout == ui::Layout::Casio;
+
     // ── Pantalla ──
     _screen = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(_screen, lv_color_hex(COL_BG_HEX), LV_PART_MAIN);
+    // Theme token, never a literal (SPEC-stageC hard constraint): numos'
+    // bg is 0xFFFFFF so its frame is unchanged, and casio actually paints.
+    lv_obj_set_style_bg_color(_screen,
+        lv_color_hex(ui::ThemeManager::instance().current().bg), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_screen, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_remove_flag(_screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    // ── StatusBar global (24 px + 1 px separador) ──
-    _statusBar.create(_screen);
-    _statusBar.setTitle("Calculation");
-    _statusBar.setBatteryLevel(100);
+    if (_casioLayout) {
+        buildCasioStrip();   // replaces the numos StatusBar (no filled bar)
+    } else {
+        // ── StatusBar global (24 px + 1 px separador) ──
+        _statusBar.create(_screen);
+        _statusBar.setTitle("Calculation");
+        _statusBar.setBatteryLevel(100);
+    }
 
     // ── MathCanvas — Expression (full-area, vertically centered in edit mode) ──
     _mathCanvas.create(_screen);
@@ -165,14 +210,24 @@ void CalculationApp::createUI() {
     // LaTeX inline look: top-level atoms use TEXT style so fractions step their
     // numerator/denominator down to SCRIPT style (compact inline rendering).
     _mathCanvas.setMathStyle(vpam::MathStyle::TEXT);
-    lv_obj_set_pos(_mathCanvas.obj(), PAD, CONTENT_TOP);
-    lv_obj_set_size(_mathCanvas.obj(), CONTENT_W, CONTENT_FULL_H);
+    if (_casioLayout) {
+        // Input line: left-aligned fixed band y 30..63 (CASIO_SPEC §3b).
+        lv_obj_set_pos(_mathCanvas.obj(), PAD, CASIO_IN_Y);
+        lv_obj_set_size(_mathCanvas.obj(), CONTENT_W, CASIO_IN_H);
+    } else {
+        lv_obj_set_pos(_mathCanvas.obj(), PAD, CONTENT_TOP);
+        lv_obj_set_size(_mathCanvas.obj(), CONTENT_W, CONTENT_FULL_H);
+    }
     lv_obj_add_style(_mathCanvas.obj(), &ui::style_math_primary, LV_PART_MAIN);
 
     // ── Separator line expr↔result (#333) — initially hidden ──
     _resultSep = lv_obj_create(_screen);
     lv_obj_set_size(_resultSep, CONTENT_W, 1);
-    lv_obj_set_style_bg_color(_resultSep, lv_color_hex(COL_SEP_HEX), LV_PART_MAIN);
+    // Casio draws the rule of the fixed result band (CASIO_SPEC 3b) in ink;
+    // numos keeps COL_SEP_HEX so no numos pixel moves.
+    lv_obj_set_style_bg_color(_resultSep,
+        lv_color_hex(_casioLayout ? ui::ThemeManager::instance().current().text
+                                  : COL_SEP_HEX), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_resultSep, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(_resultSep, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(_resultSep, 0, LV_PART_MAIN);
@@ -185,11 +240,88 @@ void CalculationApp::createUI() {
     _resultCanvas.setAutoHeightEnabled(false);
     _resultCanvas.setTraceLabel("calc_result");
     _resultCanvas.setMathStyle(vpam::MathStyle::TEXT);
-    lv_obj_set_pos(_resultCanvas.obj(), PAD, CONTENT_TOP);
-    lv_obj_set_size(_resultCanvas.obj(), CONTENT_W, CONTENT_FULL_H);
+    if (_casioLayout) {
+        // Result: FIXED right-aligned band (numerator 86..109, rule 113..116,
+        // denominator 120..143) — fixed, not proportional to glyph height.
+        lv_obj_set_pos(_resultCanvas.obj(), CONTENT_W, CASIO_RES_Y);
+        lv_obj_set_size(_resultCanvas.obj(), CONTENT_W, CASIO_RES_H);
+        lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_set_pos(_resultCanvas.obj(), PAD, CONTENT_TOP);
+        lv_obj_set_size(_resultCanvas.obj(), CONTENT_W, CONTENT_FULL_H);
+        lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+    }
     lv_obj_add_style(_resultCanvas.obj(), &ui::style_math_primary, LV_PART_MAIN);
-    lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Casio strip (C3) — thin unfilled text strip replacing the numos StatusBar:
+//   far left   lowercase mode letter d/r/g
+//   far right  "Math" + history arrow (↑ / ↓), read-only view of history state
+// ════════════════════════════════════════════════════════════════════════════
+
+void CalculationApp::buildCasioStrip() {
+    const ui::Theme& th = ui::ThemeManager::instance().current();
+    const lv_font_t* font = ui::fontUi();   // theme face (no literal face here)
+
+    _casioModeLabel = lv_label_create(_screen);
+    lv_obj_set_style_text_font(_casioModeLabel, font, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_casioModeLabel, lv_color_hex(th.text), LV_PART_MAIN);
+    lv_obj_set_style_text_opa(_casioModeLabel, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(_casioModeLabel, 6, CASIO_STRIP_Y);
+
+    _casioRightLabel = lv_label_create(_screen);
+    lv_obj_set_style_text_font(_casioRightLabel, font, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_casioRightLabel, lv_color_hex(th.text), LV_PART_MAIN);
+    lv_obj_set_style_text_opa(_casioRightLabel, LV_OPA_COVER, LV_PART_MAIN);
+    // TOP-right corner, leaving room to its right for the history hint (the mockup's
+    // "Math"(hint) sits on the strip, i.e. on the screen's top edge).
+    lv_obj_align(_casioRightLabel, LV_ALIGN_TOP_RIGHT,
+                 -(CASIO_STRIP_R_PAD + ui::kCasioArrowUpW + CASIO_STRIP_GAP), CASIO_STRIP_Y);
+
+    // The history hint is the operator's page-arrow asset - the SAME glyph as the
+    // launcher's page arrows, one quarter turn and scaled down - not a text arrow.
+    // Ink colour is the theme text token, via image_recolor: the mask has no colour.
+    _casioHistArrow = lv_image_create(_screen);
+    lv_image_set_src(_casioHistArrow, &ui::kCasioArrowUp);
+    lv_obj_set_style_image_recolor(_casioHistArrow, lv_color_hex(th.text), LV_PART_MAIN);
+    lv_obj_set_style_image_recolor_opa(_casioHistArrow, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_align(_casioHistArrow, LV_ALIGN_TOP_RIGHT, -CASIO_STRIP_R_PAD,
+                 CASIO_STRIP_Y + CASIO_STRIP_ARROW_DY);
+
+    updateCasioStrip();
+}
+
+void CalculationApp::updateCasioStrip() {
+    if (!_casioLayout || !_casioModeLabel || !_casioRightLabel || !_casioHistArrow) return;
+
+    // Mode letter from the existing angle-mode state (d/r/g; gradians has no
+    // runtime enum today, so the mapping is d = DEG, r = RAD, g = reserved).
+    const char mode = numos::angleModeIsDeg() ? 'd' : 'r';
+    char mbuf[2] = { mode, '\0' };
+    lv_label_set_text(_casioModeLabel, mbuf);
+
+    // History arrow: up when older entries exist above, down when paged back
+    // into history, none when the history is empty. The arrow is a VIEW of
+    // navigateHistory()/loadHistoryEntry() state — no second input path.
+    lv_label_set_text(_casioRightLabel, "Math");   // the hint is the bitmap, not glyphs
+    if (_history.empty()) {
+        lv_obj_add_flag(_casioHistArrow, LV_OBJ_FLAG_HIDDEN);
+    } else if (_historyIndex < 0) {
+        lv_image_set_src(_casioHistArrow, &ui::kCasioArrowUp);
+        lv_obj_remove_flag(_casioHistArrow, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_image_set_src(_casioHistArrow, &ui::kCasioArrowDown);
+        lv_obj_remove_flag(_casioHistArrow, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+#ifdef NATIVE_SIM
+const char* CalculationApp::debugHistoryArrow() const {
+    if (_history.empty()) return "none";
+    return _historyIndex < 0 ? "up" : "down";
+}
+#endif
 
 // ════════════════════════════════════════════════════════════════════════════
 // resetExpression() — Crea un AST vacío y conecta al MathCanvas
@@ -727,6 +859,32 @@ bool CalculationApp::navigateBack() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void CalculationApp::applyResultLayout() {
+    // Casio: the result gets a FIXED, right-aligned band (CASIO_SPEC §3b) —
+    // numerator 86..109, rule 113..116, denominator 120..143 — not the
+    // proportional content split. The input stays in its fixed band 30..63.
+    if (_casioLayout) {
+        const int16_t cw = _resultRow
+            ? static_cast<int16_t>(_resultRow->layout().width)
+            : CONTENT_W;
+        const int16_t resW = static_cast<int16_t>(
+            cw + 12 > CONTENT_W ? CONTENT_W : cw + 12);
+        const int16_t resX = static_cast<int16_t>(
+            SCREEN_W - PAD - resW);
+
+        lv_obj_set_pos(_mathCanvas.obj(), PAD, CASIO_IN_Y);
+        lv_obj_set_size(_mathCanvas.obj(), CONTENT_W, CASIO_IN_H);
+
+        if (_resultSep) lv_obj_add_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
+
+        lv_obj_set_pos(_resultCanvas.obj(), resX, CASIO_RES_Y);
+        lv_obj_set_size(_resultCanvas.obj(), resW, CASIO_RES_H);
+        lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
+
+        _mathCanvas.setTraceLabel("calc_input_result_compact");
+        refreshExpression();
+        return;
+    }
+
     // ── Content-proportional result-mode split ──────────────────────────────
     //
     // Available space for the two bands (separating overhead excluded):
@@ -969,6 +1127,8 @@ void CalculationApp::showResult() {
     if (_hasEduSteps) {
         _statusBar.setTitle("F2: View Steps");
     }
+
+    updateCasioStrip();   // history/mode reflect the freshly stored entry
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1003,14 +1163,20 @@ void CalculationApp::clearResult() {
 
     // Restore expression canvas to full-area vertically-centered Edit Mode.
     // Re-set position too: applyResultLayout() moves the canvas, clearResult() must undo it.
-    lv_obj_set_pos(_mathCanvas.obj(), PAD, CONTENT_TOP);
-    lv_obj_set_height(_mathCanvas.obj(), CONTENT_FULL_H);
+    if (_casioLayout) {
+        lv_obj_set_pos(_mathCanvas.obj(), PAD, CASIO_IN_Y);
+        lv_obj_set_height(_mathCanvas.obj(), CASIO_IN_H);
+    } else {
+        lv_obj_set_pos(_mathCanvas.obj(), PAD, CONTENT_TOP);
+        lv_obj_set_height(_mathCanvas.obj(), CONTENT_FULL_H);
+    }
     _mathCanvas.setTraceLabel("calc_input_edit");
     _mathCanvas.setExpression(_rootRow, &_cursor);
     _mathCanvas.invalidate();
 
     // Restore title
-    _statusBar.setTitle("Calculation");
+    if (!_casioLayout) _statusBar.setTitle("Calculation");
+    updateCasioStrip();
 
     // Restaurar cursor
     _mathCanvas.startCursorBlink();
@@ -1066,6 +1232,7 @@ void CalculationApp::navigateHistory(int direction) {
         _historyIndex = -1;
         clearResult();
         resetExpression();
+        updateCasioStrip();
         return;
     }
 
@@ -1251,7 +1418,8 @@ void CalculationApp::openStepViewer() {
     _stepsContainer = lv_obj_create(_screen);
     lv_obj_set_size(_stepsContainer, SCREEN_W, SCREEN_H - barH);
     lv_obj_set_pos(_stepsContainer, 0, barH);
-    lv_obj_set_style_bg_color(_stepsContainer, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_stepsContainer,
+        lv_color_hex(ui::ThemeManager::instance().current().bg), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_stepsContainer, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(_stepsContainer, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_stepsContainer, PAD, LV_PART_MAIN);

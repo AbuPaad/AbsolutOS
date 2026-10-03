@@ -125,6 +125,13 @@ public:
     /// and — because the viewport is equal-aspect — cells stay visually square.
     static float squareGridStep(float unitsPerPx);
 
+    /// Set the stroke width used for CURVES (function segments, implicit
+    /// contours). 1 = hairline (numos). Casio raises it because the fitted
+    /// 320x156 canvas is far smaller than the OEM 396x224 one, where a hairline
+    /// curve reads as noise. Grid/axes are never thickened by this.
+    void setCurveWidth(int w) { _curveW = (w < 1) ? 1 : (w > 4 ? 4 : w); }
+    int  curveWidth() const { return _curveW; }
+
     /// Utility: convert world coords to screen pixel coords
     int worldToScreenX(float wx) const;
     int worldToScreenY(float wy) const;
@@ -136,10 +143,12 @@ public:
 private:
     uint16_t* _graphBuf;    ///< RGB565 buffer (PSRAM)
     int       _bufW, _bufH; ///< Buffer dimensions in pixels
+    int       _curveW = 1;  ///< stroke width for curves (1 = hairline)
     float     _xMin, _xMax, _yMin, _yMax;  ///< World viewport
 
-    /// Bresenham line into buffer with clipping
-    void fastDrawLine(int x0, int y0, int x1, int y1, uint16_t color);
+    /// Bresenham line into buffer with clipping. `w` is the stroke width in
+    /// pixels (a w×w stamp at every step); grid/axes pass 1, curves pass _curveW.
+    void fastDrawLine(int x0, int y0, int x1, int y1, uint16_t color, int w = 1);
 
 };
 

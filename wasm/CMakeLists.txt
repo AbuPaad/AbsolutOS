@@ -58,6 +58,15 @@ add_library(numos_tommath STATIC ${TOMMATH_SOURCES})
 target_include_directories(numos_tommath PUBLIC "${NUMOS_ROOT}/lib/libtommath")
 target_compile_options(numos_tommath PRIVATE -O1 -w)
 
+# md4c: the Markdown parser behind src/mdrender (the AI app's answer renderer).
+# PlatformIO reaches it through lib_deps (file://lib/md4c); the CMake path only
+# builds what is named here, so without this target the link fails with
+# undefined md_* symbols even though every project .cpp compiled fine.
+file(GLOB MD4C_SOURCES CONFIGURE_DEPENDS "${NUMOS_ROOT}/lib/md4c/*.c")
+add_library(numos_md4c STATIC ${MD4C_SOURCES})
+target_include_directories(numos_md4c PUBLIC "${NUMOS_ROOT}/lib/md4c")
+target_compile_options(numos_md4c PRIVATE -O1 -w)
+
 file(GLOB GIAC_CANDIDATES CONFIGURE_DEPENDS
     "${NUMOS_ROOT}/lib/giac/src/*.cc"
     "${NUMOS_ROOT}/lib/giac/src/*.cpp"
@@ -94,9 +103,15 @@ target_include_directories(emulator_web PRIVATE
     "${NUMOS_ROOT}/lib/giac"
     "${NUMOS_ROOT}/lib/giac/src"
     "${NUMOS_ROOT}/lib/libtommath"
+    # Header-only Game Boy / GBC core (platformio.ini: -I lib/WalnutCGB): there
+    # is no library to build, only an include path to find it on. The app's own
+    # translation units are already in the derived source closure.
+    "${NUMOS_ROOT}/lib/WalnutCGB"
 )
 target_compile_definitions(emulator_web PRIVATE
-    NATIVE_SIM NUMOS_NEO_APP_SMOKE=1 _USE_MATH_DEFINES LV_CONF_INCLUDE_SIMPLE
+    # Public demo boots the launcher in the Casio theme. NUMOS_NEO_APP_SMOKE was
+    # the old web-only smoke boot and is deliberately dropped here.
+    NATIVE_SIM NUMOS_BOOT_THEME_CASIO=1 _USE_MATH_DEFINES LV_CONF_INCLUDE_SIMPLE
     LV_USE_DRAW_SW_ASM=0 LV_DRAW_SW_ASM_NONE=0 LV_DRAW_SW_ASM_NEON=1
     LV_DRAW_SW_ASM_HELIUM=2 LV_USE_STDLIB_MALLOC=LV_STDLIB_CLIB
     HAVE_CONFIG_H DOUBLEVAL GIAC_KHICAS NO_GUI GIAC_GENERIC EMBEDDED UMAP NO_BSD
@@ -106,7 +121,7 @@ target_compile_options(emulator_web PRIVATE
     -fexceptions -fwasm-exceptions -include unistd.h -UEMCC
     -Wno-register -Wno-c++11-narrowing -ffunction-sections -fdata-sections
 )
-target_link_libraries(emulator_web PRIVATE lvgl numos_giac numos_tommath)
+target_link_libraries(emulator_web PRIVATE lvgl numos_giac numos_tommath numos_md4c)
 
 string(TOLOWER "${CMAKE_BUILD_TYPE}" NUMOS_CONFIG_LOWER)
 set(NUMOS_OUTPUT_DIR "${NUMOS_ROOT}/out/wasm/${NUMOS_CONFIG_LOWER}")
@@ -156,13 +171,19 @@ target_link_options(emulator_web PRIVATE
     "-sINCOMING_MODULE_JS_API=['canvas','noInitialRun','locateFile','print','printErr','onAbort','wasmBinary']"
     -sFILESYSTEM=1
     -lidbfs.js
-    # Fixture del transporte replay + config de la app de IA, montados en la
-    # raiz del FS de Emscripten. Es el "HTTP de mentira" del demo: la app de IA
-    # lee /ai/replay/answer.sse y /ai/config.json de aqui, sin red, sin clave y
-    # sin coste. Equivale al --fs-root del emulador de PC.
+    # Fixture del transporte replay + config de la app de IA + ROMs, montados
+    # en /numos — la raiz que NativeHal fija para LittleFS (resolveFsRoot,
+    # g_fsRootResolved = "/numos"). Montarlos en "/" los dejaba en MEMFS raiz,
+    # invisibles para LittleFS.open(), que antepone /numos: la app de IA no
+    # encontraba su config/replay y la Game Boy no encontraba ROMs.
+    # Es el "HTTP de mentira" del demo: sin red, sin clave y sin coste.
+    # Equivale al --fs-root del emulador de PC.
     # Genera numos-emulator.data, que package.mjs publica y el elemento resuelve
     # por locateFile (igual que el .wasm).
-    "--preload-file=${NUMOS_ROOT}/tests/emulator/fs@/"
+    # NOTA: el elemento debe arrancar con persistence="disabled" (MEMFS
+    # efimero); con IDBFS montado en /numos el preload queda oculto. Ver README
+    # de paadweb / WASM-EMBED-01.
+    "--preload-file=${NUMOS_ROOT}/tests/emulator/fs@/numos"
     -sALLOW_MEMORY_GROWTH=1
     -sINITIAL_MEMORY=67108864
     -sMAXIMUM_MEMORY=536870912
@@ -196,6 +217,12 @@ add_custom_command(TARGET emulator_web POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             "${CMAKE_CURRENT_LIST_DIR}/numos-keypad.js"
             "${NUMOS_OUTPUT_DIR}/numos-keypad.js"
+    # GENERATED from src/ui/KeyContext.h by scripts/gen_key_context.py. The
+    # element imports it, so the raw build directory needs it too — packaging
+    # already publishes it as its own content-addressed asset.
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${CMAKE_CURRENT_LIST_DIR}/numos-keycontext.js"
+            "${NUMOS_OUTPUT_DIR}/numos-keycontext.js"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             "${CMAKE_CURRENT_LIST_DIR}/numos-persistence.js"
             "${NUMOS_OUTPUT_DIR}/numos-persistence.js"
@@ -208,6 +235,7 @@ set_property(TARGET emulator_web APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_CURRENT_LIST_DIR}/numos-shell.js"
     "${CMAKE_CURRENT_LIST_DIR}/numos-emulator-element.js"
     "${CMAKE_CURRENT_LIST_DIR}/numos-keypad.js"
+    "${CMAKE_CURRENT_LIST_DIR}/numos-keycontext.js"
     "${CMAKE_CURRENT_LIST_DIR}/numos-persistence.js"
     "${CMAKE_CURRENT_LIST_DIR}/numos-build.js.in"
     "${CMAKE_CURRENT_LIST_DIR}/numos-component.css"

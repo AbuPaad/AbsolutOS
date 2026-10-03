@@ -98,6 +98,16 @@ to the identified `ti-ce-giac` baseline. Its code matches GL2PS 1.3.5; the
 only release-header difference is a later boilerplate replacement of the
 FSF postal-address paragraph with a web link.
 
+### Walnut-CGB
+
+- Location: `lib/WalnutCGB/`
+- Upstream: Walnut-CGB, a performance-oriented rewrite of Peanut-GB
+- Upstream commit: `a42c186917516cc9c80515ceae1121600a071628` (`library.json`)
+- License: MIT
+- Local modification: the two DMA width macros
+  (`WALNUT_GB_16BIT_DMA` / `WALNUT_GB_32BIT_DMA`) are wrapped in `#ifndef`
+  guards so a desktop build can disable them. No other changes.
+
 ## Font software and generated derivatives
 
 ### Montserrat
@@ -153,6 +163,55 @@ publicly shared adaptations of the font. It is not relicensed under NumOS's
 GPL-3.0-or-later. The face has no OpenType `MATH` table, so the renderer's
 STIX-derived layout tables remain STIX-authored; generated LVGL subsets are
 CC BY-SA-derived and record this attribution. See `assets/fonts/README.md`.
+
+### CASIO FX-9860GII UI Face
+
+- Source: `assets/fonts/casio-fx-9860gii.ttf` (TrueType, `unitsPerEm` 4096)
+- SHA-256: `0a97642fb20694bfa277a2fdbf0d10d85b6228cd0584712ad61fd28e9af20f4e`
+- FontStruction: `CASIO-Calculator-Font`
+- Author: `TH3_C0N-MAN`
+- Upstream: <https://fontstruct.com/fontstructions/show/1672425> (2019 release)
+- License: CC-BY-3.0 (Creative Commons Attribution 3.0 Unported); attribution
+  required, **no ShareAlike** (unlike the CC BY-SA math face above), no Reserved
+  Font Name clause
+- License text: `assets/fonts/LICENSES/CasioFx9860GII-CC-BY-3.0.txt`
+- Attribution notice as supplied by the author: *The FontStruction
+  "CASIO-Calculator-Font" (https://fontstruct.com/fontstructions/show/1672425) by
+  "TH3_C0N-MAN" is licensed under a Creative Commons Attribution license
+  (https://creativecommons.org/licenses/by/3.0/).*
+- Derived outputs: `src/fonts/casio_ui_{12,18,26}.c`
+
+This is the device **UI** face (menus, labels, calculator strip) at sizes
+12/18/26, and is a different release (2019, id 1672425) and licence (CC BY 3.0)
+from the CC BY-SA 3.0 math face above. Its generated LVGL subsets carry a CC BY
+provenance header, never CC BY-SA. See `assets/fonts/README.md`.
+
+## Runtime test fixtures
+
+These files ship only in the emulator fixtures tree
+(`tests/emulator/fs/`), which the WebAssembly build packs into its preload
+image. They are not compiled into the production firmware and no commercial
+ROM is distributed.
+
+### Petris
+
+- Location: `tests/emulator/fs/roms/Petris.gbc`
+- Upstream: bbbbbr's Petris, branch `release_1.1_gbdk2020`, `rom/Petris_web.gbc`
+- Upstream repository: <https://github.com/bbbbbr/Petris>
+- License: MIT (source and assets)
+- Copyright: bbbbbr
+- Redownload: `https://raw.githubusercontent.com/bbbbbr/Petris/release_1.1_gbdk2020/rom/Petris_web.gbc`
+
+### dmg-acid2
+
+- Location: `tests/emulator/fs/roms/dmg-acid2.gb`
+- Upstream: Matt Currie's dmg-acid2, release `v1.0`
+- Upstream repository: <https://github.com/mattcurrie/dmg-acid2>
+- License: MIT
+- Copyright: Matt Currie
+
+The Game Boy core itself (`lib/WalnutCGB`) is recorded under vendored source
+above.
 
 ## Package-manager and build-time dependencies
 

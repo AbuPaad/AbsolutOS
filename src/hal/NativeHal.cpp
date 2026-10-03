@@ -85,6 +85,7 @@
 #ifdef NATIVE_SIM
 
 #include <SDL2/SDL.h>
+#include "../ui/ThemeFonts.h"
 #include <lvgl.h>
 #include <cstdio>
 #include <cstdlib>
@@ -151,6 +152,7 @@
 #include "../ui/StatusBar.h"              // Phase 5A: Math Showcase title bar
 #include "../ui/MathRenderer.h"          // Phase 5A: MathCanvas (reuse, no geometry change)
 #include "../ui/MathTypography.h"        // Phase 5A: initMathTypography()
+#include "../ui/ThemeManager.h"          // Theme system (doc 03/10)
 #include "../math/MathRenderVisualCases.h" // Phase 5A: curated accepted expressions
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -165,6 +167,14 @@ bool setting_complex_enabled  = true;
 int  setting_decimal_precision = 10;
 bool setting_edu_steps         = false;
 uint8_t setting_brightness     = 96;
+#if defined(NUMOS_BOOT_THEME_CASIO)
+uint8_t setting_theme          = 1;   // ThemeId::Casio — the web demo boots into
+                                      // the Casio ClassWiz skin (wasm/CMakeLists.txt).
+#else
+uint8_t setting_theme          = 0;   // ThemeId::NumOS (doc 03); native has no
+                                      // persisted Settings record, so it stays
+                                      // the default unless a script toggles it.
+#endif
 
 // ════════════════════════════════════════════════════════════════════════════
 // DisplayDriver stubs (MainMenu almacena una referencia pero nunca la usa)
@@ -392,6 +402,7 @@ static uint8_t g_lvBuf[SCREEN_W * SCREEN_H * sizeof(uint16_t)];
 static void launchApp(int appId);
 static void returnToMenu();
 static void flushPendingTeardown();   // Phase 9F: teardown diferido del launcher
+static void reloadActiveView();       // Theme toggle: recreate the ACTIVE view
 static void onSplashDone();
 // Phase 5A: Math Showcase (definidas tras returnToMenu).
 static void showcaseLoad();
@@ -767,6 +778,23 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
         return;
     }
 
+    // ── GLOBAL theme hotkey: ALPHA + AC (doc 10), before mode dispatch ──
+    // Mirrors SystemApp::handleKey + update(): the combo is consumed here, the
+    // swap happens through the single ThemeManager::activate() funnel, and the
+    // ACTIVE view is recreated (never restyled mid-frame).
+    if (isDown && kc == KeyCode::AC &&
+        vpam::KeyboardManager::instance().isAlpha()) {
+        vpam::KeyboardManager::instance().reset();
+        const bool wasCasio =
+            ui::ThemeManager::instance().id() == ui::ThemeId::Casio;
+        ui::ThemeManager::instance().activate(
+            wasCasio ? ui::ThemeId::NumOS : ui::ThemeId::Casio);
+        std::printf("[THEME] ALPHA+AC -> theme id=%u\n",
+                    static_cast<unsigned>(ui::ThemeManager::instance().id()));
+        reloadActiveView();
+        return;
+    }
+
     switch (g_mode) {
         case AppMode::SPLASH:
             // Ignorar teclas durante la animación del splash
@@ -797,6 +825,24 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
                         case KeyCode::DOWN:  g_menu->moveFocusByDelta( 0, +1); break;
                         default: break;   // inalcanzable (filtrado arriba)
                     }
+                    break;
+                }
+                // Casio MenuList (Stage C2/C6): a digit launches the slot in that
+                // position on the CURRENT page directly — no focus walk, no EXE.
+                // keyCodeDigitValue(): the keypad enum order is physical, not
+                // numeric, so enum arithmetic is always wrong here.
+                if (g_menu->isListMode()) {
+                    const int d = keyCodeDigitValue(kc);
+                    if (d >= 1 && d <= 8) {
+                        g_menu->launchSlot(d - 1);
+                        break;
+                    }
+                }
+                // Casio MenuList: EXE launches the focused slot. The numos card
+                // grid keeps its LVGL CLICKED path below.
+                if (g_menu->isListMode() &&
+                    (kc == KeyCode::ENTER || kc == KeyCode::EXE)) {
+                    g_menu->launchFocusedSlot();
                     break;
                 }
                 // Phase 9F: 'g' (GRAPH) abre el Grapher directamente desde el
@@ -1216,9 +1262,26 @@ static void transitionToMenu()
 {
     std::printf("[TRANSITION] Creando apps y launcher...\n");
 
-    // Crear la calculadora (pre-crear pantalla para lanzamiento rápido)
+    // ── Theme: activate BEFORE any screen builds (docs 03/10) ──
+    // The native build mirrors SystemApp::begin(): the persisted ThemeId is
+    // read (setting_theme; no Settings record on native, default = NumOS) and
+    // activated before MainMenu constructs widgets.
+    {
+        const uint8_t raw = setting_theme;
+        ui::ThemeManager::instance().activate(
+            raw == static_cast<uint8_t>(ui::ThemeId::Casio)
+                ? ui::ThemeId::Casio
+                : ui::ThemeId::NumOS);
+        std::printf("[THEME] active theme id=%u\n",
+                    static_cast<unsigned>(ui::ThemeManager::instance().id()));
+    }
+
+    // Crear la calculadora. begin() perezoso, igual que SystemApp::begin()
+    // (src/SystemApp.cpp:151-155): NO llamar a begin() aqui. Hacerlo construye
+    // la pantalla con el tema del arranque y CalculationApp::createUI() fija
+    // _casioLayout en ese momento; load() sale pronto si _screen ya existe, asi
+    // que la pantalla quedaba clavada en numos y el tema casio nunca la tocaba.
     g_calcApp = new CalculationApp();
-    g_calcApp->begin();
     g_calculusApp = new CalculusApp();
     // Equations is created lazily so its object-heavy tutor UI does not
     // compete with the launcher until explicitly opened.
@@ -1482,6 +1545,50 @@ static void performAppTeardown(AppMode m)
     }
 }
 
+/**
+ * Recreates the ACTIVE view after a theme swap (doc 10): rebuilds the launcher,
+ * or ends + reloads the SAME app — never ejects the user out of the running app.
+ * The swap is performed by the caller (hotkey) via ThemeManager::activate();
+ * this only rebuilds the widgets so they re-read the new tokens at load().
+ */
+static void reloadActiveView()
+{
+    if (g_mode == AppMode::MENU || g_mode == AppMode::SPLASH) {
+        g_menu->create();
+        lv_indev_set_group(LvglKeypad::indev(), g_menu->group());
+        g_menu->load();
+        std::printf("[THEME] Launcher rebuilt\n");
+        return;
+    }
+
+    // App modes: end the current screen (immediate — we are outside any LVGL
+    // animation callback), then reload the SAME app under the new theme.
+    performAppTeardown(g_mode);
+
+    switch (g_mode) {
+        case AppMode::CALCULATION: if (g_calcApp) g_calcApp->load(); break;
+        case AppMode::GRAPHER:     if (g_grapherApp) g_grapherApp->load(); break;
+        case AppMode::EQUATIONS:   if (g_equationsApp) g_equationsApp->load(); break;
+        case AppMode::CALCULUS:    if (g_calculusApp) g_calculusApp->load(); break;
+        case AppMode::SETTINGS:    if (g_settingsApp) g_settingsApp->load(); break;
+        case AppMode::STATISTICS:  if (g_statsApp) g_statsApp->load(); break;
+        case AppMode::PROBABILITY: if (g_probApp) g_probApp->load(); break;
+        case AppMode::SEQUENCES:   if (g_seqApp) g_seqApp->load(); break;
+        case AppMode::REGRESSION:  if (g_regApp) g_regApp->load(); break;
+        case AppMode::MATH_VISUAL: if (g_mathVisualApp) g_mathVisualApp->load(); break;
+        case AppMode::GAMEBOY:     if (g_gameboyApp) g_gameboyApp->load(); break;
+        case AppMode::NOTES_READER: if (g_notesApp) g_notesApp->load(); break;
+        case AppMode::AI_WRAPPER:  if (g_aiApp) g_aiApp->load(); break;
+        case AppMode::MATH_SHOWCASE: showcaseLoad(); break;
+#if defined(NUMOS_NEO_APP_SMOKE)
+        case AppMode::NEO_LANGUAGE: if (g_neoLangApp) g_neoLangApp->load(); break;
+#endif
+        default: break;
+    }
+    std::printf("[THEME] Active view reloaded (mode=%d)\n",
+                static_cast<int>(g_mode));
+}
+
 static bool screenTransitionIdle()
 {
     lv_display_t* display = lv_display_get_default();
@@ -1632,7 +1739,7 @@ static void showcaseBuild()
     // glifo U+0020; con LV_USE_FONT_PLACEHOLDER se pintaba un tofu por cada espacio.
     // La expresion matematica sigue dibujandose con MathCanvas (sin cambios).
     g_showcaseCaption = lv_label_create(g_showcaseScreen);
-    lv_obj_set_style_text_font(g_showcaseCaption, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_showcaseCaption, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_color(g_showcaseCaption, lv_color_hex(0x808080), LV_PART_MAIN);
     lv_obj_set_width(g_showcaseCaption, SCREEN_W - 24);
     lv_label_set_long_mode(g_showcaseCaption, LV_LABEL_LONG_CLIP);
@@ -1970,6 +2077,11 @@ enum class ScriptCmdType : uint8_t {
     // paridad de navegacion 2D con el firmware. El id de tarjeta resuelto se
     // guarda en waitN; strArg conserva el token original para el diagnostico.
     AssertMenuFocus,       // assert_menu_focus NAME|ID
+    // Stage C4: casio interaction state asserts (NativeHal-only). Read the
+    // ThemeManager / launcher / CalculationApp through NATIVE_SIM accessors.
+    AssertTheme,           // assert_theme numos|casio|0|1  (ThemeManager::id)
+    AssertLauncherPage,    // assert_launcher_page N       (casio list page, 1-based)
+    AssertHistoryArrow,    // assert_history_arrow up|down|none (calc strip)
     // Phase 10 GR-14 (append-only): aserciones semanticas del Grapher. Leen los
     // accesores debug* de GrapherApp (NATIVE_SIM-only); fuera del Grapher son
     // FAIL (exit 4), nunca no-op. Tokens de kind congelados por el contrato del
@@ -2310,6 +2422,34 @@ static bool loadScript(const char* path)
             sc.type   = ScriptCmdType::AssertMenuFocus;
             sc.waitN  = cardId;     // id resuelto
             sc.strArg = name;       // token original, solo para el diagnostico
+        }
+        // ── Stage C4: casio interaction state asserts (NativeHal-only) ─────
+        else if (lc == "assert_theme") {
+            std::string name, extra;
+            if (!(iss >> name)) return scriptErr(path, lineNo, "assert_theme requiere numos|casio|0|1");
+            if (iss >> extra)   return scriptErr(path, lineNo, "assert_theme: demasiados argumentos");
+            if (name != "numos" && name != "casio" && name != "0" && name != "1")
+                return scriptErr(path, lineNo, "assert_theme: valor invalido (numos|casio|0|1)");
+            sc.type   = ScriptCmdType::AssertTheme;
+            sc.strArg = name;
+        }
+        else if (lc == "assert_launcher_page") {
+            std::string nTok, extra;
+            long n = 0;
+            if (!(iss >> nTok) || !parseNonNegLong(nTok, n) || n < 1 || n > 3)
+                return scriptErr(path, lineNo, "assert_launcher_page requiere N entero 1..3");
+            if (iss >> extra) return scriptErr(path, lineNo, "assert_launcher_page: demasiados argumentos");
+            sc.type   = ScriptCmdType::AssertLauncherPage;
+            sc.waitN  = n;   // 1-based page
+        }
+        else if (lc == "assert_history_arrow") {
+            std::string name, extra;
+            if (!(iss >> name)) return scriptErr(path, lineNo, "assert_history_arrow requiere up|down|none");
+            if (iss >> extra)   return scriptErr(path, lineNo, "assert_history_arrow: demasiados argumentos");
+            if (name != "up" && name != "down" && name != "none")
+                return scriptErr(path, lineNo, "assert_history_arrow: valor invalido (up|down|none)");
+            sc.type   = ScriptCmdType::AssertHistoryArrow;
+            sc.strArg = name;
         }
         // ── Phase 10 GR-14: aserciones semanticas del Grapher (append-only) ──
         else if (lc == "assert_graph_relation_count") {
@@ -2938,6 +3078,25 @@ static void emitContextLineIfChanged()
                 static_cast<int>(ctx), numos::ctxSlug(ctx), g_lastCtxMod);
 }
 
+// ── Apertura de app (@app) ──────────────────────────────────────────────────
+// Canal SEPARADO del latido @ctx: @ctx tambien late cuando solo cambia el
+// modificador (SHIFT/ALPHA), asi que un consumidor que quiera saber cuando se
+// ABRE una app tendria que filtrar el contexto anterior. @app se emite
+// unicamente cuando el contexto cambia, y lleva el nombre largo ya resuelto
+// para que la web no tenga que mapear slug->nombre por su cuenta.
+// Formato congelado: "@app <id> <slug> <nombre>".
+static numos::Ctx g_lastAppCtx = numos::Ctx::Count;
+
+static void emitAppLineIfChanged()
+{
+    const numos::Ctx ctx = currentCtx();
+    if (ctx == g_lastAppCtx) return;
+    g_lastAppCtx = ctx;
+    std::printf("@app %d %s %s\n",
+                static_cast<int>(ctx), numos::ctxSlug(ctx),
+                numos::ctxName(ctx));
+}
+
 // Diagnostico de asercion: SIEMPRE se imprime (independiente de --quiet, que
 // solo silencia ruido por-frame). Un FAIL marca exit 4 y detiene el replay.
 static void assertFail(int line, const std::string& msg)
@@ -3226,6 +3385,59 @@ static void scriptStepBegin()
                                     (expectName ? expectName : "?") + "') pero el foco esta en id " +
                                     std::to_string(actualId) + " '" +
                                     (actualName ? actualName : "(ninguno)") + "'");
+            }
+            break;
+        }
+
+        // ── Stage C4: casio interaction state asserts ─────────────────────
+        case ScriptCmdType::AssertTheme: {
+            const ui::ThemeId id = ui::ThemeManager::instance().id();
+            const std::string& want = sc.strArg;
+            const bool match =
+                ((want == "numos" || want == "0") &&
+                 id == ui::ThemeId::NumOS) ||
+                ((want == "casio" || want == "1") &&
+                 id == ui::ThemeId::Casio);
+            const char* actualName =
+                id == ui::ThemeId::Casio ? "casio" : "numos";
+            if (match) {
+                assertPass(sc.line, "assert_theme " + want);
+            } else {
+                assertFail(sc.line, "assert_theme esperaba '" + want +
+                                    "' pero el tema activo es '" +
+                                    actualName + "'");
+            }
+            break;
+        }
+        case ScriptCmdType::AssertLauncherPage: {
+            if (g_mode != AppMode::MENU || !g_menu) {
+                assertFail(sc.line, "assert_launcher_page requiere el launcher (Menu) activo "
+                                    "(app actual: '" + std::string(activeAppName()) + "')");
+                break;
+            }
+            const int expect = static_cast<int>(sc.waitN);
+            const int actual = g_menu->debugLauncherPage();
+            if (actual == expect) {
+                assertPass(sc.line, "assert_launcher_page " + std::to_string(expect));
+            } else {
+                assertFail(sc.line, "assert_launcher_page esperaba pag " +
+                                    std::to_string(expect) + " pero la pagina activa es " +
+                                    std::to_string(actual));
+            }
+            break;
+        }
+        case ScriptCmdType::AssertHistoryArrow: {
+            if (g_mode != AppMode::CALCULATION || !g_calcApp) {
+                assertFail(sc.line, "assert_history_arrow requiere Calculation activa "
+                                    "(app actual: '" + std::string(activeAppName()) + "')");
+                break;
+            }
+            const std::string actual(g_calcApp->debugHistoryArrow());
+            if (actual == sc.strArg) {
+                assertPass(sc.line, "assert_history_arrow " + sc.strArg);
+            } else {
+                assertFail(sc.line, "assert_history_arrow esperaba '" + sc.strArg +
+                                    "' pero el indicador es '" + actual + "'");
             }
             break;
         }
@@ -4035,6 +4247,9 @@ static void emulatorRunFrame()
     // teclado (SHIFT/ALPHA) ya han procesado la entrada de ESTE frame. Emite
     // solo si cambio, asi que un frame normal no escribe nada.
     emitContextLineIfChanged();
+    // Apertura de app: canal propio, solo cuando cambia el contexto (nunca por
+    // el modificador), para que la web pueda colgar tips por app sin filtrar.
+    emitAppLineIfChanged();
 
     const uint64_t frameEnd = SDL_GetPerformanceCounter();
     const uint64_t frequency = SDL_GetPerformanceFrequency();

@@ -22,10 +22,12 @@
  */
 
 #include "SettingsApp.h"
+#include "../ui/ThemeFonts.h"
 #include "../Config.h"
 #include "../display/DisplayDriver.h"
 #include "../math/AngleModeRuntime.h"
 #include "../net/Portal.h"
+#include "../ui/ThemeManager.h"
 
 #include <cstdio>
 
@@ -154,7 +156,7 @@ bool SettingsApp::savePersistentState() {
     record[6] = setting_complex_enabled ? 1 : 0;
     record[7] = setting_edu_steps ? 1 : 0;
     record[8] = static_cast<uint8_t>(setting_decimal_precision);
-    record[9] = 0;
+    record[9] = setting_theme;
 
     File file = LittleFS.open(SETTINGS_PATH, "w");
     if (!file) return false;
@@ -187,6 +189,7 @@ bool SettingsApp::loadPersistentState() {
     setting_complex_enabled = record[6] != 0;
     setting_edu_steps = record[7] != 0;
     setting_decimal_precision = precision;
+    if (record[9] <= 1) setting_theme = record[9];   // ThemeId, index 9 (doc 03)
     return true;
 }
 #endif
@@ -343,7 +346,7 @@ void SettingsApp::createUI() {
     lv_obj_set_width(_hintLabel, SCREEN_W - 2 * PAD);
     lv_obj_set_height(_hintLabel, LV_SIZE_CONTENT);
     lv_label_set_long_mode(_hintLabel, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_font(_hintLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_hintLabel, ui::fontUiSmall(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_hintLabel, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_hintLabel, PAD, SCREEN_H - HINT_H + 2);
 
@@ -367,6 +370,7 @@ void SettingsApp::createRows() {
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
         "Brightness",
 #endif
+        "Theme",               // row THEME_ROW — calls ThemeManager::activate()
         // Opens the Wi-Fi screen: saved networks, signal, connect/forget, and the
         // provisioning portal that puts networks on the list in the first place.
         "Wi-Fi",
@@ -394,7 +398,7 @@ void SettingsApp::createRows() {
         // starts at U+0021, so it has no U+0020 (space) glyph; with
         // LV_USE_FONT_PLACEHOLDER the spaced names ("Complex numbers", etc.)
         // painted a tofu box at every space.
-        lv_obj_set_style_text_font(_labels[i], &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(_labels[i], ui::fontUi(), LV_PART_MAIN);
         lv_obj_set_style_text_color(_labels[i], lv_color_hex(COL_TEXT), LV_PART_MAIN);
         lv_obj_align(_labels[i], LV_ALIGN_LEFT_MID, 12, 0);
 
@@ -402,7 +406,7 @@ void SettingsApp::createRows() {
         // Phase 7I: plain UI text → lv_font_montserrat_14 (the value "%d digits"
         // contains a space that stix_math_18 cannot render — see _labels above).
         _values[i] = lv_label_create(_rows[i]);
-        lv_obj_set_style_text_font(_values[i], &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(_values[i], ui::fontUi(), LV_PART_MAIN);
         lv_obj_align(_values[i], LV_ALIGN_RIGHT_MID, -12, 0);
     }
 
@@ -485,6 +489,15 @@ void SettingsApp::updateValues() {
     lv_obj_set_style_text_color(_values[4], lv_color_hex(COL_VALUE), LV_PART_MAIN);
     lv_slider_set_value(_brightnessSlider, setting_brightness, LV_ANIM_OFF);
 #endif
+
+    // Theme row — reflects the ACTIVE theme; the picker shows the current id.
+    {
+        const ui::ThemeId th = ui::ThemeManager::instance().id();
+        lv_label_set_text(_values[THEME_ROW],
+                          th == ui::ThemeId::Casio ? "Casio" : "NumOS");
+        lv_obj_set_style_text_color(_values[THEME_ROW],
+                                    lv_color_hex(COL_VALUE), LV_PART_MAIN);
+    }
 
     // Wi-Fi row. Deliberately short: the SSID itself belongs on the Wi-Fi screen
     // and in the hint strip, which have more room than this row's value field.
@@ -607,12 +620,12 @@ void SettingsApp::buildWifiView() {
         lv_obj_set_width(_wifiLabels[i], 176);
         // An SSID can be 32 characters; ellipsize rather than overflow the row.
         lv_label_set_long_mode(_wifiLabels[i], LV_LABEL_LONG_DOT);
-        lv_obj_set_style_text_font(_wifiLabels[i], &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(_wifiLabels[i], ui::fontUi(), LV_PART_MAIN);
         lv_obj_set_style_text_color(_wifiLabels[i], lv_color_hex(COL_TEXT), LV_PART_MAIN);
         lv_obj_align(_wifiLabels[i], LV_ALIGN_LEFT_MID, 10, 0);
 
         _wifiValues[i] = lv_label_create(_wifiRows[i]);
-        lv_obj_set_style_text_font(_wifiValues[i], &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_set_style_text_font(_wifiValues[i], ui::fontUiSmall(), LV_PART_MAIN);
         lv_obj_align(_wifiValues[i], LV_ALIGN_RIGHT_MID, -10, 0);
     }
 
@@ -813,6 +826,15 @@ void SettingsApp::toggleCurrent() {
             }
             break;
 #endif
+
+        case THEME_ROW: {  // Theme picker: NumOS <-> Casio (single activate funnel)
+            const ui::ThemeId next =
+                ui::ThemeManager::instance().id() == ui::ThemeId::NumOS
+                    ? ui::ThemeId::Casio
+                    : ui::ThemeId::NumOS;
+            ui::ThemeManager::instance().activate(next);
+            break;
+        }
 
         case WIFI_ROW:  // opens the Wi-Fi screen; nothing to persist here
             buildWifiView();

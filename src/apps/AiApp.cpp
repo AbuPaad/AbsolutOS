@@ -15,22 +15,30 @@
  * CONTENT_H — the same shape as NotesApp, so the bottom 40 px stay black for
  * the fx-82 shell crop and this app's screenshots line up with the reader's.
  *
- * The screen never scrolls. Long text wraps inside the container and is
- * clipped by it; paged content changes page instead of scrolling.
+ * Colours and fonts are THEME tokens, never literals (agents.md §5.6). The app
+ * asks `ui::appSurface(ui::appid::kAi)`: under the numos theme that resolves to
+ * the dark palette this screen has always had; under casio it inherits the
+ * light LCD tokens. Nothing in this file branches on the theme id.
  *
- * FIX OWED (2026-09-29): the sys prompt in /ai/config.json now breaks pages at
- * thematic/topic changes and no longer caps a page at ~250 visible characters,
- * so a page may legitimately be taller than CONTENT_H. Today such a page is
- * reflowed and, when it still does not fit, truncated with a visible block
- * (MdRenderer::pageTruncated(), which this app already surfaces). That is
- * correct behaviour, but it makes intra-page scrolling load-bearing rather than
- * cosmetic. The missing piece is one of: a scrollable content container, or
- * MdRenderer splitting an over-tall page at a paragraph boundary itself.
- * Neither exists yet — a long topical page gets cut off with the truncated
- * block instead of being readable.
+ * Casio (SPEC-stageC C2) also changes the SHAPE, not just the palette, and it
+ * comes from the interaction model, not from a theme check:
+ *   · no focus rectangle — `interaction().focusFill == false`, so a focused row
+ *     changes its INK only;
+ *   · a digit key 1..9 selects and activates that row directly, no cursor walk;
+ *   · a bottom softkey band (`interaction().softkeyRow`), which shortens the
+ *     content area by kSoftkeyH.
+ *
+ * The screen never scrolls as a whole. List screens put their rows in a
+ * scrollable viewport (with the numos look unchanged: no scrollbar appears
+ * while the rows fit), so nothing is unreachable — the Settings screen used to
+ * lose its last two rows off the bottom of the 132 px content box.
  */
 
 #include "apps/AiApp.h"
+
+#include "../ui/ThemeFonts.h"
+#include "../ui/ThemeManager.h"
+#include "../ui/generated/CasioArrowMasks.generated.h"   // corner scroll hint (A8 mask)
 
 #include <cstdarg>
 #include <cstdio>
@@ -39,22 +47,25 @@
 #include "ai/ModelCatalog.h"
 
 using mdrender::CONTENT_H;
+using mdrender::SCREEN_H;
 using mdrender::SCREEN_W;
 using mdrender::STATUS_BAR_H;
 
 namespace {
 
-constexpr uint32_t COL_BG     = 0x000000;
-constexpr uint32_t COL_TITLE  = 0xCCCCCC;
-constexpr uint32_t COL_TEXT   = 0xDDDDDD;
-constexpr uint32_t COL_DIM    = 0x8A8A8A;
-constexpr uint32_t COL_ACCENT = 0x1565C0;   // same blue as the launcher focus
-constexpr uint32_t COL_OK     = 0x66BB6A;
-constexpr int      ROW_H      = 26;
-constexpr int      PAD        = 6;
+constexpr int ROW_H      = 26;
+constexpr int PAD        = 6;
+constexpr int kSoftkeyH  = 18;   ///< casio bottom band height
 
 /// Settings rows. Keep in step with the array in showSettings().
-constexpr int      kSettingsRows = 7;
+constexpr int kSettingsRows = 7;
+
+/// "3:Question" — the launcher's slot-number idiom, applied to a list row.
+std::string numbered(int n, const char* text) {
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "%d:%s", n, text);
+    return std::string(buf);
+}
 
 /**
  * LVGL holds the lv_image_dsc_t pointer for as long as the image lives, so these
@@ -145,9 +156,42 @@ AiApp::~AiApp() { end(); }
 // Chrome
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Resolve everything the chrome needs from the theme + interaction model. This
+ * is the ONLY place the app reads them, so a theme swap changes the whole screen
+ * through one function (SystemApp reloads the app on a toggle, so it re-runs).
+ */
+void AiApp::readSurface() {
+    _sc = ui::appSurface(ui::appid::kAi);
+
+    const ui::InteractionModel& im = ui::ThemeManager::instance().interaction();
+    _softkeys  = im.softkeyRow;
+    _focusFill = im.focusFill;
+    _numbered  = im.numberedSlots;
+    _chevron   = im.scrollChevron;
+    _contentH  = CONTENT_H - (_softkeys ? kSoftkeyH : 0);
+
+    // The answer renderer paginates against the SAME box the app gives it, and
+    // it draws on the SAME surface. Without this the module's dark defaults
+    // (colorText 0xFFFFFF) paint white-on-light under casio — an invisible page.
+    _styles.contentH  = _contentH;
+    _styles.bodyFont    = ui::fontUi();
+    _styles.headingFont = ui::fontUi();
+    // codeFont/mathFont stay null on purpose: the module's fallback resolves a
+    // null code face to Montserrat at codeSize, which is exactly what the numos
+    // pages have always rendered. The math face is set by the math-wiring pass.
+    _styles.colorText      = _sc.text;
+    _styles.colorDim       = _sc.textDim;
+    _styles.colorAccent    = _sc.accent;
+    _styles.colorQuote     = _sc.textDim;
+    _styles.colorWikilink  = _sc.accent;
+    _styles.colorCodeBg    = _sc.pane;
+}
+
 void AiApp::begin() {
     _screen = lv_obj_create(nullptr);
-    lv_obj_set_style_bg_color(_screen, lv_color_hex(COL_BG), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_screen, lv_color_hex(ui::appSurface(ui::appid::kAi).bg),
+                              LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_screen, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(_screen, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_screen, 0, LV_PART_MAIN);
@@ -156,25 +200,33 @@ void AiApp::begin() {
 
 void AiApp::buildChrome() {
     clearContent();
+    readSurface();
 
     _title = lv_label_create(_screen);
-    lv_obj_set_style_text_color(_title, lv_color_hex(COL_TITLE), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_title, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_title, lv_color_hex(_sc.title), LV_PART_MAIN);
+    lv_obj_set_style_text_font(_title, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_pos(_title, PAD, 3);
 
     _content = lv_obj_create(_screen);
     lv_obj_set_pos(_content, 0, STATUS_BAR_H);
-    lv_obj_set_size(_content, SCREEN_W, CONTENT_H);
+    lv_obj_set_size(_content, SCREEN_W, _contentH);
     lv_obj_set_style_bg_opa(_content, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(_content, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_content, 0, LV_PART_MAIN);
     lv_obj_set_style_clip_corner(_content, true, LV_PART_MAIN);
     lv_obj_remove_flag(_content, LV_OBJ_FLAG_SCROLLABLE);
+
+    if (_softkeys) buildSoftkey(softkeyLabel());
 }
 
 void AiApp::clearContent() {
     _rows.clear();
     _live = nullptr;
+    // Both live on _screen (not _content), so losing the pointer would leak the
+    // widget on screen for the next view: delete them here, rebuild in the
+    // builders that want them.
+    if (_softkey)     { lv_obj_delete(_softkey);     _softkey     = nullptr; }
+    if (_scrollArrow) { lv_obj_delete(_scrollArrow); _scrollArrow = nullptr; }
     _list = nullptr;   // child of _content, so deleting _content deletes it
     if (_content) { lv_obj_delete(_content); _content = nullptr; }
     if (_title)   { lv_obj_delete(_title);   _title   = nullptr; }
@@ -190,28 +242,116 @@ void AiApp::setTitle(const char* fmt, ...) {
     lv_label_set_text(_title, buf);
 }
 
+/** The casio softkey band. Never built for a profile with softkeyRow == false. */
+void AiApp::buildSoftkey(const char* label) {
+    _softkey = lv_label_create(_screen);
+    lv_label_set_text(_softkey, label);
+    lv_obj_set_style_text_font(_softkey, ui::fontUiSmall(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_softkey, lv_color_hex(_sc.textDim), LV_PART_MAIN);
+    lv_obj_set_pos(_softkey, PAD, SCREEN_H - kSoftkeyH + 3);
+    // The band sits below the content box, but a list viewport created after it
+    // would otherwise be a later sibling and draw over it.
+    lv_obj_move_foreground(_softkey);
+}
+
+const char* AiApp::softkeyLabel() const {
+    switch (_view) {
+        case Screen::Ask:     return "ENTER send   DEL erase   AC back";
+        case Screen::Result:  return "\u2190 \u2192 page      AC back";
+        case Screen::Models:  return "ENTER pick   AC back";
+        case Screen::Menu:    return "AC exit";
+        default:              return "AC back";   // rows carry their own digits now
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
-// Rows — one style shared by Menu / Capture / Recent / Settings
+// Rows — one style shared by Menu / Capture / Recent / Settings / Models
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Open the scrollable viewport every list screen draws into. Sizing it to the
+ * content box and letting LVGL draw a scrollbar only while the rows overflow
+ * keeps the numos screens pixel-identical (they never overflow) while making the
+ * longer casio lists reachable.
+ */
+void AiApp::beginList() {
+    if (!_content) return;
+    _list = lv_obj_create(_content);
+    lv_obj_set_size(_list, SCREEN_W, _contentH);
+    lv_obj_set_pos(_list, 0, 0);
+    lv_obj_set_style_bg_opa(_list, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_list, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_list, 0, LV_PART_MAIN);
+    lv_obj_set_scroll_dir(_list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(_list, LV_SCROLLBAR_MODE_AUTO);
+
+    // Corner scroll arrow — calc's history hint (a generated A8 mask recoloured to
+    // the text token), reused as the "this list goes on" mark. Lives on the
+    // screen, not in the list, so the list cannot clip it.
+    if (_chevron && !_scrollArrow) {
+        _scrollArrow = lv_image_create(_screen);
+        lv_obj_set_style_image_recolor(_scrollArrow, lv_color_hex(_sc.text), LV_PART_MAIN);
+        lv_obj_set_style_image_recolor_opa(_scrollArrow, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_align(_scrollArrow, LV_ALIGN_TOP_RIGHT, -PAD, 3);
+        lv_obj_add_flag(_scrollArrow, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+/** Show the corner arrow when — and only when — the list can move. */
+void AiApp::updateScrollChevron() {
+    if (!_scrollArrow) return;
+    if (!_list) { lv_obj_add_flag(_scrollArrow, LV_OBJ_FLAG_HIDDEN); return; }
+    lv_obj_update_layout(_list);
+    const int below = lv_obj_get_scroll_bottom(_list);
+    const int above = lv_obj_get_scroll_top(_list);
+    if (below <= 0 && above <= 0) {
+        lv_obj_add_flag(_scrollArrow, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    // More below wins: that is the direction the list is being read in.
+    lv_image_set_src(_scrollArrow, below > 0 ? &ui::kCasioArrowDown : &ui::kCasioArrowUp);
+    lv_obj_remove_flag(_scrollArrow, LV_OBJ_FLAG_HIDDEN);
+}
+
+void AiApp::scrollListIntoView() {
+    if (!_list) return;
+    if (_focus >= 0 && _focus < static_cast<int>(_rows.size()))
+        lv_obj_scroll_to_view(_rows[static_cast<size_t>(_focus)], LV_ANIM_OFF);
+    updateScrollChevron();
+}
+
 lv_obj_t* AiApp::addRow(const char* text, int index, bool focused) {
-    if (!_content) return nullptr;
-    lv_obj_t* row = lv_obj_create(_content);
+    lv_obj_t* parent = _list ? _list : _content;
+    if (!parent) return nullptr;
+
+    lv_obj_t* row = lv_obj_create(parent);
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(row, SCREEN_W - 2 * PAD, ROW_H - 2);
     lv_obj_set_pos(row, PAD, index * ROW_H);
-    lv_obj_set_style_radius(row, 4, LV_PART_MAIN);
+    lv_obj_set_style_radius(row, _sc.radiusRow, LV_PART_MAIN);
     lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_left(row, 6, LV_PART_MAIN);
     lv_obj_set_style_pad_top(row, 2, LV_PART_MAIN);
     lv_obj_set_style_pad_bottom(row, 2, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(row, focused ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(row, lv_color_hex(COL_ACCENT), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(row, (focused && _focusFill) ? LV_OPA_COVER : LV_OPA_TRANSP,
+                            LV_PART_MAIN);
+    lv_obj_set_style_bg_color(row, lv_color_hex(_sc.rowFocus), LV_PART_MAIN);
 
     lv_obj_t* lab = lv_label_create(row);
+    // Casio numbers list rows the way the launcher numbers its slots ("1:COMP"),
+    // so the row IS the hint and no "1-4 open" line is needed. numos: no prefix.
+    char nb[128];
+    if (_numbered) { std::snprintf(nb, sizeof(nb), "%d:%s", index + 1, text); text = nb; }
     lv_label_set_text(lab, text);
-    lv_obj_set_style_text_font(lab, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lab, lv_color_hex(focused ? 0xFFFFFF : COL_TEXT), LV_PART_MAIN);
+    lv_obj_set_style_text_font(lab, ui::fontUi(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(lab, lv_color_hex(focused ? _sc.textOnFocus : _sc.text),
+                                LV_PART_MAIN);
+    // Ellipsise instead of hard-clipping at the row edge: the Casio LCD face is
+    // wider than Montserrat, so Settings values that fit under numos do not fit
+    // under casio. LONG_DOT is a no-op while the text fits, so the numos pixels
+    // are unchanged.
+    lv_label_set_long_mode(lab, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(lab, SCREEN_W - 2 * PAD - 12);
     lv_obj_align(lab, LV_ALIGN_LEFT_MID, 0, 0);
 
     _rows.push_back(row);
@@ -220,11 +360,21 @@ lv_obj_t* AiApp::addRow(const char* text, int index, bool focused) {
 
 void AiApp::applyFocus(int index, int count) {
     for (int i = 0; i < static_cast<int>(_rows.size()); ++i) {
-        const bool f = (i == index);
-        lv_obj_set_style_bg_opa(_rows[static_cast<size_t>(i)],
-                               (f && i < count) ? LV_OPA_COVER : LV_OPA_TRANSP,
-                               LV_PART_MAIN);
+        lv_obj_t* row = _rows[static_cast<size_t>(i)];
+        const bool f = (i == index) && i < count;
+
+        // Focus is a filled card only when the interaction profile says so
+        // (numos); casio shows it by ink alone — never a rectangle (SPEC-stageC C2).
+        lv_obj_set_style_bg_opa(row, (f && _focusFill) ? LV_OPA_COVER : LV_OPA_TRANSP,
+                                LV_PART_MAIN);
+
+        lv_obj_t* lab = lv_obj_get_child(row, 0);
+        if (lab) {
+            lv_obj_set_style_text_color(lab, lv_color_hex(f ? _sc.textOnFocus : _sc.text),
+                                        LV_PART_MAIN);
+        }
     }
+    scrollListIntoView();
 }
 
 int AiApp::currentListSize() const {
@@ -247,18 +397,19 @@ void AiApp::showMenu() {
     _focus = 0;
     buildChrome();
     setTitle("AI");
+    beginList();
     for (int i = 0; i < kMenuCount; ++i) addRow(kMenuItems[i], i, i == 0);
 
     // A failed run lands back here, so the reason has to be visible AND logged:
     // a silent fallback to the menu is exactly how a broken save path hides.
     if (_status.empty()) _status = "transport: " + _cfg.transport;
-    lv_obj_t* foot = lv_label_create(_content);
+    lv_obj_t* foot = lv_label_create(_list ? _list : _content);
     lv_label_set_long_mode(foot, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(foot, SCREEN_W - 2 * PAD);
     lv_label_set_text(foot, _status.c_str());
-    lv_obj_set_style_text_font(foot, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_obj_set_style_text_color(foot, lv_color_hex(COL_DIM), LV_PART_MAIN);
-    lv_obj_set_pos(foot, PAD, kMenuCount * ROW_H + 6);
+    lv_obj_set_style_text_font(foot, ui::fontUiSmall(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(foot, lv_color_hex(_sc.textDim), LV_PART_MAIN);
+    lv_obj_set_pos(foot, PAD, _softkeys ? (_contentH - 16) : (kMenuCount * ROW_H + 6));
     std::printf("[AI] menu status: %s\n", _status.c_str());
 }
 
@@ -269,14 +420,19 @@ void AiApp::showAsk() {
 
     if (_question.empty()) _question = kAskSample;
 
+    // The Ask box grows to the content box on a profile that reserves a softkey
+    // band; the numos geometry (96 / hint at 110) is untouched.
+    const int boxH  = _softkeys ? (_contentH - 26) : 96;
+    const int hintY = _softkeys ? (_contentH - 15) : 110;
+
     lv_obj_t* box = lv_obj_create(_content);
     lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(box, SCREEN_W - 2 * PAD, 96);
+    lv_obj_set_size(box, SCREEN_W - 2 * PAD, boxH);
     lv_obj_set_pos(box, PAD, PAD);
-    lv_obj_set_style_radius(box, 6, LV_PART_MAIN);
-    lv_obj_set_style_border_width(box, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(box, lv_color_hex(COL_ACCENT), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(box, lv_color_hex(0x101418), LV_PART_MAIN);
+    lv_obj_set_style_radius(box, _sc.radiusPane, LV_PART_MAIN);
+    lv_obj_set_style_border_width(box, _sc.borderWidth, LV_PART_MAIN);
+    lv_obj_set_style_border_color(box, lv_color_hex(_sc.accent), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(box, lv_color_hex(_sc.pane), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(box, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_pad_all(box, 6, LV_PART_MAIN);
 
@@ -284,14 +440,14 @@ void AiApp::showAsk() {
     lv_label_set_long_mode(lab, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(lab, SCREEN_W - 4 * PAD);
     lv_label_set_text(lab, _question.c_str());
-    lv_obj_set_style_text_font(lab, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lab, lv_color_hex(COL_TEXT), LV_PART_MAIN);
+    lv_obj_set_style_text_font(lab, ui::fontUi(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(lab, lv_color_hex(_sc.text), LV_PART_MAIN);
 
     lv_obj_t* hint = lv_label_create(_content);
     lv_label_set_text(hint, "ENTER send   DEL rub out   AC back");
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_obj_set_style_text_color(hint, lv_color_hex(COL_DIM), LV_PART_MAIN);
-    lv_obj_set_pos(hint, PAD, 110);
+    lv_obj_set_style_text_font(hint, ui::fontUiSmall(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(hint, lv_color_hex(_sc.textDim), LV_PART_MAIN);
+    lv_obj_set_pos(hint, PAD, hintY);
 }
 
 void AiApp::showCapture() {
@@ -304,11 +460,12 @@ void AiApp::showCapture() {
     if (_files.empty()) {
         lv_obj_t* lab = lv_label_create(_content);
         lv_label_set_text(lab, "No images in the prompts folder.");
-        lv_obj_set_style_text_color(lab, lv_color_hex(COL_DIM), LV_PART_MAIN);
-        lv_obj_set_style_text_font(lab, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lab, lv_color_hex(_sc.textDim), LV_PART_MAIN);
+        lv_obj_set_style_text_font(lab, ui::fontUi(), LV_PART_MAIN);
         lv_obj_set_pos(lab, PAD, PAD);
         return;
     }
+    beginList();
     for (int i = 0; i < static_cast<int>(_files.size()); ++i)
         addRow(_files[static_cast<size_t>(i)].c_str(), i, i == 0);
 }
@@ -322,9 +479,9 @@ void AiApp::showStreaming() {
     lv_label_set_long_mode(_live, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(_live, SCREEN_W - 2 * PAD);
     lv_obj_set_pos(_live, PAD, PAD);
-    lv_obj_set_style_text_font(_live, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_live, lv_color_hex(COL_TEXT), LV_PART_MAIN);
-    lv_label_set_text(_live, "…");
+    lv_obj_set_style_text_font(_live, ui::fontUi(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_live, lv_color_hex(_sc.text), LV_PART_MAIN);
+    lv_label_set_text(_live, "\u2026");
 }
 
 void AiApp::showResult() {
@@ -351,11 +508,12 @@ void AiApp::showRecent() {
     if (_results.empty()) {
         lv_obj_t* lab = lv_label_create(_content);
         lv_label_set_text(lab, "Nothing saved yet.");
-        lv_obj_set_style_text_color(lab, lv_color_hex(COL_DIM), LV_PART_MAIN);
-        lv_obj_set_style_text_font(lab, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lab, lv_color_hex(_sc.textDim), LV_PART_MAIN);
+        lv_obj_set_style_text_font(lab, ui::fontUi(), LV_PART_MAIN);
         lv_obj_set_pos(lab, PAD, PAD);
         return;
     }
+    beginList();
     for (int i = 0; i < static_cast<int>(_results.size()); ++i)
         addRow(_results[static_cast<size_t>(i)].c_str(), i, i == 0);
 }
@@ -369,8 +527,8 @@ void AiApp::showSettings() {
     buildChrome();
     // The row itself shows the new id when a pick lands, so the only thing worth
     // a second line is a FAILED write — and there is no room for a second line:
-    // seven rows already run to the bottom of CONTENT_H (176 px). So the flag goes
-    // in the title, which is the one line guaranteed to be on screen.
+    // the row list is now scrollable, but the title is the one line guaranteed
+    // to be on screen, so the flag goes there.
     setTitle(_saveFailed ? "AI  Settings  ! not saved" : "AI  Settings");
 
     const std::string rows[] = {
@@ -385,16 +543,17 @@ void AiApp::showSettings() {
     static_assert(sizeof(rows) / sizeof(rows[0]) == static_cast<size_t>(kSettingsRows),
                   "Settings row count drifted from kSettingsRows");
 
+    beginList();
     for (int i = 0; i < kSettingsRows; ++i)
         addRow(rows[i].c_str(), i, i == _focus);
+    scrollListIntoView();
 }
 
 /**
- * The model picker: a scrolling list, model name on the left, the company's mark
- * on the right. This is the one screen in the app that scrolls — _content is
- * deliberately clipped and non-scrollable, so the list gets its own container and
- * the rows keep the absolute index*ROW_H placement every other list uses. The
- * container is just a viewport that lets a tall list move under it.
+ * The model picker: model name on the left, the company's mark on the right.
+ * The app's only list long enough to scroll on a numos screen (the content
+ * viewport is deliberately clipped, so the list gets its own container and the
+ * rows keep the absolute index*ROW_H placement every other list uses).
  */
 void AiApp::showModels() {
     _view = Screen::Models;
@@ -402,15 +561,8 @@ void AiApp::showModels() {
     setTitle(_saveFailed ? "AI  Model  ! not saved" : "AI  Model");
 
     ensureModelIconDscs();
-
-    _list = lv_obj_create(_content);
-    lv_obj_set_size(_list, SCREEN_W, CONTENT_H);
-    lv_obj_set_pos(_list, 0, 0);
-    lv_obj_set_style_bg_opa(_list, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_list, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_list, 0, LV_PART_MAIN);
-    lv_obj_set_scroll_dir(_list, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(_list, LV_SCROLLBAR_MODE_AUTO);
+    beginList();
+    if (!_list) return;
 
     const int cur = ai::findModelById(_cfg.model.c_str());
     if (cur < 0) {
@@ -423,13 +575,18 @@ void AiApp::showModels() {
 
     for (int i = 0; i < ai::kModelCount; ++i) addModelRow(i, i == _focus);
 
-    lv_obj_t* hint = lv_label_create(_list);
-    lv_label_set_text(hint, "UP/DOWN move   ENTER pick   AC back");
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_obj_set_style_text_color(hint, lv_color_hex(COL_DIM), LV_PART_MAIN);
-    lv_obj_set_pos(hint, PAD, ai::kModelCount * ROW_H + 6);
+    // No in-list hint: it duplicates the softkey band, extends the scroll content
+    // past the last model, and was clipping against the band. The profile that
+    // shows no band (numos) still gets its hint line.
+    if (!_softkeys) {
+        lv_obj_t* hint = lv_label_create(_list);
+        lv_label_set_text(hint, "UP/DOWN move   ENTER pick   AC back");
+        lv_obj_set_style_text_font(hint, ui::fontUiSmall(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(hint, lv_color_hex(_sc.textDim), LV_PART_MAIN);
+        lv_obj_set_pos(hint, PAD, ai::kModelCount * ROW_H + 6);
+    }
 
-    scrollModelIntoView();
+    scrollListIntoView();
 }
 
 lv_obj_t* AiApp::addModelRow(int index, bool focused) {
@@ -440,23 +597,25 @@ lv_obj_t* AiApp::addModelRow(int index, bool focused) {
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(row, SCREEN_W - 2 * PAD, ROW_H - 2);
     lv_obj_set_pos(row, PAD, index * ROW_H);
-    lv_obj_set_style_radius(row, 4, LV_PART_MAIN);
+    lv_obj_set_style_radius(row, _sc.radiusRow, LV_PART_MAIN);
     lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_left(row, 6, LV_PART_MAIN);
     lv_obj_set_style_pad_right(row, 4, LV_PART_MAIN);
     lv_obj_set_style_pad_top(row, 2, LV_PART_MAIN);
     lv_obj_set_style_pad_bottom(row, 2, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(row, focused ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(row, lv_color_hex(COL_ACCENT), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(row, (focused && _focusFill) ? LV_OPA_COVER : LV_OPA_TRANSP,
+                            LV_PART_MAIN);
+    lv_obj_set_style_bg_color(row, lv_color_hex(_sc.rowFocus), LV_PART_MAIN);
 
     // Name on the left. LONG_DOT rather than wrap: a too-long label must not eat a
     // second line and break the fixed ROW_H grid.
     lv_obj_t* lab = lv_label_create(row);
     lv_label_set_long_mode(lab, LV_LABEL_LONG_DOT);
     lv_obj_set_width(lab, SCREEN_W - 2 * PAD - 10 - ai::icons::kIconW - 6);
-    lv_label_set_text(lab, m.label);
-    lv_obj_set_style_text_font(lab, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lab, lv_color_hex(focused ? 0xFFFFFF : COL_TEXT), LV_PART_MAIN);
+    lv_label_set_text(lab, _numbered ? numbered(index + 1, m.label).c_str() : m.label);
+    lv_obj_set_style_text_font(lab, ui::fontUi(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(lab, lv_color_hex(focused ? _sc.textOnFocus : _sc.text),
+                                LV_PART_MAIN);
     lv_obj_align(lab, LV_ALIGN_LEFT_MID, 0, 0);
 
     // Company mark on the right.
@@ -466,12 +625,6 @@ lv_obj_t* AiApp::addModelRow(int index, bool focused) {
 
     _rows.push_back(row);
     return row;
-}
-
-void AiApp::scrollModelIntoView() {
-    if (!_list) return;
-    if (_focus < 0 || _focus >= static_cast<int>(_rows.size())) return;
-    lv_obj_scroll_to_view(_rows[static_cast<size_t>(_focus)], LV_ANIM_OFF);
 }
 
 void AiApp::selectModel(int index) {
@@ -494,6 +647,44 @@ void AiApp::selectModel(int index) {
     _status = "model: " + _cfg.model;
     std::printf("[AI] model set to %s\n", _cfg.model.c_str());
     showSettings();
+}
+
+/**
+ * What ENTER does on the focused row — shared by ENTER and the casio digit
+ * shortcut so the two can never drift apart.
+ */
+void AiApp::activateFocused() {
+    switch (_view) {
+        case Screen::Menu:
+            switch (_focus) {
+                case 0: showAsk(); return;
+                case 1: showCapture(); return;
+                case 2: showRecent(); return;
+                default: showSettings(); return;
+            }
+        case Screen::Settings:
+            if (_focus == 0) showModels();       // only "model" is live
+            return;
+        case Screen::Models:
+            selectModel(_focus);
+            return;
+        case Screen::Ask:
+            startRun(std::string());
+            return;
+        case Screen::Capture:
+            if (_focus < static_cast<int>(_files.size()))
+                startRun(_files[static_cast<size_t>(_focus)]);
+            return;
+        case Screen::Recent:
+            if (_focus < static_cast<int>(_results.size())) {
+                _resultPath = _cfg.resultsDir + "/" + _results[static_cast<size_t>(_focus)];
+                openAnswer(_resultPath);
+                showResult();
+            }
+            return;
+        default:
+            return;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -599,18 +790,42 @@ void AiApp::handleKey(const KeyEvent& ev) {
 
     const int count = currentListSize();
 
+    // Casio: a digit selects AND activates that row directly — no cursor walk,
+    // no confirmation (SPEC-stageC C2, "digit = launch"). List screens only: on
+    // Ask the digits are the question buffer, and this must not eat them.
+    if (_softkeys) {
+        switch (_view) {
+            case Screen::Menu:
+            case Screen::Capture:
+            case Screen::Recent:
+            case Screen::Settings:
+            case Screen::Models: {
+                const int d = keyCodeDigitValue(ev.code);
+                if (d >= 1 && d <= count && d <= 9) {
+                    _focus = d - 1;
+                    applyFocus(_focus, count);
+                    activateFocused();
+                    return;
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
     switch (ev.code) {
         case KeyCode::UP:
             if (_view == Screen::Menu || _view == Screen::Capture || _view == Screen::Recent ||
                 _view == Screen::Settings || _view == Screen::Models) {
-                if (_focus > 0) { --_focus; applyFocus(_focus, count); scrollModelIntoView(); }
+                if (_focus > 0) { --_focus; applyFocus(_focus, count); }
             }
             return;
 
         case KeyCode::DOWN:
             if (_view == Screen::Menu || _view == Screen::Capture || _view == Screen::Recent ||
                 _view == Screen::Settings || _view == Screen::Models) {
-                if (_focus + 1 < count) { ++_focus; applyFocus(_focus, count); scrollModelIntoView(); }
+                if (_focus + 1 < count) { ++_focus; applyFocus(_focus, count); }
             }
             return;
 
@@ -639,37 +854,8 @@ void AiApp::handleKey(const KeyEvent& ev) {
             return;
 
         case KeyCode::ENTER:
-            switch (_view) {
-                case Screen::Menu:
-                    switch (_focus) {
-                        case 0: showAsk(); return;
-                        case 1: showCapture(); return;
-                        case 2: showRecent(); return;
-                        default: showSettings(); return;
-                    }
-                case Screen::Settings:
-                    if (_focus == 0) showModels();       // only "model" is live
-                    return;
-                case Screen::Models:
-                    selectModel(_focus);
-                    return;
-                case Screen::Ask:
-                    startRun(std::string());
-                    return;
-                case Screen::Capture:
-                    if (_focus < static_cast<int>(_files.size()))
-                        startRun(_files[static_cast<size_t>(_focus)]);
-                    return;
-                case Screen::Recent:
-                    if (_focus < static_cast<int>(_results.size())) {
-                        _resultPath = _cfg.resultsDir + "/" + _results[static_cast<size_t>(_focus)];
-                        openAnswer(_resultPath);
-                        showResult();
-                    }
-                    return;
-                default:
-                    return;
-            }
+            activateFocused();
+            return;
 
         default:
             if (_view == Screen::Ask) {

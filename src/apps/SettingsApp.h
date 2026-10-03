@@ -71,10 +71,13 @@ public:
 #endif
 
 private:
-    // Brightness keeps its slot on the production target; the Wi-Fi row is
-    // appended last on every target so existing row indexes never shift.
+    // Brightness keeps its slot on the production target; the Theme row slots
+    // in after it and the Wi-Fi row is appended last on every target so
+    // existing row indexes before it never shift.
+    static constexpr int THEME_ROW =
+        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 5 : 4;
     static constexpr int NUM_ITEMS =
-        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 6 : 5;
+        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 7 : 6;
     static constexpr int WIFI_ROW = NUM_ITEMS - 1;
     static constexpr int SCREEN_W  = 320;
     static constexpr int SCREEN_H  = SCREEN_HEIGHT;  // canvas (Config.h)

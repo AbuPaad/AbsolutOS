@@ -45,6 +45,7 @@
 #include <lvgl.h>
 #include "../math/MathAST.h"
 #include "../math/CursorController.h"
+#include "Theme.h"   // MathFontSet (doc 13 Phase 0/2)
 
 namespace vpam {
 
@@ -81,6 +82,16 @@ public:
     void setMathStyle(MathStyle style);
     void setAutoHeightEnabled(bool enabled);
     void setTraceLabel(const char* label);
+
+    /**
+     * Font-change awareness (doc 13, Phase 2): reassign the three math font
+     * pointers from the theme's MathFontSet, recompute all FontMetrics,
+     * re-probe U+239C for extensible-delimiter assembly support, re-run
+     * `_root->calculateLayout(_fmNormal)` and invalidate the widget.
+     * The constructor default stays the numos (STIX) set — call this only
+     * after a theme swap, never to restyle a canvas mid-frame from a key handler.
+     */
+    void setFontSet(const ui::MathFontSet& fonts);
 
     /**
      * Fuerza el redibujado completo del widget.

@@ -69,11 +69,18 @@ constexpr uint16_t kPort          = 80;
 constexpr size_t   kTaskStack     = 8192;
 constexpr UBaseType_t kTaskPrio   = 1;
 constexpr BaseType_t  kTaskCore   = 0;      ///< the Wi-Fi stack's core
-constexpr size_t   kMinInternalRam = 40u * 1024u;
 constexpr size_t   kMaxTextBytes  = 192u * 1024u;   ///< one file, in the editor
 constexpr size_t   kMaxUploadBytes = 8u * 1024u * 1024u;
 constexpr size_t   kMaxPathChars  = 128;
 constexpr uint32_t kQuitWaitMs    = 3000;
+
+// The AP + web server need internal (DMA-capable) DRAM, but the Wi-Fi driver
+// allocates it in several smaller blocks, so the meaningful guard is TOTAL free
+// internal heap — not the single largest contiguous free block. The 40 KB
+// largest-block value copied from DeviceTransport (where mbedTLS genuinely needs
+// one big contiguous internal buffer) was far too strict here and refused the
+// portal outright on a board whose Wi-Fi path was fine.
+constexpr size_t   kMinInternalFree = 24u * 1024u;
 
 // ── state ───────────────────────────────────────────────────────────────────
 WebServer  g_server(kPort);
@@ -984,14 +991,31 @@ bool Portal::start() {
     if (g_running) return true;
     g_lastError.clear();
 
-    if (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) < kMinInternalRam) {
-        g_lastError = "low internal RAM for the AP + web server";
+    // Total free internal DRAM, plus the largest single block for the message —
+    // the Wi-Fi driver needs several smaller internal allocations, so the total
+    // is what decides, not one contiguous run.
+    const size_t internalFree =
+        heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    const size_t internalLargest =
+        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+    if (internalFree < kMinInternalFree) {
+        char why[96];
+        std::snprintf(why, sizeof(why),
+                      "low internal RAM for the AP (free %uK, largest %uK)",
+                      static_cast<unsigned>(internalFree / 1024u),
+                      static_cast<unsigned>(internalLargest / 1024u));
+        g_lastError = why;
         return false;
     }
 
     makeCredentials();
     if (!net::Wifi::startProvisioningAp(g_apSsid, g_apPass)) {
-        g_lastError = "could not raise the access point";
+        char why[96];
+        std::snprintf(why, sizeof(why),
+                      "could not raise the AP (free %uK, largest %uK)",
+                      static_cast<unsigned>(internalFree / 1024u),
+                      static_cast<unsigned>(internalLargest / 1024u));
+        g_lastError = why;
         return false;
     }
 

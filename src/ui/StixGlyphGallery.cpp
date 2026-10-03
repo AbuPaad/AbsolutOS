@@ -14,6 +14,7 @@
  */
 
 #include "StixGlyphGallery.h"
+#include "ThemeFonts.h"
 
 // SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
 #include "../Config.h"
@@ -134,7 +135,7 @@ void showStixGlyphGallery(uint32_t holdMs) {
 
     lv_obj_t* title = lv_label_create(panel);
     lv_label_set_text(title, "STIX TWO MATH - GLYPH GALLERY");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_color(title, lv_color_hex(0x111111), LV_PART_MAIN);
     lv_obj_set_pos(title, 8, 8);
 
@@ -160,7 +161,7 @@ void showStixGlyphGallery(uint32_t holdMs) {
     lv_obj_t* legend = lv_label_create(panel);
     lv_label_set_text(legend,
                       "SYMB_INT  SYMB_SUM  SYMB_SQRT  SYMB_REAL  SYMB_COMPLEX");
-    lv_obj_set_style_text_font(legend, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(legend, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_color(legend, lv_color_hex(0x3A3A3A), LV_PART_MAIN);
     lv_obj_set_style_text_letter_space(legend, 1, LV_PART_MAIN);
     lv_obj_set_pos(legend, 8, 218);

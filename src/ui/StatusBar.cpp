@@ -26,6 +26,7 @@
  */
 
 #include "StatusBar.h"
+#include "ThemeFonts.h"
 #include "../input/KeyboardManager.h"
 #include "../math/MathEvaluator.h"   // g_angleMode, AngleMode
 
@@ -70,28 +71,28 @@ void StatusBar::create(lv_obj_t* parent) {
     // ── Reloj (izquierda) ─────────────────────────────────────────────
     _clockLabel = lv_label_create(_bar);
     lv_label_set_text(_clockLabel, "00:00");
-    lv_obj_set_style_text_font(_clockLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_clockLabel, ui::fontUiSmall(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_clockLabel, lv_color_hex(COL_TEXT), LV_PART_MAIN);
     lv_obj_align(_clockLabel, LV_ALIGN_LEFT_MID, 6, 0);
 
     // ── Título de la app (centrado) ───────────────────────────────────
     _titleLabel = lv_label_create(_bar);
     lv_label_set_text(_titleLabel, "");
-    lv_obj_set_style_text_font(_titleLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_titleLabel, ui::fontUiSmall(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_titleLabel, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(_titleLabel, LV_ALIGN_CENTER, 0, 0);
 
     // ── Indicador de modificador (a la derecha del título) ────────────
     _modLabel = lv_label_create(_bar);
     lv_label_set_text(_modLabel, "");
-    lv_obj_set_style_text_font(_modLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_modLabel, ui::fontUiSmall(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_modLabel, lv_color_hex(0xFFD700), LV_PART_MAIN);  // Amarillo dorado
     lv_obj_align(_modLabel, LV_ALIGN_RIGHT_MID, -80, 0);
 
     // ── Modo angular (antes de batería) ───────────────────────────────
     _angleLabel = lv_label_create(_bar);
     lv_label_set_text(_angleLabel, "RAD");
-    lv_obj_set_style_text_font(_angleLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_angleLabel, ui::fontUiSmall(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_angleLabel, lv_color_hex(COL_TEXT), LV_PART_MAIN);
     lv_obj_align(_angleLabel, LV_ALIGN_RIGHT_MID, -38, 0);
 

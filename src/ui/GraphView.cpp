@@ -81,12 +81,28 @@ float GraphView::screenToWorldY(int sy) const {
 // Bresenham line rasterizer (with clipping)
 // ═════════════════════════════════════════════════════════════════════════
 
-void GraphView::fastDrawLine(int x0, int y0, int x1, int y1, uint16_t color) {
+void GraphView::fastDrawLine(int x0, int y0, int x1, int y1, uint16_t color, int w) {
     // Trivial rejection: both points outside same edge
     if ((x0 < 0 && x1 < 0) || (x0 >= _bufW && x1 >= _bufW) ||
         (y0 < 0 && y1 < 0) || (y0 >= _bufH && y1 >= _bufH)) {
         return;
     }
+
+    if (w < 1) w = 1;
+    const int off = (w - 1) / 2;   // stamp straddles the path
+    // Stamp a w×w block (clipped). w == 1 is EXACTLY the old single-pixel write
+    // (bounds-checked), so the numos hairline path stays byte-identical.
+    auto put = [&](int x, int y) {
+        for (int dy = 0; dy < w; ++dy) {
+            const int py = y - off + dy;
+            if ((unsigned)py >= (unsigned)_bufH) continue;
+            uint16_t* row = _graphBuf + (size_t)py * (size_t)_bufW;
+            for (int dx = 0; dx < w; ++dx) {
+                const int px = x - off + dx;
+                if ((unsigned)px < (unsigned)_bufW) row[px] = color;
+            }
+        }
+    };
 
     int dx =  std::abs(x1 - x0);
     int dy = -std::abs(y1 - y0);
@@ -94,11 +110,12 @@ void GraphView::fastDrawLine(int x0, int y0, int x1, int y1, uint16_t color) {
     int sy = (y0 < y1) ? 1 : -1;
     int err = dx + dy;
 
-    // Fast path: both endpoints inside — skip per-pixel bounds check
+    // Fast path: both endpoints inside — the stamp still bounds-checks per pixel
+    // but the loop itself needs no per-step branch.
     if ((unsigned)x0 < (unsigned)_bufW && (unsigned)x1 < (unsigned)_bufW &&
         (unsigned)y0 < (unsigned)_bufH && (unsigned)y1 < (unsigned)_bufH) {
         for (;;) {
-            _graphBuf[y0 * _bufW + x0] = color;
+            put(x0, y0);
             if (x0 == x1 && y0 == y1) break;
             int e2 = err * 2;
             if (e2 >= dy) { err += dy; x0 += sx; }
@@ -107,8 +124,7 @@ void GraphView::fastDrawLine(int x0, int y0, int x1, int y1, uint16_t color) {
     } else {
         // Clipping path: check each pixel before writing
         for (;;) {
-            if ((unsigned)x0 < (unsigned)_bufW && (unsigned)y0 < (unsigned)_bufH)
-                _graphBuf[y0 * _bufW + x0] = color;
+            put(x0, y0);
             if (x0 == x1 && y0 == y1) break;
             int e2 = err * 2;
             if (e2 >= dy) { err += dy; x0 += sx; }
@@ -216,11 +232,11 @@ void GraphView::drawFunctionSegment(float wx0, float wy0, float wx1, float wy1, 
     const float fy1 = (_yMax > _yMin) ? (1.0f - (wy1 - _yMin) / (_yMax - _yMin)) * (float)_bufH : 0.0f;
     const uint16_t color565 = utils::rgb888to565(rgbColor);
     fastDrawLine((int)clampS(fx0), (int)clampS(fy0),
-                 (int)clampS(fx1), (int)clampS(fy1), color565);
+                 (int)clampS(fx1), (int)clampS(fy1), color565, _curveW);
 }
 
 void GraphView::drawSegmentPx(int x0, int y0, int x1, int y1, uint32_t rgbColor) {
-    fastDrawLine(x0, y0, x1, y1, utils::rgb888to565(rgbColor));
+    fastDrawLine(x0, y0, x1, y1, utils::rgb888to565(rgbColor), _curveW);
 }
 
 void GraphView::plotPixel(int x, int y, uint32_t rgbColor) {

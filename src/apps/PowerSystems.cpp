@@ -23,6 +23,7 @@
  */
 
 #include "PowerSystems.h"
+#include "../ui/ThemeFonts.h"
 #include <cstdio>
 
 // ── Drawing helper ──────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ void Battery::drawBattery(lv_layer_t* layer, int cx, int cy, const char* label) 
     lv_draw_label_dsc_t labdsc;
     lv_draw_label_dsc_init(&labdsc);
     labdsc.color = lv_color_hex(0xFFD700);
-    labdsc.font  = &lv_font_unscii_8;
+    labdsc.font  = ui::fontMono();
     labdsc.text  = label;
 
     lv_area_t labArea;

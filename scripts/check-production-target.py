@@ -71,15 +71,13 @@ def validate_partitions(path: Path) -> None:
 
     # NumOS ships no OTA workflow, so the second 6,400 KiB slot in the
     # framework's default_16MB.csv was dead flash. boards/numos-16mb.csv drops
-    # app1 and gives the space to LittleFS (3,375 KiB -> 9,875 KiB), which
-    # matters because the SD card is DOA and every user-writable byte — GB ROMs,
-    # AI prompts and answers — lives in internal flash.
+    # app1 and otadata and gives the space to LittleFS, which matters because
+    # the SD card is DOA and every user-writable byte — GB ROMs, AI prompts and
+    # answers — lives in internal flash.
     expected = {
-        "nvs": (0x009000, 0x005000),
-        "otadata": (0x00E000, 0x002000),
-        "app0": (0x010000, 0x600000),
-        "spiffs": (0x610000, 0x9E0000),
-        "coredump": (0xFF0000, 0x010000),
+        "nvs": (0x009000, 0x007000),
+        "app0": (0x010000, 0x800000),
+        "spiffs": (0x810000, 0x7F0000),
     }
     require({label for label, _, _ in regions} == set(expected),
             "unexpected N16R8 partition set")
@@ -125,7 +123,7 @@ def main() -> int:
             "pinned Arduino QIO boot/runtime contract changed")
     require(build["f_flash"] == "80000000L", "flash frequency must be 80 MHz")
     require(upload["flash_size"] == "16MB", "manifest must report 16 MB flash")
-    require(upload["maximum_size"] == 0x600000,
+    require(upload["maximum_size"] == 0x800000,
             "maximum firmware size must equal app0 size")
     require(hardware["module"] == "ESP32-S3-WROOM-1U-N16R8",
             "exact production module identity missing")

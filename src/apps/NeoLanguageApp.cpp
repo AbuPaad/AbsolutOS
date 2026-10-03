@@ -32,6 +32,7 @@
  */
 
 #include "NeoLanguageApp.h"
+#include "../ui/ThemeFonts.h"
 #include <cstring>
 #include <cstdio>
 #include <cctype>
@@ -206,7 +207,7 @@ void NeoLanguageApp::createEditorPanel() {
     lv_textarea_set_placeholder_text(_editor, "# NeoLang code here...\n# F5 = run  MODE = exit");
     lv_obj_set_style_bg_color(_editor, lv_color_hex(COL_EDITOR_BG), LV_PART_MAIN);
     lv_obj_set_style_text_color(_editor, lv_color_hex(COL_EDITOR_TXT), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_editor, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_editor, ui::fontMono(), LV_PART_MAIN);
     lv_obj_set_style_border_width(_editor, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(_editor, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_editor, 4, LV_PART_MAIN);
@@ -224,7 +225,7 @@ void NeoLanguageApp::createConsolePanel() {
     lv_textarea_set_text(_console, "NeoLang v0.1 ready.\nF5 to compile.\n");
     lv_obj_set_style_bg_color(_console, lv_color_hex(COL_CONSOLE_BG), LV_PART_MAIN);
     lv_obj_set_style_text_color(_console, lv_color_hex(COL_CONSOLE_TXT), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_console, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_console, ui::fontMono(), LV_PART_MAIN);
     lv_obj_set_style_border_width(_console, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(_console, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_console, 4, LV_PART_MAIN);
@@ -797,7 +798,7 @@ void NeoLanguageApp::showPlot(std::unique_ptr<NeoCompiledPlot> plot,
     lv_obj_set_size(_plotHintLabel, PLOT_W, PLOT_HINT_H);
     lv_label_set_text(_plotHintLabel, "Press any key to return");
     lv_obj_set_style_text_color(_plotHintLabel, lv_color_hex(COL_TAB_TXT_I), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_plotHintLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_plotHintLabel, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_align(_plotHintLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     // ── Render the plot ──────────────────────────────────────────

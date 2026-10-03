@@ -84,6 +84,31 @@ When generating or modifying code for this project, AI agents MUST follow these 
 - The PC native emulator environment (`[env:emulator_pc]`) uses explicit source filtering (`build_src_filter`).
 - **Important**: When creating new application files (`src/apps/*.cpp`) or math components (`src/math/*.cpp`), the corresponding path **MUST** be added to `build_src_filter` in `platformio.ini` if it is intended to run on the emulator. Firmware environments compile via `+<*>`.
 
+### 5.6 Generated Sources, Generators & Drift Gates
+
+- **Generated headers live in `src/ui/generated/` and MUST NOT be hand-edited.** Two exist today:
+  `CasioSlots.generated.h` (the Casio launcher's positional slot order + ≤5-char labels, from the
+  editable table in the theme-switch plan's §1, via `scripts/gen_casio_slots.py`) and
+  `CasioArrowMasks.generated.h` (the page-arrow / history-hint A8 masks, from
+  `assets/images/casio_page_arrow_right.png`, via `scripts/gen_casio_arrow_masks.py`).
+- **Both generators have a `--check` mode and it MUST PASS in any verification you claim.** `--check`
+  fails when the committed header has drifted from its source, which is exactly the state you must never
+  leave behind: change the source (the plan table, the PNG) and regenerate in the same step.
+- **Generators are deliberately NOT wired into the PlatformIO build.** A generator that runs on every
+  build silently hides drift; run them explicitly. They emit only headers, so no `build_src_filter` entry is
+  needed — the rule in §5.5 applies to new `.cpp`/`.c` files.
+- **Theme rule — no literals, for COLOURS and FONTS alike.** App code in `src/apps/**` MUST NOT contain
+  `lv_color_hex(0x…)`/`COL_*` literals or literal font faces (`&lv_font_montserrat_*`, `&lv_font_unscii_*`,
+  `LV_FONT_DEFAULT`). Colours come from the tokens in `src/ui/Theme.h`; fonts come from the accessors in
+  `src/ui/ThemeFonts.h` (`ui::fontUi()`, `fontUiSmall()`, `fontUiXSmall()`, `fontDisplay()`, `fontMono()`).
+  If a screen needs a value the contract cannot express, extend the contract — do not inline the literal.
+- **UI change acceptance gate (the numos look must stay byte-identical).** `md5sum out/before/launcher.ppm`
+  must equal the hash recorded in `out/before/BASELINE_MD5.txt`, and pixel diffs of the other numos captures
+  against their pre-change copies must be `AE=0` (`magick compare -metric AE old.ppm new.ppm null:`).
+  Verify with the native emulator, which is the fastest loop: `pio run -e emulator_pc`, then the binary at
+  `./C:/.piobuild/numOS/emulator_pc/program` with `--headless --deterministic --script <s>.numos
+  --fs-root tests/emulator/fs --frames 1400 --quiet` (exit 0 ok, 4 = assertion failure).
+
 ---
 
 ## 6. Notes, Devlogs & Change Records

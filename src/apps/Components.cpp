@@ -28,6 +28,7 @@
  */
 
 #include "CircuitComponent.h"
+#include "../ui/ThemeFonts.h"
 #include <cmath>
 #include <cstdio>
 
@@ -1227,7 +1228,7 @@ void OpAmp::draw(lv_layer_t* layer, int offsetX, int offsetY) {
     lv_draw_label_dsc_t labdsc;
     lv_draw_label_dsc_init(&labdsc);
     labdsc.color = lv_color_hex(0xFFFFFF);
-    labdsc.font  = &lv_font_unscii_8;
+    labdsc.font  = ui::fontMono();
 
     labdsc.text = "+";
     lv_area_t labArea;

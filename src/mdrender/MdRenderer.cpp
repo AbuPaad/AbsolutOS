@@ -36,6 +36,14 @@
  */
 
 #include "mdrender/MdRenderer.h"
+#if defined(ARDUINO) || defined(NATIVE_SIM)
+#include "../ui/ThemeFonts.h"   // ui::fontUi() … — LVGL builds only
+#endif
+// The mathrenderer side of the wire. Its LaTeX/ASCII token tables + the no-alloc
+// normaliser (\alpha -> α, \int -> ∫, \leq -> ≤ …) live in a header-only,
+// LVGL-free header, so this TU still compiles unchanged on host, emulator and
+// device. See render() for where it is applied.
+#include "../ui/MathTextNormalization.h"
 
 #include <algorithm>
 #include <cctype>
@@ -118,11 +126,11 @@ static uint32_t decodeUtf8(const char* s, uint32_t n, uint32_t& cp) {
 // reference it. Fall back to the nearest available size.
 static const lv_font_t* defaultFontForSize(int size) {
     switch (size) {
-        case 10: return &lv_font_montserrat_10;
-        case 12: return &lv_font_montserrat_12;
-        case 20: return &lv_font_montserrat_20;
+        case 10: return ui::fontUiXSmall();
+        case 12: return ui::fontUiSmall();
+        case 20: return ui::fontDisplay();
         case 14:
-        default: return &lv_font_montserrat_14;
+        default: return ui::fontUi();
     }
 }
 
@@ -213,6 +221,23 @@ bool readAll(NoteSource& src, std::vector<uint8_t>& out) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Style resolution
 // ═══════════════════════════════════════════════════════════════════════════
+/**
+ * The math FACE. Previously `mathFont ?: bodyFont`; the wire now resolves the
+ * theme's math font set (STIX on numos / Casio Maths on casio) for
+ * Math/MathBlock runs, so `$…$` draws in a real math face with no app wiring —
+ * this is the "math-wiring pass" AiApp left open (its mathFont stays null).
+ * Host builds have no LVGL and no theme, so there the body face is the only
+ * option; the host metrics ignore the face pointer anyway.
+ */
+static const void* stylesMathFont(const MdStyles& s) {
+    if (s.mathFont) return s.mathFont;
+#if MDR_HAVE_LVGL
+    const lv_font_t* f = ui::ThemeManager::instance().current().mathFonts.primary;
+    if (f) return f;
+#endif
+    return s.bodyFont;
+}
+
 static const void* styleFont(const MdStyles& s, StyleId id) {
     switch (id) {
         case StyleId::Heading1:
@@ -220,7 +245,7 @@ static const void* styleFont(const MdStyles& s, StyleId id) {
         case StyleId::Heading3: return s.headingFont ? s.headingFont : s.bodyFont;
         case StyleId::Code:     return s.codeFont ? s.codeFont : s.bodyFont;
         case StyleId::Math:
-        case StyleId::MathBlock: return s.mathFont ? s.mathFont : s.bodyFont;
+        case StyleId::MathBlock: return stylesMathFont(s);
         default:                return s.bodyFont;
     }
 }
@@ -1026,7 +1051,11 @@ static void emitRun(LayoutCtx& lc, StyleId style, uint32_t off, uint32_t len,
 
 static void closeLine(LayoutCtx& lc) {
     Line& L = lc.out->lines[lc.lineIdx];
-    L.h = static_cast<int16_t>(lc.maxH);
+    // h is the line's PAGINATION advance, not its ink height: the layout moves on
+    // by maxH + lineGap (see the next line), so the page accountant must count the
+    // same distance. With h = maxH alone every page silently overfills by
+    // lineGap x lines and the last line lands off the bottom of the box.
+    L.h = static_cast<int16_t>(lc.maxH + lc.styles->lineGap);
     lc.y = L.y + lc.maxH + lc.styles->lineGap;
 }
 
@@ -1346,6 +1375,20 @@ bool MdRenderer::paginate(const MdStyles& styles) {
     page.lineCount = 0;
     page.height = 0;
 
+    // The page accountant must count the DISTANCE the layout actually moves, not
+    // the line's ink height. Two gaps live in that distance and neither is in
+    // Line::h: the per-line lineGap (closeLine) and the between-block paraGap
+    // (layout()). Missing them let every page overfill and pushed the last line
+    // off the bottom of the box — the "mdrender is clipping" symptom. Taking the
+    // delta to the next line captures both, whatever they are set to.
+    auto advance = [&lines](uint32_t idx) -> int {
+        if (idx + 1 < lines.size()) {
+            const int d = static_cast<int>(lines[idx + 1].y) - static_cast<int>(lines[idx].y);
+            if (d > 0) return d;
+        }
+        return lines[idx].h;
+    };
+
     uint32_t i = 0;
     while (i < lines.size()) {
         const Line& line = lines[i];
@@ -1355,7 +1398,7 @@ bool MdRenderer::paginate(const MdStyles& styles) {
             ++i;
             continue;
         }
-        if (page.lineCount > 0 && page.height + line.h > contentH) {
+        if (page.lineCount > 0 && page.height + advance(i) > contentH) {
             _pages.push_back(page);
             page = Page{};
             page.firstLine = i;
@@ -1364,9 +1407,9 @@ bool MdRenderer::paginate(const MdStyles& styles) {
             if (line.tableId >= 0 &&
                 line.tableId < static_cast<int32_t>(headerLineForTable.size()) &&
                 headerLineForTable[line.tableId] >= 0) {
-                const Line& hdr = lines[static_cast<uint32_t>(headerLineForTable[line.tableId])];
-                page.firstLine = static_cast<uint32_t>(headerLineForTable[line.tableId]);
-                page.height = hdr.h;
+                const uint32_t hdrIdx = static_cast<uint32_t>(headerLineForTable[line.tableId]);
+                page.firstLine = hdrIdx;
+                page.height = static_cast<uint16_t>(advance(hdrIdx));
                 page.lineCount = 1;
             }
         }
@@ -1378,7 +1421,7 @@ bool MdRenderer::paginate(const MdStyles& styles) {
         // clamped and flagged, and render() draws that last line dimmed. The app's
         // chrome owns the visible indicator, no text is invented, and the note's
         // own text is untouched — clipping is a display rule only.
-        if (page.height + line.h > contentH) {
+        if (page.height + advance(i) > contentH) {
             page.height    = static_cast<uint16_t>(contentH);
             page.truncated = true;
             page.lineCount++;
@@ -1386,7 +1429,7 @@ bool MdRenderer::paginate(const MdStyles& styles) {
             continue;
         }
 
-        page.height = static_cast<uint16_t>(page.height + line.h);
+        page.height = static_cast<uint16_t>(page.height + advance(i));
         page.lineCount++;
         ++i;
     }
@@ -1472,8 +1515,23 @@ void MdRenderer::render(int page, void* parent, const MdStyles& styles) {
 
             const StyleId effStyle = isClipped ? StyleId::Truncated : run.style;
 
+            // Math runs go through the mathrenderer's normaliser before drawing:
+            // its LaTeX/ASCII token tables turn \alpha, \int, \leq, <=' into real
+            // glyphs. Nothing else about the run changes — still one label in the
+            // theme math face (stylesMathFont). A run whose normalised form would
+            // overflow the buffer returns the raw text unchanged, so the worst
+            // case is the previous behaviour, never a truncated or invented glyph.
+            std::string shown = text;
+            if (run.style == StyleId::Math || run.style == StyleId::MathBlock) {
+                char nbuf[256];
+                const numos::mathsym::NormalizedMathText nm =
+                    numos::mathsym::normalizeMathTextNoAlloc(text.c_str(), nbuf, sizeof(nbuf));
+                if (nm.text && nm.status != numos::mathsym::NormalizeTextStatus::Unchanged)
+                    shown.assign(nm.text);
+            }
+
             lv_obj_t* label = lv_label_create(root);
-            lv_label_set_text(label, text.c_str());
+            lv_label_set_text(label, shown.c_str());
             lv_obj_set_style_text_font(label, asFont(styleFont(styles, effStyle),
                                                      styleSize(styles, effStyle)),
                                        LV_PART_MAIN);
@@ -1486,7 +1544,12 @@ void MdRenderer::render(int page, void* parent, const MdStyles& styles) {
                 lv_obj_set_style_bg_opa(label, LV_OPA_COVER, LV_PART_MAIN);
                 lv_obj_set_style_bg_color(label, lv_color_hex(styles.colorHighlight), LV_PART_MAIN);
             }
-            lv_obj_set_pos(label, run.x, static_cast<int>(line.y) - baseY);
+            // run.x is an ABSOLUTE x (layout seeds lc.curX = lc.baseX = marginX), and
+            // the page root is already placed at marginX — so it must be made
+            // relative here. Adding both clipped the right edge: a run laid out to
+            // the content limit (marginX + contentW) drew at 2*marginX + contentW,
+            // i.e. past the screen edge.
+            lv_obj_set_pos(label, run.x - styles.marginX, static_cast<int>(line.y) - baseY);
         }
     }
 }

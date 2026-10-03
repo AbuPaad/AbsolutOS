@@ -1,0 +1,41 @@
+# casio_launcher_paging.numos — Stage C4: casio MenuList page-turn with the
+# edge clamp. RIGHT pages forward (1→2→3), then stays at 3 (no wrap past the
+# last page); LEFT pages back (3→2→1), then stays at 1 (no wrap past the first).
+# Screenshots capture the three pages into out/casio/ for the operator's review.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/casio_launcher_paging.numos \
+#           --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse error · 3 screenshot error · 4 assertion failure.
+
+log "casio_launcher_paging: waiting for launcher"
+wait 200
+
+assert_app Menu
+
+# Toggle to casio (interaction becomes MenuList/PageTurn with wrap=false).
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+assert_app Menu
+
+assert_launcher_page 1
+screenshot out/casio/launcher_p1.ppm
+
+key right
+assert_launcher_page 2
+screenshot out/casio/launcher_p2.ppm
+key right
+assert_launcher_page 3
+screenshot out/casio/launcher_p3.ppm
+key right
+assert_launcher_page 3
+key left
+assert_launcher_page 2
+key left
+assert_launcher_page 1
+key left
+assert_launcher_page 1
+
+log "casio_launcher_paging: assertions passed"

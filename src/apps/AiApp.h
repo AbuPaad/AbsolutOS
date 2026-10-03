@@ -34,6 +34,7 @@
 #include <string>
 #include <vector>
 
+#include "../ui/Theme.h"
 #include "ai/AiClient.h"
 #include "input/KeyCodes.h"
 #include "mdrender/MdRenderer.h"
@@ -63,6 +64,22 @@ private:
     void clearContent();
     void setTitle(const char* fmt, ...);
 
+    // Theme-driven chrome (doc 02/07). `_sc` is the AI's resolved surface
+    // (kBuiltinThemes[numos].appSurfaces pins today's dark look; casio inherits
+    // its light tokens). Refreshed on every buildChrome(), so a theme swap while
+    // the app is open is picked up when SystemApp reloads it.
+    void readSurface();
+    /// A list screen needs its rows in a scrollable viewport or the last rows
+    /// are unreachable (the Settings screen used to lose two of them).
+    void beginList();
+    void scrollListIntoView();
+    /// Corner up/down arrow on a scrollable list (calc's history hint idiom).
+    void updateScrollChevron();
+    /// Casio's bottom softkey band. Not built when the interaction model has
+    /// softkeyRow == false, so the numos screens gain no pixels.
+    void buildSoftkey(const char* label);
+    const char* softkeyLabel() const;
+
     // Screens
     void showMenu();
     void showAsk();
@@ -83,19 +100,28 @@ private:
     lv_obj_t* addRow(const char* text, int index, bool focused);
     /// A model row: label left, company mark right. Indexes ai::kModels.
     lv_obj_t* addModelRow(int index, bool focused);
-    /// Keep the focused model row inside the viewport of the scrolling list.
-    void scrollModelIntoView();
     /// Persist the pick, then return to Settings.
     void selectModel(int index);
+    /// What ENTER does on the focused row — shared with the casio digit shortcut.
+    void activateFocused();
     void applyFocus(int index, int count);
     int  currentListSize() const;
 
     lv_obj_t* _screen  = nullptr;
     lv_obj_t* _title   = nullptr;
     lv_obj_t* _content = nullptr;
-    lv_obj_t* _list    = nullptr;      ///< the model picker's scrolling container
+    lv_obj_t* _list    = nullptr;      ///< scrolling list viewport (list screens)
     lv_obj_t* _live    = nullptr;      ///< streaming card text
+    lv_obj_t* _softkey = nullptr;      ///< casio bottom softkey band
+    lv_obj_t* _scrollArrow = nullptr;  ///< casio corner scroll hint (image mask)
     std::vector<lv_obj_t*> _rows;      ///< row widgets, restyled on focus change
+
+    ui::AppColours _sc{};              ///< resolved surface (see readSurface)
+    int            _contentH = mdrender::CONTENT_H;  ///< minus the softkey band
+    bool           _focusFill = true;  ///< interaction model: does focus paint?
+    bool           _softkeys  = false; ///< interaction model: softkey row?
+    bool           _numbered  = false; ///< interaction model: "N:" row prefixes?
+    bool           _chevron   = false; ///< interaction model: corner scroll arrow?
 
     Screen _view  = Screen::Menu;
     int    _focus = 0;

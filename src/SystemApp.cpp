@@ -23,6 +23,7 @@
 
 #include "SystemApp.h"
 #include "ui/Theme.h"
+#include "ui/ThemeManager.h"
 #include "ui/Icons.h"
 #include "Config.h"
 #include "math/VariableManager.h"
@@ -98,6 +99,9 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _redraw(true),
       _pendingTeardownMode(Mode::MENU),
       _teardownStartMs(0)
+      , _pendingTheme(ui::ThemeId::NumOS)
+      , _appliedThemeId(ui::ThemeId::NumOS)
+      , _activeAppId(-1)
 {
 }
 
@@ -119,6 +123,30 @@ void SystemApp::begin() {
     _evaluator.setAngleMode(_angleMode);
     _equationSolver.setAngleMode(_angleMode);
     // Note: GraphView is now owned by GrapherApp as part of MVC refactor
+
+    // ── Theme activation must precede the first screen build (docs 03/10) ──
+    // Read the persisted ThemeId from the Settings record and activate before
+    // MainMenu (or any app screen) creates widgets, so they are themed for free
+    // at construction. On targets without a Settings record this is a no-op and
+    // setting_theme keeps its NumOS default.
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8 || defined(__EMSCRIPTEN__)
+    if (!_filesystemMounted) {
+        if (LittleFS.begin(NUMOS_PRODUCTION_DEMO_PROFILE ? false : true)) {
+            _filesystemMounted = true;
+        }
+    }
+    SettingsApp::loadPersistentState();  // fills setting_theme (+ other settings)
+#endif
+    {
+        const uint8_t raw = setting_theme;
+        const ui::ThemeId bootTheme =
+            raw == static_cast<uint8_t>(ui::ThemeId::Casio)
+                ? ui::ThemeId::Casio
+                : ui::ThemeId::NumOS;
+        ui::ThemeManager::instance().activate(bootTheme);
+        _appliedThemeId = bootTheme;
+        _pendingTheme   = bootTheme;
+    }
 
     // ── Instantiate all apps (lazy-init: begin() deferred to first load()) ──
     // IMPORTANT: Do NOT call ->begin() here. Each app's load() checks
@@ -377,6 +405,30 @@ void SystemApp::update() {
         teardownModeNow(_pendingTeardownMode);
         _pendingTeardownMode = Mode::MENU;  // mark as done
         Serial.println("[RTM] Deferred teardown complete.");
+    }
+
+    // ── Runtime theme toggle (doc 10): performed here, at a safe point ──
+    // The hotkey only records intent in handleKey(); update() is where the
+    // theme swap + active-view recreate happen, outside any LVGL animation
+    // callback. The intent is ONE-SHOT (_themeRequested): an app may also call
+    // ThemeManager::activate() directly (SettingsApp's Theme row, the browser
+    // theme button), and that must be honoured rather than overwritten by a
+    // stale pending value. Either way the second guard below sees the live id
+    // differ from the one the active view was built with and reloads it — so
+    // every trigger still funnels through activate() + reloadActiveView().
+    {
+        if (_themeRequested) {
+            _themeRequested = false;
+            Serial.printf("[THEME] activating pending theme %d\n",
+                          static_cast<int>(_pendingTheme));
+            ui::ThemeManager::instance().activate(_pendingTheme);
+        }
+        const ui::ThemeId liveNow = ui::ThemeManager::instance().id();
+        if (liveNow != _appliedThemeId) {
+            _appliedThemeId = liveNow;
+            _pendingTheme   = liveNow;   // keep the intent in sync with reality
+            reloadActiveView();
+        }
     }
 
 #if !NUMOS_BOARD_PROD_WROOM1U_N16R8
@@ -705,6 +757,24 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
         return;
     }
 
+    // ── GLOBAL, mode-independent: ALPHA + AC → cycle the runtime theme (doc 10).
+    //    Must run before mode dispatch so it fires in every mode. We only set
+    //    intent; update() performs activate() + recreate at a safe point
+    //    (never mutate a live canvas mid-frame). Plain AC still clears.
+    if (ev.action == KeyAction::PRESS && km.isAlpha() &&
+        ev.code == KeyCode::AC) {
+        const bool isCasio =
+            ui::ThemeManager::instance().id() == ui::ThemeId::Casio;
+        _pendingTheme = isCasio ? ui::ThemeId::NumOS : ui::ThemeId::Casio;
+        _themeRequested = true;     // one-shot: update() applies and clears it
+        km.reset();             // consume the Alpha modifier
+        _shiftActive = false;
+        _alphaActive = false;
+        Serial.printf("[THEME] ALPHA+AC hotkey — pending theme %d\n",
+                      static_cast<int>(_pendingTheme));
+        return;                 // never fall through to mode dispatch
+    }
+
     // ── SHIFT/ALPHA gestión global (CalculationApp y CalculusApp tienen su propia) ──
     // GameBoyApp needs the raw SHIFT/ALPHA edges as Game Boy Start/Select, so it
     // is exempt like Calculation/Calculus (otherwise both are swallowed here and
@@ -960,7 +1030,34 @@ void SystemApp::handleKeyMenu(const KeyEvent &ev) {
                 Serial.printf("[GUI] Focus move: RIGHT\n");
             }
             break;
+        case KeyCode::NUM_1: case KeyCode::NUM_2: case KeyCode::NUM_3:
+        case KeyCode::NUM_4: case KeyCode::NUM_5: case KeyCode::NUM_6:
+        case KeyCode::NUM_7: case KeyCode::NUM_8:
+            // Casio MenuList (SPEC-stageC §C2/C6): a digit launches the slot in
+            // that position ON THE CURRENT PAGE directly — no focus walk, no EXE.
+            // Digit value comes from keyCodeDigitValue(): NUM_0..NUM_9 are in
+            // physical keypad order, so enum arithmetic/ranges are silently wrong
+            // (guarded by scripts/check-keycode-digit-patterns.py).
+            if (_mainMenu.isListMode()) {
+                const int d = keyCodeDigitValue(ev.code);
+                if (d >= 1 && d <= 8) {
+                    _mainMenu.launchSlot(d - 1);
+                }
+                break;   // digits are a casio-launcher input only
+            }
+            break;
         case KeyCode::ENTER:
+        case KeyCode::EXE:
+            // Casio MenuList: EXE launches the focused slot (N:LABEL → app id).
+            // The card grid keeps its LVGL CLICKED path below.
+            if (_mainMenu.isListMode()) {
+                _mainMenu.launchFocusedSlot();
+                break;
+            }
+            Serial.printf("[GUI] Evento enviado a LVGL: Code %d (mode=MENU)\n", (int)ev.code);
+            LvglKeypad::pushKey(ev.code, true);
+            LvglKeypad::pushKey(ev.code, false);
+            break;
         case KeyCode::AC:
         case KeyCode::DEL:
         case KeyCode::F1:
@@ -980,6 +1077,7 @@ void SystemApp::handleKeyMenu(const KeyEvent &ev) {
 // launchApp() — Lanza una app por ID desde el launcher LVGL
 // ═════════════════════════════════════════════════
 void SystemApp::launchApp(int id) {
+    _activeAppId = id;   // remember the launched app for theme-triggered reloads
 #if NUMOS_PRODUCTION_DEMO_PROFILE
     const bool allowed = numos::demo::safeModeActive()
         ? numos::demo::isSafeModeApp(id)
@@ -1184,6 +1282,32 @@ void SystemApp::returnToMenu() {
 #endif
 
     Serial.println("[RTM] returnToMenu complete — teardown deferred 250ms.");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// reloadActiveView() — Recreate the ACTIVE view after a theme swap
+// ════════════════════════════════════════════════════════════════════════════
+
+void SystemApp::reloadActiveView() {
+    if (_mode == Mode::MENU) {
+        // Launcher: destroy and rebuild its widgets under the new theme.
+        _mainMenu.create();
+        lv_indev_set_group(LvglKeypad::indev(), _mainMenu.group());
+        _mainMenu.load();
+        Serial.println("[THEME] Launcher rebuilt with new theme");
+        return;
+    }
+
+    // App modes: reload the SAME app (doc 10 — a theme toggle must not eject
+    // the user). Any deferred teardown is resolved first, then the current
+    // screen is ended and relaunched, so the new theme is read at load().
+    flushPendingTeardownNow("theme-reload");
+    teardownModeNow(_mode);
+    if (_activeAppId >= 0) {
+        launchApp(_activeAppId);
+    } else {
+        returnToMenu();
+    }
 }
 
 #if NUMOS_PRODUCTION_DEMO_PROFILE

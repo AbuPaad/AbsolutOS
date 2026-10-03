@@ -21,6 +21,7 @@
  */
 
 #include "BridgeDesignerApp.h"
+#include "../ui/ThemeFonts.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -192,7 +193,7 @@ void BridgeDesignerApp::createUI() {
     // '?'). lv_font_montserrat_14 is the project plain-UI default and covers
     // ASCII + spaces. (Em-dash status strings are ASCII-hyphenated below; even
     // montserrat lacks U+2014.)
-    lv_obj_set_style_text_font(_infoLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_infoLabel, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_infoLabel, lv_color_hex(COL_TEXT_DIM), LV_PART_MAIN);
     lv_label_set_text(_infoLabel, "Arrows:move  ENTER:place  EXE:sim");
 }
@@ -226,7 +227,7 @@ void BridgeDesignerApp::createToolbar() {
         lv_label_set_text(lbl, TOOL_NAMES[i]);
         // Plain UI button captions: use the project default plain-UI font, not
         // the math font (consistent with _infoLabel; centered below).
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl, ui::fontUi(), LV_PART_MAIN);
         lv_obj_set_style_text_color(lbl, lv_color_hex(COL_TEXT), LV_PART_MAIN);
         lv_obj_center(lbl);
     }

@@ -20,6 +20,7 @@
  * since LV_USE_CANVAS / LV_USE_TABLE / LV_USE_TABVIEW = 0.
  */
 #include "GrapherApp.h"
+#include "../ui/ThemeFonts.h"
 #include "../input/generated/ProductionKeypadMap.generated.h"
 #include "../utils/HwUxProbe.h"
 #include <cstring>
@@ -131,6 +132,8 @@ GrapherApp::GrapherApp()
     , _plotDirty(true)
     , _tblRow(0), _tblStart(-5.0f), _tblStep(1.0f), _tblFuncIdx(0)
     , _poiAsyncTimer(nullptr), _poiAsyncFi(-1)
+    , _casio(false), _sc{}, _curveW(1), _casioEdit(-1)
+    , _casioCol(nullptr), _casioPaneBox(nullptr), _tblW(SCREEN_W)
 {
     for (int i = 0; i < 3; ++i) { _tabLabels[i] = nullptr; _tabPills[i] = nullptr; }
     for (int i = 0; i < MAX_FUNCS; ++i) {
@@ -207,7 +210,7 @@ void GrapherApp::end() {
     }
     // Stop async POI timer if running
     if (_poiAsyncTimer) { lv_timer_delete(_poiAsyncTimer); _poiAsyncTimer = nullptr; }
-    _statusBar.destroy();
+    _statusBar.destroy();   // no-op when the casio split was built (never created)
     if (_screen) {
         lv_obj_delete(_screen);
         _screen = nullptr;
@@ -231,6 +234,9 @@ void GrapherApp::end() {
         for (int i = 0; i < TBL_COLS; ++i)     _tblHdrLabels[i] = nullptr;
         for (int i = 0; i < TBL_COLS - 1; ++i) _tblHdrSeps[i]   = nullptr;
         _modeBadge = nullptr;
+        _casioCol = nullptr;        // deleted with _screen
+        _casioPaneBox = nullptr;    // deleted with _screen
+        _casioEdit = -1;
         for (int i = 0; i < 3; ++i) { _tabLabels[i] = nullptr; _tabPills[i] = nullptr; }
         for (int i = 0; i < MAX_FUNCS; ++i) {
             _exprRows[i] = nullptr; _exprDots[i] = nullptr;
@@ -249,11 +255,16 @@ void GrapherApp::end() {
 
 void GrapherApp::load() {
     Serial.println("[GRAPHER] load() enter");
+    // doc 10 recreate rule: createUI() latches _casio (the split-vs-tabs shape),
+    // so a theme swap that changed the profile must rebuild the screen. end() +
+    // begin() is idempotent and re-reads the profile.
+    const bool wantSplit = ui::ThemeManager::instance().interaction().splitGraph;
+    if (_screen && wantSplit != _casio) end();
     if (!_screen) begin();
     Serial.println("[GRAPHER] lv_screen_load...");
     lv_screen_load_anim(_screen, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
     Serial.println("[GRAPHER] screen loaded OK");
-    _statusBar.update();
+    if (!_casio) _statusBar.update();   // casio has no status bar
     Serial.println("[GRAPHER] load() done");
 }
 
@@ -286,12 +297,31 @@ static lv_obj_t* makeLabel(lv_obj_t* parent, int x, int y,
     return lbl;
 }
 
+void GrapherApp::readProfile() {
+    const ui::Theme& th = ui::ThemeManager::instance().current();
+    const ui::InteractionModel& im = ui::ThemeManager::instance().interaction();
+    // The split shape is a PROFILE capability, never a theme-id branch: a future
+    // skin that wants the two-pane grapher just sets splitGraph in its profile.
+    _casio   = im.splitGraph;
+    _sc      = ui::appSurface(ui::appid::kGrapher);
+    _curveW  = th.graphLineWidth ? th.graphLineWidth : 1;
+}
+
 void GrapherApp::createUI() {
+    readProfile();
+
     Serial.println("[GRAPHER] screen...");
     _screen = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(_screen, lv_color_hex(COL_BG), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_screen, lv_color_hex(_casio ? _sc.bg : COL_BG), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_screen, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_remove_flag(_screen, LV_OBJ_FLAG_SCROLLABLE);
+
+    if (_casio) {
+        Serial.println("[GRAPHER] casio split UI...");
+        createCasioUI();
+        Serial.println("[GRAPHER] casio split UI OK");
+        return;
+    }
 
     _statusBar.create(_screen);
     _statusBar.setTitle("Grapher");
@@ -309,6 +339,7 @@ void GrapherApp::createUI() {
 
 // ── Tab bar (NumWorks yellow strip with rounded active pill) ─────────────
 void GrapherApp::createTabBar() {
+    if (_casio) return;   // the split has no tab bar; the pane is always drawn
     int y = BAR_H;
     _tabBar = makeContainer(_screen, 0, y, SCREEN_W, TAB_H, COL_TAB_BG);
 
@@ -333,7 +364,7 @@ void GrapherApp::createTabBar() {
         // half). Fill the pill width + center on both axes so the label is
         // correctly centred regardless of font metrics.
         _tabLabels[i] = makeLabel(pill, 0, 0, titles[i], COL_TAB_TXT_I,
-                                   &lv_font_montserrat_14);
+                                   ui::fontUi());
         lv_obj_set_width(_tabLabels[i], tw - 4);
         lv_obj_set_style_text_align(_tabLabels[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_center(_tabLabels[i]);
@@ -364,6 +395,7 @@ static void notebookLinesCb(lv_event_t* e) {
 
 // ── Expressions panel ───────────────────────────────────────────────────
 void GrapherApp::createExpressionsPanel() {
+    if (_casio) { createCasioList(); return; }   // numbered left column
     int topY = BAR_H + TAB_H;
     int panelH = SCREEN_H - topY;
 
@@ -438,7 +470,7 @@ void GrapherApp::createExpressionsPanel() {
         // ~90px wide for "Templates") clipped both vertically and horizontally
         // ("Templat"). Fill the button width + center on both axes.
         lv_obj_t* tplBtnLbl = makeLabel(_tplBtns[i], 0, (ROW_H - 6 - 16) / 2,
-                                         "Templates", 0x666666, &lv_font_montserrat_14);
+                                         "Templates", 0x666666, ui::fontUi());
         lv_obj_set_width(tplBtnLbl, btnW);
         lv_obj_set_style_text_align(tplBtnLbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_add_flag(_tplBtns[i], LV_OBJ_FLAG_HIDDEN);
@@ -457,18 +489,18 @@ void GrapherApp::createExpressionsPanel() {
     // prose renders a tofu box at every space. Real math (VPAM MathCanvas) and the
     // axis/tick labels stay on their STIX/graph path.
     _addLabel = makeLabel(_addRow, (SCREEN_W - 2 * PAD) / 2 - 50, (ROW_H - 14) / 2,
-                           "Add an element", COL_ADD_TXT, &lv_font_montserrat_14);
+                           "Add an element", COL_ADD_TXT, ui::fontUi());
 
     // "Plot graph" button — blue rounded pill
     _plotBtn = makeContainer(_panelExpr, PAD, 0, (SCREEN_W - 3 * PAD) / 2, ROW_H, COL_BTN_BG);
     lv_obj_set_style_radius(_plotBtn, 10, LV_PART_MAIN);
-    makeLabel(_plotBtn, 20, (ROW_H - 14) / 2, "Plot graph", COL_BTN_TXT, &lv_font_montserrat_14);
+    makeLabel(_plotBtn, 20, (ROW_H - 14) / 2, "Plot graph", COL_BTN_TXT, ui::fontUi());
 
     // "Display values" button — blue rounded pill
     _tableBtn = makeContainer(_panelExpr, PAD + (SCREEN_W - 3 * PAD) / 2 + PAD, 0,
                               (SCREEN_W - 3 * PAD) / 2, ROW_H, COL_BTN_BG);
     lv_obj_set_style_radius(_tableBtn, 10, LV_PART_MAIN);
-    makeLabel(_tableBtn, 10, (ROW_H - 14) / 2, "Display values", COL_BTN_TXT, &lv_font_montserrat_14);
+    makeLabel(_tableBtn, 10, (ROW_H - 14) / 2, "Display values", COL_BTN_TXT, ui::fontUi());
 
     // Bottom hint — fixed footer on the non-scrollable background strip below the
     // (shortened) list, so it never scrolls with the expressions nor overlaps a
@@ -476,7 +508,7 @@ void GrapherApp::createExpressionsPanel() {
     // y derived from HINT_H (not a bare literal) so the reserved strip and the
     // hint position can never drift apart if HINT_H is retuned.
     _exprHint = makeLabel(_bgExpr, PAD, panelH - HINT_H + 2,
-                           "ENTER=edit  AC=back", COL_HINT, &lv_font_montserrat_14);
+                           "ENTER=edit  AC=back", COL_HINT, ui::fontUi());
 
     refreshExprList();
 }
@@ -556,6 +588,7 @@ static void graphTickLabelsCb(lv_event_t* e) {
 
 // ── Graph panel ─────────────────────────────────────────────────────────
 void GrapherApp::createGraphPanel() {
+    if (_casio) { createCasioPane(); return; }   // right pane, always live
     int topY = BAR_H + TAB_H;
     int panelH = SCREEN_H - topY;
     _panelGraph = makeContainer(_screen, 0, topY, SCREEN_W, panelH);
@@ -569,7 +602,7 @@ void GrapherApp::createGraphPanel() {
         // montserrat_14 (lh 16) fits the 24px toolbar; stix_math_18 (lh 31) clipped
         // here too. Center each tool word in its quarter-width column.
         _toolLabels[i] = makeLabel(_graphToolbar, i * tw, (TOOLBAR_H - 16) / 2,
-                                    tools[i], COL_TB_TXT, &lv_font_montserrat_14);
+                                    tools[i], COL_TB_TXT, ui::fontUi());
         lv_obj_set_width(_toolLabels[i], tw);
         lv_obj_set_style_text_align(_toolLabels[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     }
@@ -620,8 +653,160 @@ void GrapherApp::createGraphPanel() {
     if (_graphBuf) lv_image_set_src(_graphCanvas, &_graphImgDsc);
     lv_obj_add_event_cb(_graphCanvas, graphTickLabelsCb, LV_EVENT_DRAW_MAIN_END, this);
 
+    createTraceOverlay(_graphArea, 200);
+
+    // ── Info bar at bottom ──
+    _infoBar = makeContainer(_panelGraph, 0, panelH - INFO_BAR_H, SCREEN_W, INFO_BAR_H, COL_TB_BG);
+    _infoLabel = makeLabel(_infoBar, PAD, 2, "", 0x333333, ui::fontUi());
+    // Mode badge on the right side of info bar: "[Trace]" or "[Pan]".
+    // montserrat_14 fits the 20px info bar and matches _infoLabel; stix_math_18
+    // (lh 31) clipped vertically AND ran "[Trace]" off the right screen edge.
+    // Right-align inside a fixed box so both "[Trace]" and "[Pan]" stay on-screen.
+    _modeBadge = makeLabel(_infoBar, SCREEN_W - 72, 2, "[Trace]", 0x4A90E2,
+                            ui::fontUi());
+    lv_obj_set_width(_modeBadge, 72 - PAD);
+    lv_obj_set_style_text_align(_modeBadge, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+}
+
+// ── Table zebra-stripe draw event (LVGL 9) ──────────────────────────────
+static void tblZebraDrawCb(lv_event_t* e) {
+    lv_draw_task_t* dt = lv_event_get_draw_task(e);
+    if (!dt) return;
+    if (lv_draw_task_get_type(dt) != LV_DRAW_TASK_TYPE_FILL) return;
+    lv_draw_fill_dsc_t* fill = lv_draw_task_get_fill_dsc(dt);
+    if (!fill) return;
+    // In LVGL 9 lv_draw_fill_dsc_t begins with lv_draw_dsc_base_t
+    lv_draw_dsc_base_t* base = (lv_draw_dsc_base_t*)fill;
+    if (base->part != LV_PART_ITEMS) return;
+    // id1 = row, id2 = col
+    if (base->id1 % 2 == 1) {
+        fill->color = lv_color_hex(0xEEF4FF);  // Alternate (odd) rows: light blue
+        fill->opa   = LV_OPA_COVER;
+    }
+}
+
+// ── Table panel ─────────────────────────────────────────────────────────
+void GrapherApp::createTablePanel() {
+#ifdef ARDUINO
+    Serial.printf("[GRAPHER] tablePanel heap=%u\n", (unsigned)esp_get_free_heap_size());
+#endif
+    // Geometry: numos fills under the tab bar at full width; the Casio split
+    // puts the table in the LEFT column beside the always-live graph.
+    const int tblX = _casio ? CASIO_COL_X : 0;
+    const int tblY = _casio ? CASIO_COL_Y : (BAR_H + TAB_H);
+    const int tblW = _casio ? CASIO_COL_W : SCREEN_W;
+    const int panelH = _casio ? CASIO_COL_H : (SCREEN_H - tblY);
+    _tblW = tblW;
+
+    // ── Sticky header bar (always visible, not part of scrollable area) ──
+    _tblHeaderBar = lv_obj_create(_screen);
+    if (!_tblHeaderBar) { Serial.println("[GRAPHER] FAIL _tblHeaderBar"); return; }
+    lv_obj_set_pos(_tblHeaderBar, tblX, tblY);
+    lv_obj_set_size(_tblHeaderBar, tblW, TBL_HDR_H);
+    lv_obj_set_style_bg_color(_tblHeaderBar,
+        lv_color_hex(_casio ? _sc.bg : COL_TBL_HDR), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_tblHeaderBar, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_tblHeaderBar, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_side(_tblHeaderBar, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_tblHeaderBar, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_tblHeaderBar,
+        lv_color_hex(_casio ? _sc.text : 0xD0A020), LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_tblHeaderBar, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_tblHeaderBar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(_tblHeaderBar, LV_OBJ_FLAG_HIDDEN);
+
+    // Header labels: one per column ("x", "f1(x)", "f2(x)", …). montserrat_14
+    // (lh 16) fits the 22px TBL_HDR_H bar; stix_math_18 (lh 31) overflowed and
+    // clipped the header text bottoms. rebuildTable() sets each label's text,
+    // width (= column width) and x per the active function count, and centers
+    // the text within its column; separators are repositioned to match. Only
+    // columns 0..cols-1 are shown; the rest stay hidden.
+    for (int c = 0; c < TBL_COLS; ++c) {
+        _tblHdrLabels[c] = makeLabel(_tblHeaderBar, 0, (TBL_HDR_H - 16) / 2,
+                                     "", _casio ? _sc.text : 0x000000,
+                                     _casio ? ui::fontUiSmall() : ui::fontUi());
+        lv_obj_set_style_text_align(_tblHdrLabels[c], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_add_flag(_tblHdrLabels[c], LV_OBJ_FLAG_HIDDEN);
+    }
+    // Separators between header columns (up to TBL_COLS-1); shown per column count.
+    for (int s = 0; s < TBL_COLS - 1; ++s) {
+        _tblHdrSeps[s] = lv_obj_create(_tblHeaderBar);
+        lv_obj_set_pos(_tblHdrSeps[s], tblW / 2, 0);
+        lv_obj_set_size(_tblHdrSeps[s], 1, TBL_HDR_H);
+        lv_obj_set_style_bg_color(_tblHdrSeps[s],
+            lv_color_hex(_casio ? _sc.text : 0xD0A020), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_tblHdrSeps[s], LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(_tblHdrSeps[s], 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(_tblHdrSeps[s], 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(_tblHdrSeps[s], 0, LV_PART_MAIN);
+        lv_obj_remove_flag(_tblHdrSeps[s], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(_tblHdrSeps[s], LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // ── Scrollable data panel (below sticky header) ──
+    _panelTable = lv_obj_create(_screen);
+    if (!_panelTable) { Serial.println("[GRAPHER] FAIL _panelTable"); return; }
+    lv_obj_set_pos(_panelTable, tblX, tblY + TBL_HDR_H);
+    lv_obj_set_size(_panelTable, tblW, panelH - TBL_HDR_H);
+    lv_obj_set_style_bg_color(_panelTable, lv_color_hex(_casio ? _sc.bg : COL_BG), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_panelTable, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_panelTable, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_panelTable, 0, LV_PART_MAIN);
+    // Scrollable — needed for 21+ data rows that exceed the panel height
+    lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(_panelTable, LV_DIR_VER);
+    lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_HIDDEN);
+
+    // Native lv_table widget (data rows only — no header row in table)
+    _tblTable = lv_table_create(_panelTable);
+    if (!_tblTable) { Serial.println("[GRAPHER] FAIL _tblTable"); return; }
+    lv_obj_set_pos(_tblTable, 0, 0);
+    lv_obj_set_width(_tblTable, tblW);
+    lv_table_set_column_count(_tblTable, 2);
+    lv_table_set_column_width(_tblTable, 0, tblW / 2);
+    lv_table_set_column_width(_tblTable, 1, tblW / 2);
+    lv_table_set_row_count(_tblTable, TBL_ROWS);
+
+    // Style: white bg, black text, subtle border
+    lv_obj_set_style_bg_color(_tblTable, lv_color_hex(0xFFFFFF), LV_PART_ITEMS);
+    lv_obj_set_style_text_color(_tblTable, lv_color_hex(0x000000), LV_PART_ITEMS);
+    lv_obj_set_style_text_font(_tblTable, _casio ? ui::fontUiSmall() : &stix_math_18,
+                               LV_PART_ITEMS);
+    lv_obj_set_style_border_width(_tblTable, 1, LV_PART_ITEMS);
+    lv_obj_set_style_border_color(_tblTable, lv_color_hex(0xE0E0E0), LV_PART_ITEMS);
+    lv_obj_set_style_pad_top(_tblTable, 4, LV_PART_ITEMS);
+    lv_obj_set_style_pad_bottom(_tblTable, 4, LV_PART_ITEMS);
+    lv_obj_set_style_pad_left(_tblTable, 6, LV_PART_ITEMS);
+    lv_obj_set_style_pad_right(_tblTable, 6, LV_PART_ITEMS);
+
+    // Remove main border around table
+    lv_obj_set_style_border_width(_tblTable, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_tblTable, 0, LV_PART_MAIN);
+
+    // Zebra stripes via draw task event (LVGL 9)
+    lv_obj_add_flag(_tblTable, LV_OBJ_FLAG_SEND_DRAW_TASK_EVENTS);
+    lv_obj_add_event_cb(_tblTable, tblZebraDrawCb, LV_EVENT_DRAW_TASK_ADDED, nullptr);
+
+    Serial.println("[GRAPHER] tablePanel Done");
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Casio split UI (profile `splitGraph`)
+//
+// Two panes: a narrow LEFT column — the numbered function list, or the value
+// table for one function — and a tall RIGHT pane holding an always-live graph.
+// No status bar, no tab bar, no graph toolbar: a single hint/readout line runs
+// along the bottom. Interaction (all gated on the profile, none on a theme id):
+//   digits 1..CASIO_MAX_FUNCS  open a slot to type into (black border + caret)
+//   EXE / ENTER                commit the row and redraw
+//   arrows                     pan the graph   ·   + / −  zoom
+//   ALPHA                      show the value table in the left column
+// Colours and fonts come from the resolved surface (`_sc`), never a literal.
+// ═══════════════════════════════════════════════════════════════════════
+
+void GrapherApp::createTraceOverlay(lv_obj_t* parent, int pillW) {
     // Trace cursor dot
-    _traceDot = lv_obj_create(_graphArea);
+    _traceDot = lv_obj_create(parent);
     lv_obj_set_size(_traceDot, 8, 8);
     lv_obj_set_style_bg_color(_traceDot, lv_color_hex(0x333333), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_traceDot, LV_OPA_COVER, LV_PART_MAIN);
@@ -631,7 +816,7 @@ void GrapherApp::createGraphPanel() {
     lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
 
     // Crosshair lines (horizontal + vertical)
-    _traceLineH = lv_line_create(_graphArea);
+    _traceLineH = lv_line_create(parent);
     lv_obj_set_style_line_color(_traceLineH, lv_color_hex(0x888888), LV_PART_MAIN);
     lv_obj_set_style_line_width(_traceLineH, 1, LV_PART_MAIN);
     lv_obj_set_style_line_opa(_traceLineH, LV_OPA_60, LV_PART_MAIN);
@@ -639,7 +824,7 @@ void GrapherApp::createGraphPanel() {
     _traceHPts[0] = {0, 0}; _traceHPts[1] = {0, 0};
     lv_line_set_points(_traceLineH, _traceHPts, 2);
 
-    _traceLineV = lv_line_create(_graphArea);
+    _traceLineV = lv_line_create(parent);
     lv_obj_set_style_line_color(_traceLineV, lv_color_hex(0x888888), LV_PART_MAIN);
     lv_obj_set_style_line_width(_traceLineV, 1, LV_PART_MAIN);
     lv_obj_set_style_line_opa(_traceLineV, LV_OPA_60, LV_PART_MAIN);
@@ -648,8 +833,8 @@ void GrapherApp::createGraphPanel() {
     lv_line_set_points(_traceLineV, _traceVPts, 2);
 
     // Floating bottom pill for trace info
-    _tracePill = lv_obj_create(_graphArea);
-    lv_obj_set_size(_tracePill, 200, 26);
+    _tracePill = lv_obj_create(parent);
+    lv_obj_set_size(_tracePill, pillW, 26);
     lv_obj_set_align(_tracePill, LV_ALIGN_BOTTOM_MID);
     lv_obj_set_style_translate_y(_tracePill, -6, LV_PART_MAIN);
     lv_obj_set_style_bg_color(_tracePill, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
@@ -684,132 +869,231 @@ void GrapherApp::createGraphPanel() {
     lv_label_set_text(_tracePillLabel, "");
     lv_obj_set_style_text_color(_tracePillLabel, lv_color_hex(0x000000), LV_PART_MAIN);
     // Plain-prose trace readout ("x: .. y: .." / POI labels, drawTraceCursor) uses
-    // lv_font_montserrat_14: stix_math_18 has no U+0020 glyph, so the spaces tofu.
-    lv_obj_set_style_text_font(_tracePillLabel, &lv_font_montserrat_14, LV_PART_MAIN);
-
-    // ── Info bar at bottom ──
-    _infoBar = makeContainer(_panelGraph, 0, panelH - INFO_BAR_H, SCREEN_W, INFO_BAR_H, COL_TB_BG);
-    _infoLabel = makeLabel(_infoBar, PAD, 2, "", 0x333333, &lv_font_montserrat_14);
-    // Mode badge on the right side of info bar: "[Trace]" or "[Pan]".
-    // montserrat_14 fits the 20px info bar and matches _infoLabel; stix_math_18
-    // (lh 31) clipped vertically AND ran "[Trace]" off the right screen edge.
-    // Right-align inside a fixed box so both "[Trace]" and "[Pan]" stay on-screen.
-    _modeBadge = makeLabel(_infoBar, SCREEN_W - 72, 2, "[Trace]", 0x4A90E2,
-                            &lv_font_montserrat_14);
-    lv_obj_set_width(_modeBadge, 72 - PAD);
-    lv_obj_set_style_text_align(_modeBadge, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    // the UI face: the math face has no U+0020 glyph, so the spaces would tofu.
+    lv_obj_set_style_text_font(_tracePillLabel, ui::fontUi(), LV_PART_MAIN);
 }
 
-// ── Table zebra-stripe draw event (LVGL 9) ──────────────────────────────
-static void tblZebraDrawCb(lv_event_t* e) {
-    lv_draw_task_t* dt = lv_event_get_draw_task(e);
-    if (!dt) return;
-    if (lv_draw_task_get_type(dt) != LV_DRAW_TASK_TYPE_FILL) return;
-    lv_draw_fill_dsc_t* fill = lv_draw_task_get_fill_dsc(dt);
-    if (!fill) return;
-    // In LVGL 9 lv_draw_fill_dsc_t begins with lv_draw_dsc_base_t
-    lv_draw_dsc_base_t* base = (lv_draw_dsc_base_t*)fill;
-    if (base->part != LV_PART_ITEMS) return;
-    // id1 = row, id2 = col
-    if (base->id1 % 2 == 1) {
-        fill->color = lv_color_hex(0xEEF4FF);  // Alternate (odd) rows: light blue
-        fill->opa   = LV_OPA_COVER;
+void GrapherApp::createCasioUI() {
+    // ── Left column: numbered function slots ──
+    _casioCol = lv_obj_create(_screen);
+    lv_obj_set_pos(_casioCol, CASIO_COL_X, CASIO_COL_Y);
+    lv_obj_set_size(_casioCol, CASIO_COL_W, CASIO_COL_H);
+    lv_obj_set_style_bg_opa(_casioCol, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_casioCol, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(_casioCol, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_casioCol, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_casioCol, LV_OBJ_FLAG_SCROLLABLE);
+    createCasioList();
+
+    // ── Right pane: the graph (built eagerly — it is always visible) ──
+    createCasioPane();
+
+    // ── Value table: same widgets as numos, positioned in the left column ──
+    createTablePanel();
+
+    // No bottom text line: the Casio face has no rung smaller than 12px, which
+    // does not fit a 12px strip without clipping, so the space goes to the panes.
+
+    // ── Fixed slots (Casio's 1..N list), all empty to start ──
+    _numFuncs = CASIO_MAX_FUNCS;
+    for (int i = 0; i < _numFuncs; ++i) {
+        _funcs[i] = FuncSlot{};
+        _funcs[i].color = FUNC_COLORS[i];
+        initSlotAST(i);
+    }
+
+    _tab       = Tab::EXPRESSIONS;
+    _tabIdx    = 0;
+    _focus     = Focus::CONTENT;
+    _grMode    = GrMode::NAVIGATE;
+    _casioEdit = -1;
+
+    refreshCasioList();
+    lv_obj_update_layout(_screen);
+    replot();
+}
+
+void GrapherApp::createCasioList() {
+    for (int i = 0; i < MAX_FUNCS; ++i) {
+        lv_obj_t* row = lv_obj_create(_casioCol);
+        lv_obj_set_pos(row, 0, i * (CASIO_ROW_H + CASIO_ROW_GAP));
+        lv_obj_set_size(row, CASIO_COL_W, CASIO_ROW_H);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
+        lv_obj_set_style_border_color(row, lv_color_hex(_sc.text), LV_PART_MAIN);
+        lv_obj_set_style_radius(row, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(row, 0, LV_PART_MAIN);
+        lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        _exprRows[i] = row;
+
+        char nb[8];
+        snprintf(nb, sizeof(nb), "%d.", i + 1);
+        _exprDots[i] = makeLabel(row, 2, (CASIO_ROW_H - 16) / 2, nb,
+                                 _sc.text, ui::fontUiSmall());
+
+        _exprCanvas[i].create(row);
+        lv_obj_set_pos(_exprCanvas[i].obj(), 20, 1);
+        lv_obj_set_size(_exprCanvas[i].obj(), CASIO_COL_W - 22, CASIO_ROW_H - 2);
+
+        _tplBtns[i] = nullptr;   // no Templates button in the Casio list
+    }
+    // numos-only widgets stay null; refreshExprList() is routed to the casio
+    // refresh, so these are never dereferenced on this screen.
+    _addRow = nullptr; _addLabel = nullptr; _plotBtn = nullptr; _tableBtn = nullptr;
+    _bgExpr = nullptr;
+}
+
+void GrapherApp::createCasioPane() {
+    _casioPaneBox = lv_obj_create(_screen);
+    lv_obj_set_pos(_casioPaneBox, CASIO_PANE_X, CASIO_PANE_Y);
+    lv_obj_set_size(_casioPaneBox, CASIO_PANE_W, CASIO_PANE_H);
+    lv_obj_set_style_bg_color(_casioPaneBox, lv_color_hex(_sc.bg), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_casioPaneBox, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_casioPaneBox, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_casioPaneBox, lv_color_hex(_sc.text), LV_PART_MAIN);
+    lv_obj_set_style_radius(_casioPaneBox, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_casioPaneBox, 1, LV_PART_MAIN);
+    lv_obj_remove_flag(_casioPaneBox, LV_OBJ_FLAG_SCROLLABLE);
+
+    _panelGraph = _casioPaneBox;   // switchTab/end treat it as the graph panel
+
+    const int gw = CASIO_PANE_W - 2;
+    const int gh = CASIO_PANE_H - 2;
+    _graphArea = makeContainer(_panelGraph, 0, 0, gw, gh, COL_GRAPH_BG);
+    lv_obj_set_style_bg_color(_graphArea, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+
+    const size_t bufSz = (size_t)gw * (size_t)gh * sizeof(uint16_t);
+    bool allocOk = _graphBuf.allocate((size_t)gw * (size_t)gh);
+    if (allocOk && _graphBuf) {
+        memset(_graphBuf.data(), 0xFF, bufSz);
+        new (&_view) grapher::GraphView(_graphBuf.data(), gw, gh);
+        _view.setCurveWidth(_curveW);
+    } else {
+        lv_obj_t* errLabel = lv_label_create(_graphArea);
+        lv_label_set_text(errLabel, "ERR: INSUFFICIENT PSRAM");
+        lv_obj_set_style_text_color(errLabel, lv_color_hex(0xCC0000), LV_PART_MAIN);
+        lv_obj_center(errLabel);
+    }
+
+    _graphImgDsc.header.w  = gw;
+    _graphImgDsc.header.h  = gh;
+    _graphImgDsc.header.cf = LV_COLOR_FORMAT_RGB565;
+    _graphImgDsc.data_size = (uint32_t)bufSz;
+    _graphImgDsc.data      = (const uint8_t*)_graphBuf.data();
+
+    _graphCanvas = lv_image_create(_graphArea);
+    lv_obj_set_pos(_graphCanvas, 0, 0);
+    lv_obj_set_size(_graphCanvas, gw, gh);
+    if (_graphBuf) lv_image_set_src(_graphCanvas, &_graphImgDsc);
+    lv_obj_add_event_cb(_graphCanvas, graphTickLabelsCb, LV_EVENT_DRAW_MAIN_END, this);
+
+    createTraceOverlay(_graphArea, gw - 12);
+}
+
+void GrapherApp::refreshCasioList() {
+    for (int i = 0; i < MAX_FUNCS; ++i) {
+        if (!_exprRows[i]) continue;
+        if (i < CASIO_MAX_FUNCS) {
+            lv_obj_remove_flag(_exprRows[i], LV_OBJ_FLAG_HIDDEN);
+            // Re-lay the AST now that the row is visible (the canvas has a size).
+            if (_exprASTRow[i]) {
+                _exprASTRow[i]->calculateLayout(_exprCanvas[i].normalMetrics());
+                _exprCanvas[i].invalidate();
+            }
+        } else {
+            lv_obj_add_flag(_exprRows[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    refreshCasioFocus();
+}
+
+void GrapherApp::refreshCasioFocus() {
+    for (int i = 0; i < MAX_FUNCS; ++i) {
+        if (!_exprRows[i]) continue;
+        const bool editing = (_casioEdit == i);
+        // The row being typed into gets an ink-black border + the blinking caret
+        // (started by startEditing); everything else is a bare line.
+        lv_obj_set_style_border_width(_exprRows[i], editing ? 1 : 0, LV_PART_MAIN);
+        lv_obj_set_style_border_color(_exprRows[i], lv_color_hex(_sc.text), LV_PART_MAIN);
+        if (_exprDots[i]) {
+            lv_obj_set_style_text_color(_exprDots[i],
+                lv_color_hex(editing ? _sc.accent : _sc.text), LV_PART_MAIN);
+        }
     }
 }
 
-// ── Table panel ─────────────────────────────────────────────────────────
-void GrapherApp::createTablePanel() {
-#ifdef ARDUINO
-    Serial.printf("[GRAPHER] tablePanel heap=%u\n", (unsigned)esp_get_free_heap_size());
-#endif
-    int topY = BAR_H + TAB_H;
-    int panelH = SCREEN_H - topY;
-
-    // ── Sticky header bar (always visible, not part of scrollable area) ──
-    _tblHeaderBar = lv_obj_create(_screen);
-    if (!_tblHeaderBar) { Serial.println("[GRAPHER] FAIL _tblHeaderBar"); return; }
-    lv_obj_set_pos(_tblHeaderBar, 0, topY);
-    lv_obj_set_size(_tblHeaderBar, SCREEN_W, TBL_HDR_H);
-    lv_obj_set_style_bg_color(_tblHeaderBar, lv_color_hex(COL_TBL_HDR), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(_tblHeaderBar, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_tblHeaderBar, 0, LV_PART_MAIN);
-    lv_obj_set_style_border_side(_tblHeaderBar, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_tblHeaderBar, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(_tblHeaderBar, lv_color_hex(0xD0A020), LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_tblHeaderBar, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_tblHeaderBar, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(_tblHeaderBar, LV_OBJ_FLAG_HIDDEN);
-
-    // Header labels: one per column ("x", "f1(x)", "f2(x)", …). montserrat_14
-    // (lh 16) fits the 22px TBL_HDR_H bar; stix_math_18 (lh 31) overflowed and
-    // clipped the header text bottoms. rebuildTable() sets each label's text,
-    // width (= column width) and x per the active function count, and centers
-    // the text within its column; separators are repositioned to match. Only
-    // columns 0..cols-1 are shown; the rest stay hidden.
-    for (int c = 0; c < TBL_COLS; ++c) {
-        _tblHdrLabels[c] = makeLabel(_tblHeaderBar, 0, (TBL_HDR_H - 16) / 2,
-                                     "", 0x000000, &lv_font_montserrat_14);
-        lv_obj_set_style_text_align(_tblHdrLabels[c], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_add_flag(_tblHdrLabels[c], LV_OBJ_FLAG_HIDDEN);
-    }
-    // Separators between header columns (up to TBL_COLS-1); shown per column count.
-    for (int s = 0; s < TBL_COLS - 1; ++s) {
-        _tblHdrSeps[s] = lv_obj_create(_tblHeaderBar);
-        lv_obj_set_pos(_tblHdrSeps[s], SCREEN_W / 2, 0);
-        lv_obj_set_size(_tblHdrSeps[s], 1, TBL_HDR_H);
-        lv_obj_set_style_bg_color(_tblHdrSeps[s], lv_color_hex(0xD0A020), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(_tblHdrSeps[s], LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(_tblHdrSeps[s], 0, LV_PART_MAIN);
-        lv_obj_set_style_radius(_tblHdrSeps[s], 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(_tblHdrSeps[s], 0, LV_PART_MAIN);
-        lv_obj_remove_flag(_tblHdrSeps[s], LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(_tblHdrSeps[s], LV_OBJ_FLAG_HIDDEN);
+void GrapherApp::handleCasioKey(const KeyEvent& ev) {
+    // ── Table mode: digits pick whose table; ALPHA/AC/GRAPH leaves ──
+    if (_tab == Tab::TABLE) {
+        if (ev.code == KeyCode::ALPHA || ev.code == KeyCode::AC ||
+            ev.code == KeyCode::GRAPH || ev.code == KeyCode::TABLE) {
+            switchTab(Tab::EXPRESSIONS);
+            return;
+        }
+        const int d = keyCodeDigitValue(ev.code);
+        if (d >= 1 && d <= CASIO_MAX_FUNCS) {
+            _exprIdx = d - 1;
+            switchTab(Tab::TABLE);
+        }
+        return;
     }
 
-    // ── Scrollable data panel (below sticky header) ──
-    _panelTable = lv_obj_create(_screen);
-    if (!_panelTable) { Serial.println("[GRAPHER] FAIL _panelTable"); return; }
-    lv_obj_set_pos(_panelTable, 0, topY + TBL_HDR_H);
-    lv_obj_set_size(_panelTable, SCREEN_W, panelH - TBL_HDR_H);
-    lv_obj_set_style_bg_color(_panelTable, lv_color_hex(COL_BG), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(_panelTable, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_panelTable, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_panelTable, 0, LV_PART_MAIN);
-    // Scrollable — needed for 21+ data rows that exceed the panel height
-    lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_scroll_dir(_panelTable, LV_DIR_VER);
-    lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_HIDDEN);
+    // ── Editing a row: characters go to the VPAM editor ──
+    if (_casioEdit >= 0) {
+        if (ev.code == KeyCode::ENTER || ev.code == KeyCode::EXE ||
+            ev.code == KeyCode::AC) {
+            stopEditing();
+            _casioEdit = -1;
+            _focus = Focus::CONTENT;
+            refreshCasioList();
+            replot();
+            return;
+        }
+        if (ev.code == KeyCode::ALPHA || ev.code == KeyCode::GRAPH ||
+            ev.code == KeyCode::TABLE) {
+            return;   // ignore mode keys while typing
+        }
+        handleExprEdit(ev);
+        return;
+    }
 
-    // Native lv_table widget (data rows only — no header row in table)
-    _tblTable = lv_table_create(_panelTable);
-    if (!_tblTable) { Serial.println("[GRAPHER] FAIL _tblTable"); return; }
-    lv_obj_set_pos(_tblTable, 0, 0);
-    lv_obj_set_width(_tblTable, SCREEN_W);
-    lv_table_set_column_count(_tblTable, 2);
-    lv_table_set_column_width(_tblTable, 0, SCREEN_W / 2);
-    lv_table_set_column_width(_tblTable, 1, SCREEN_W / 2);
-    lv_table_set_row_count(_tblTable, TBL_ROWS);
+    // ── Idle: a digit opens a slot to type into ──
+    const int d = keyCodeDigitValue(ev.code);
+    if (d >= 1 && d <= CASIO_MAX_FUNCS) {
+        _exprIdx   = d - 1;
+        _casioEdit = _exprIdx;
+        startEditing(_exprIdx);        // binds the caret and draws the black box
+        return;
+    }
 
-    // Style: white bg, black text, subtle border
-    lv_obj_set_style_bg_color(_tblTable, lv_color_hex(0xFFFFFF), LV_PART_ITEMS);
-    lv_obj_set_style_text_color(_tblTable, lv_color_hex(0x000000), LV_PART_ITEMS);
-    lv_obj_set_style_text_font(_tblTable, &stix_math_18, LV_PART_ITEMS);
-    lv_obj_set_style_border_width(_tblTable, 1, LV_PART_ITEMS);
-    lv_obj_set_style_border_color(_tblTable, lv_color_hex(0xE0E0E0), LV_PART_ITEMS);
-    lv_obj_set_style_pad_top(_tblTable, 4, LV_PART_ITEMS);
-    lv_obj_set_style_pad_bottom(_tblTable, 4, LV_PART_ITEMS);
-    lv_obj_set_style_pad_left(_tblTable, 6, LV_PART_ITEMS);
-    lv_obj_set_style_pad_right(_tblTable, 6, LV_PART_ITEMS);
-
-    // Remove main border around table
-    lv_obj_set_style_border_width(_tblTable, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_tblTable, 0, LV_PART_MAIN);
-
-    // Zebra stripes via draw task event (LVGL 9)
-    lv_obj_add_flag(_tblTable, LV_OBJ_FLAG_SEND_DRAW_TASK_EVENTS);
-    lv_obj_add_event_cb(_tblTable, tblZebraDrawCb, LV_EVENT_DRAW_TASK_ADDED, nullptr);
-
-    Serial.println("[GRAPHER] tablePanel Done");
+    switch (ev.code) {
+    case KeyCode::ENTER:
+    case KeyCode::EXE: {
+        // Commit whatever is on screen and redraw.
+        for (int i = 0; i < _numFuncs; ++i) {
+            if (_funcs[i].len > 0 || _funcs[i].valid) preCacheFuncRPN(i);
+        }
+        _plotDirty = true;
+        replot();
+        break;
+    }
+    case KeyCode::ALPHA:
+    case KeyCode::TABLE:
+        switchTab(Tab::TABLE);
+        break;
+    case KeyCode::GRAPH:
+        switchTab(Tab::EXPRESSIONS);
+        break;
+    case KeyCode::LEFT:  case KeyCode::RIGHT:
+    case KeyCode::UP:    case KeyCode::DOWN:
+    case KeyCode::ADD:   case KeyCode::SUB:
+    case KeyCode::ZOOM:
+        _grMode = GrMode::NAVIGATE;
+        handleGraphNav(ev);
+        break;
+    default:
+        break;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -817,6 +1101,37 @@ void GrapherApp::createTablePanel() {
 // ═══════════════════════════════════════════════════════════════════════
 
 void GrapherApp::switchTab(Tab t) {
+    if (_casio) {
+        // Two-pane split: the graph is ALWAYS live on the right; `t` only picks
+        // what fills the LEFT column — the numbered list, or the value table.
+        const bool table = (t == Tab::TABLE);
+        _tab    = table ? Tab::TABLE : Tab::EXPRESSIONS;
+        _tabIdx = table ? 2 : 0;
+        if (_casioCol) {
+            if (table) lv_obj_add_flag(_casioCol, LV_OBJ_FLAG_HIDDEN);
+            else       lv_obj_remove_flag(_casioCol, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (_tblHeaderBar) {
+            if (table) lv_obj_remove_flag(_tblHeaderBar, LV_OBJ_FLAG_HIDDEN);
+            else       lv_obj_add_flag(_tblHeaderBar, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (_panelTable) {
+            if (table) lv_obj_remove_flag(_panelTable, LV_OBJ_FLAG_HIDDEN);
+            else       lv_obj_add_flag(_panelTable, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (table) {
+            _tblFuncIdx = (_exprIdx >= 0 && _exprIdx < _numFuncs) ? _exprIdx : 0;
+            rebuildTable();
+            if (_exprHint) lv_label_set_text(_exprHint, "ALPHA back  AC=menu");
+        } else {
+            refreshCasioList();
+            if (_exprHint) lv_label_set_text(_exprHint, "1-6 edit  EXE draw");
+            replot();
+        }
+        updateInfoBar();
+        return;
+    }
+
     _tab = t;
     _tabIdx = (int)t;
 
@@ -921,6 +1236,7 @@ void GrapherApp::switchTab(Tab t) {
 }
 
 void GrapherApp::refreshTabBar() {
+    if (_casio) return;   // no tab bar in the split
     for (int i = 0; i < 3; ++i) {
         bool active = (i == _tabIdx);
         // Active tab pill: white bg, opaque. Inactive: transparent
@@ -954,6 +1270,7 @@ int GrapherApp::exprItemCount() const {
 }
 
 void GrapherApp::refreshExprList() {
+    if (_casio) { refreshCasioList(); return; }   // numbered left column
     // Show/hide function rows and compute dynamic positions
     int curY = PAD;
     for (int i = 0; i < MAX_FUNCS; ++i) {
@@ -998,6 +1315,7 @@ void GrapherApp::refreshExprList() {
 }
 
 void GrapherApp::refreshExprFocus() {
+    if (_casio) { refreshCasioFocus(); return; }   // ink border, no fill
     for (int i = 0; i < MAX_FUNCS; ++i) {
         if (i < _numFuncs) {
             // Invalid committed slots (len>0, rejected by the classifier) show a
@@ -1120,7 +1438,8 @@ void GrapherApp::startEditing(int idx) {
     _exprCanvas[idx].startCursorBlink();
     refreshVPAMExpr(idx);
 
-    lv_label_set_text(_exprHint, "Type expression  ENTER=done  DEL=backspace");
+    if (_exprHint)
+        lv_label_set_text(_exprHint, "Type expression  ENTER=done  DEL=backspace");
     refreshExprFocus();
     refreshTemplateButtons();
 }
@@ -1141,7 +1460,8 @@ void GrapherApp::stopEditing() {
         preCacheFuncRPN(idx);
     }
     _plotDirty = true;
-    lv_label_set_text(_exprHint, "ENTER=edit  AC=back");
+    if (_exprHint)
+        lv_label_set_text(_exprHint, _casio ? "1-6 edit  EXE draw" : "ENTER=edit  AC=back");
     refreshExprList();
 }
 
@@ -1640,7 +1960,7 @@ void GrapherApp::loadNextTemplate() {
     // _tplCanvas[i]/_tplAST[i] members stay null-constructed; closeTemplates'
     // destroy()/reset() over all six slots is null-safe.)
     makeLabel(_tplRows[i], 10, (_tplRowH - 14) / 2,
-              TEMPLATES[i].text, 0x000000, &lv_font_montserrat_14);
+              TEMPLATES[i].text, 0x000000, ui::fontUi());
 
     _tplLoadNext++;
 }
@@ -1675,6 +1995,20 @@ uint8_t GrapherApp::retainedExpressionCount() const {
 }
 
 bool GrapherApp::navigateBack() {
+    if (_casio) {
+        // First AC/back commits an open editor, then leaves the table view, then
+        // (returning false) lets SystemApp return to the launcher.
+        if (_tplOpen) { closeTemplates(); return true; }
+        if (_casioEdit >= 0) {
+            stopEditing();
+            _casioEdit = -1;
+            refreshCasioList();
+            replot();
+            return true;
+        }
+        if (_tab == Tab::TABLE) { switchTab(Tab::EXPRESSIONS); return true; }
+        return false;
+    }
     if (_tplOpen) {
         closeTemplates();
         return true;
@@ -2137,8 +2471,8 @@ void GrapherApp::sampleFuncAdaptive(int fi, uint32_t color) {
 // y=x^2+y^2 (a circle), etc. Cells touching a NaN corner (domain holes) are
 // skipped so discontinuities don't smear.
 void GrapherApp::plotImplicit(int fi, uint32_t color) {
-    const int W = GRAPH_CANVAS_W;
-    const int H = GRAPH_CANVAS_H;
+    const int W = _view.bufW() > 0 ? _view.bufW() : GRAPH_CANVAS_W;
+    const int H = _view.bufH() > 0 ? _view.bufH() : GRAPH_CANVAS_H;
     if (W < 2 || H < 2) return;
 
     // Grid step in pixels: smaller = smoother contour, more evals. 3px keeps
@@ -2264,8 +2598,10 @@ void GrapherApp::plotImplicit(int fi, uint32_t color) {
 // autofit, zoom-box, trace recenter) and keeps the canonical _xMin.._yMax the
 // single source of truth for the renderer, trace cursor, POI markers and infobar.
 void GrapherApp::normalizeAspect() {
-    const float W = static_cast<float>(GRAPH_CANVAS_W);
-    const float H = static_cast<float>(GRAPH_CANVAS_H);
+    // Use the LIVE buffer dimensions — the numos canvas is 320xGRAPH_CANVAS_H
+    // (unchanged), the Casio split's right pane is narrower and shorter.
+    const float W = (_view.bufW() > 0) ? (float)_view.bufW() : (float)GRAPH_CANVAS_W;
+    const float H = (_view.bufH() > 0) ? (float)_view.bufH() : (float)GRAPH_CANVAS_H;
     const float xRange = _xMax - _xMin;
     const float yRange = _yMax - _yMin;
     // Guard degenerate/corrupt viewports (zero/negative span, NaN, inf): leave
@@ -2356,7 +2692,7 @@ void GrapherApp::drawTraceCursor() {
         return;
     }
 
-    int areaW = SCREEN_W;
+    int areaW = _graphArea ? lv_obj_get_width(_graphArea) : SCREEN_W;
     int areaH = lv_obj_get_height(_graphArea);
     float xRange = _xMax - _xMin;
     float yRange = _yMax - _yMin;
@@ -2877,12 +3213,19 @@ void GrapherApp::refreshToolbar() {
 void GrapherApp::rebuildTable() {
     if (!_tblTable) return;
 
-    // Count active (valid) functions
+    // Count active (valid) functions. Casio shows ONE slot's table (the number
+    // last typed into / selected); numos lists every valid function as a column.
     int activeFuncs[MAX_FUNCS];
     int numActive = 0;
-    for (int i = 0; i < _numFuncs; ++i) {
-        if (_funcs[i].valid) {
-            activeFuncs[numActive++] = i;
+    if (_casio) {
+        if (_tblFuncIdx >= 0 && _tblFuncIdx < _numFuncs) {
+            activeFuncs[numActive++] = _tblFuncIdx;
+        }
+    } else {
+        for (int i = 0; i < _numFuncs; ++i) {
+            if (_funcs[i].valid) {
+                activeFuncs[numActive++] = i;
+            }
         }
     }
 
@@ -2892,7 +3235,7 @@ void GrapherApp::rebuildTable() {
     lv_table_set_column_count(_tblTable, cols);
 
     // Distribute column widths
-    int colW = SCREEN_W / cols;
+    int colW = _tblW / cols;
     for (int c = 0; c < cols; ++c) {
         lv_table_set_column_width(_tblTable, c, colW);
     }
@@ -2979,6 +3322,13 @@ void GrapherApp::handleKey(const KeyEvent& ev) {
     // Calculate menu intercept — all keys go to menu when open
     if (_calcMenuOpen) {
         handleCalcMenu(ev);
+        return;
+    }
+
+    // Casio split: the profile owns the whole key map (digits open slots to type
+    // into, EXE draws, arrows pan, +/- zoom). numos never reaches this branch.
+    if (_casio) {
+        handleCasioKey(ev);
         return;
     }
 
@@ -3725,7 +4075,7 @@ void GrapherApp::openCalcMenu() {
         // montserrat_14: every CALC_MENU_LABELS entry contains a space ("Find
         // Root", "Draw Tangent", ...) and stix_math_18 has no U+0020 glyph, so it
         // tofu'd at each space AND clipped vertically in the 24px rows.
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl, ui::fontUi(), LV_PART_MAIN);
     }
 
     // Paint selected/idle/disabled states now that all rows exist.
@@ -3982,8 +4332,8 @@ void GrapherApp::drawIntegralShading(int funcIdx, float shadeXMin, float shadeXM
     if (!_graphBuf || funcIdx < 0 || funcIdx >= _numFuncs || !_funcs[funcIdx].valid)
         return;
 
-    int areaW = GRAPH_CANVAS_W;
-    int areaH = GRAPH_CANVAS_H;
+    int areaW = _graphArea ? lv_obj_get_width(_graphArea) : GRAPH_CANVAS_W;
+    int areaH = _graphArea ? lv_obj_get_height(_graphArea) : GRAPH_CANVAS_H;
     if (areaW < 2 || areaH < 2) return;
 
     float xRange = (float)(_xMax - _xMin);
@@ -4040,8 +4390,8 @@ void GrapherApp::drawIntegralShadingY(int funcIdx, float shadeYMin, float shadeY
     if (!_graphBuf || funcIdx < 0 || funcIdx >= _numFuncs || !_funcs[funcIdx].valid)
         return;
 
-    int areaW = GRAPH_CANVAS_W;
-    int areaH = GRAPH_CANVAS_H;
+    int areaW = _graphArea ? lv_obj_get_width(_graphArea) : GRAPH_CANVAS_W;
+    int areaH = _graphArea ? lv_obj_get_height(_graphArea) : GRAPH_CANVAS_H;
     if (areaW < 2 || areaH < 2) return;
 
     float xRange = (float)(_xMax - _xMin);
@@ -4101,7 +4451,7 @@ void GrapherApp::drawTangentOverlay(int funcIdx, float xTarget) {
     if (std::isnan(yTarget) || std::isinf(yTarget)) return;
 
     const float xRange = (float)(_xMax - _xMin);
-    const float hPixel = xRange / (float)GRAPH_CANVAS_W;
+    const float hPixel = xRange / (float)(_view.bufW() > 0 ? _view.bufW() : GRAPH_CANVAS_W);
     const float h = std::max(hPixel, xRange * TANGENT_FD_STEP_RATIO);  // finite-difference step size
     if (h <= 0.0f) return;
 

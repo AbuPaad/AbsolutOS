@@ -37,6 +37,12 @@
 #pragma once
 // SCREEN_WIDTH / SCREEN_HEIGHT = the logical canvas declared once in Config.h
 #include "../Config.h"
+// Font accessors (ui::fontUi() …) are LVGL-only. Guarded so this header stays
+// compilable on a plain host (tests/host/notes_mdrender_test.cpp) — the core
+// contract is that nothing here needs <lvgl.h>.
+#if defined(ARDUINO) || defined(NATIVE_SIM)
+#include "../ui/ThemeFonts.h"
+#endif
 
 #include <cstdint>
 #include <cstddef>
@@ -233,8 +239,8 @@ enum class StyleId : uint8_t {
  * so this header stays LVGL-free. Sizes are px. Colors are 0xRRGGBB.
  */
 struct MdStyles {
-    const void* bodyFont    = nullptr;   ///< e.g. &lv_font_montserrat_14
-    const void* headingFont = nullptr;   ///< e.g. &lv_font_montserrat_20
+    const void* bodyFont    = nullptr;   ///< e.g. ui::fontUi()
+    const void* headingFont = nullptr;   ///< e.g. ui::fontDisplay()
     const void* codeFont    = nullptr;   ///< monospace (deferred; body for now)
     const void* mathFont    = nullptr;   ///< STIX Two Math (math runs)
 

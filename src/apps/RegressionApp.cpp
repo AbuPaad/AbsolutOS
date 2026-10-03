@@ -23,6 +23,7 @@
  */
 
 #include "RegressionApp.h"
+#include "../ui/ThemeFonts.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -226,7 +227,7 @@ void RegressionApp::createDataTab() {
     // as tofu today; dropped here (the word "Nav" conveys the same meaning).
     _dataHint = lv_label_create(_dataPanel);
     lv_label_set_text(_dataHint, "Nav  ENTER Edit  AC New row");
-    lv_obj_set_style_text_font(_dataHint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_dataHint, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_dataHint, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_dataHint, 6, panelH - 18);
 }
@@ -256,7 +257,7 @@ void RegressionApp::createEquationTab() {
     // the tab bar / data table where it renders fine. (Phase 7E)
     _eqModelLabel = lv_label_create(_eqPanel);
     lv_label_set_text(_eqModelLabel, "Model: Linear  (SHIFT to toggle)");
-    lv_obj_set_style_text_font(_eqModelLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_eqModelLabel, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_eqModelLabel, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_eqModelLabel, 8, 6);
 
@@ -276,14 +277,14 @@ void RegressionApp::createEquationTab() {
         // Name label (left)
         lv_obj_t* name = lv_label_create(_eqPanel);
         lv_label_set_text(name, names[i]);
-        lv_obj_set_style_text_font(name, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(name, ui::fontUi(), LV_PART_MAIN);
         lv_obj_set_style_text_color(name, lv_color_hex(COL_TEXT), LV_PART_MAIN);
         lv_obj_set_pos(name, 10, y);
 
         // Value label (right)
         _eqLabels[i] = lv_label_create(_eqPanel);
         lv_label_set_text(_eqLabels[i], "---");
-        lv_obj_set_style_text_font(_eqLabels[i], &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(_eqLabels[i], ui::fontUi(), LV_PART_MAIN);
         lv_obj_set_style_text_color(_eqLabels[i], lv_color_hex(0x1565C0), LV_PART_MAIN);
         lv_obj_set_pos(_eqLabels[i], 150, y);
     }

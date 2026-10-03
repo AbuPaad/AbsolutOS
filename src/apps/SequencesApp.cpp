@@ -23,6 +23,7 @@
  */
 
 #include "SequencesApp.h"
+#include "../ui/ThemeFonts.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -201,14 +202,14 @@ void SequencesApp::createDefineTab() {
         lv_label_set_text(_seqLabels[i], names[i]);
         lv_obj_set_pos(_seqLabels[i], 15, ry);
         lv_obj_set_style_text_color(_seqLabels[i], lv_color_hex(colors[i]), LV_PART_MAIN);
-        lv_obj_set_style_text_font(_seqLabels[i], &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(_seqLabels[i], ui::fontUi(), LV_PART_MAIN);
 
         // Expression display (plain ASCII text, e.g. "2*n+1"/"n^2"; not MathRenderer)
         _seqExprs[i] = lv_label_create(_definePanel);
         lv_label_set_text(_seqExprs[i], _seqExprText[i]);
         lv_obj_set_pos(_seqExprs[i], 85, ry);
         lv_obj_set_style_text_color(_seqExprs[i], lv_color_hex(COL_TEXT), LV_PART_MAIN);
-        lv_obj_set_style_text_font(_seqExprs[i], &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(_seqExprs[i], ui::fontUi(), LV_PART_MAIN);
     }
 
     // Hint — Phase 7G: plain UI prose with spaces → montserrat_14 (STIX tofus spaces)
@@ -216,7 +217,7 @@ void SequencesApp::createDefineTab() {
     lv_label_set_text(_defineHint, "ENTER to edit, LEFT/RIGHT to switch tab");
     lv_obj_set_pos(_defineHint, 15, panelH - 25);
     lv_obj_set_style_text_color(_defineHint, lv_color_hex(COL_HINT), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_defineHint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_defineHint, ui::fontUi(), LV_PART_MAIN);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

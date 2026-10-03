@@ -11,8 +11,13 @@ import {
 import { createPersistenceController } from "./numos-persistence.js";
 
 const COMPONENT_CSS = "__NUMOS_INLINE_CSS__";
+// The firmware's logical display: 320x156 (NativeHal SCREEN_W/H, derived from
+// Config.h). The panel is 240 rows tall, but the fx-82 shell exposes only 156
+// of them, so sizing the canvas as 320x240 stretched the image 1.54x vertically.
+// These are the pre-boot defaults; once the runtime is up, `#fitCanvas` reads
+// the canvas backing store (which SDL sets to the real logical size) instead.
 const LOGICAL_WIDTH = 320;
-const LOGICAL_HEIGHT = 240;
+const LOGICAL_HEIGHT = 156;
 const KEY_PRESS = 1;
 const KEY_RELEASE = 2;
 const ACTIVE_BY_DOCUMENT = new WeakMap();
@@ -40,6 +45,45 @@ for (const group of NUMOS_WEB_KEYPAD_LAYOUT) {
  * against the generated context list before it is trusted.
  */
 const CONTEXT_LINE = /^@ctx\s+(\d+)\s+([a-z0-9]+)\s+(\S+)$/;
+
+/**
+ * The firmware's app-open line, emitted on context change only
+ * (src/hal/NativeHal.cpp):
+ *
+ *   @app <id> <slug> <name>
+ *
+ * Separate from `@ctx` on purpose: `@ctx` also beats when only the SHIFT/ALPHA
+ * modifier changes, so a consumer that wants "the user just opened an app"
+ * would have to diff the previous context itself. `@app` fires exactly once per
+ * app change and carries the long name already resolved, so the page can hang a
+ * per-app tip off it without a slug->name table of its own.
+ */
+const APP_LINE = /^@app\s+(\d+)\s+([a-z0-9]+)\s+(.+)$/;
+
+/**
+ * Per-app first-run tips, keyed by the firmware's ctx slug (src/ui/AppContext.h
+ * -> scripts/gen_key_context.py keeps the slugs identical on both sides).
+ *
+ * A context with no entry simply shows no tip — the strip stays hidden rather
+ * than inventing advice for an app nobody has written one for.
+ */
+const APP_TIPS = Object.freeze({
+  calculation: "Type an expression, then EXE to evaluate. SHIFT and ALPHA reach the second and third legends printed on each key.",
+  grapher: "Enter f(x) and plot it. ZOOM and TRACE (SHIFT or ALPHA legends) move around the curve; EXE picks the active graph slot.",
+  equations: "Enter an equation or a system and press EXE; the solution set renders step by step.",
+  calculus: "Differentiate, integrate and take limits — pick the operation first, then the expression.",
+  statistics: "Enter a list, then choose the measure. Lists persist between sessions.",
+  probability: "Choose a distribution, then fill its parameters; the shaded area follows your bounds.",
+  regression: "Enter paired data in two lists, choose a model, and the fit is drawn over the points.",
+  sequences: "Type u(n) with the sequence syntax and step or plot the terms.",
+  gameboy: "A Game Boy in your calculator. The keypad is mapped to the console's buttons; SHIFT and ALPHA are Select and Start.",
+  notes: "Markdown notes that live on the device — type, scroll and come back later.",
+  ai: "Ask a question in plain language. In this browser demo the answers come from a recorded session, so no key and no network are needed.",
+  settings: "System settings. The Theme row switches the whole look between NumOS and the Casio ClassWiz styling.",
+  neolanguage: "A small scripting language on the device: write a program, run it, and reading values step by step.",
+  mathshowcase: "A tour of the typesetting engine — every expression here is laid out by the same renderer as the calculator.",
+  mathvisual: "Visual tests for the math renderer: same expression, different layouts.",
+});
 
 const ACTIVE_STATES = new Set([
   "loading_manifest", "loading_runtime", "downloading_wasm", "instantiating",
@@ -196,6 +240,7 @@ export class NumosEmulatorElement extends HTMLElement {
   #manifest = null;
   #manifestUrl = null;
   #canvas = null;
+  #canvasObserver = null;
   #activeGuardOwned = false;
   #startupAbort = null;
   #runtimeAbort = null;
@@ -213,6 +258,7 @@ export class NumosEmulatorElement extends HTMLElement {
   #modifierMode = "none";
   #contextSlug = "";
   #contextModifier = "none";
+  #appSlug = "";
   #lastError = null;
   #lastPersistenceState = null;
   #timings = {};
@@ -234,6 +280,7 @@ export class NumosEmulatorElement extends HTMLElement {
           <button type="button" data-action="start">Start</button>
           <button type="button" data-action="retry" hidden>Retry</button>
           <button type="button" data-action="fullscreen">Fullscreen</button>
+          <button type="button" data-action="theme" hidden>Switch theme</button>
           <button type="button" data-action="controls" aria-pressed="false">Show controls</button>
           <button type="button" data-action="haptics" aria-pressed="false" hidden>Haptics off</button>
           <button type="button" data-action="restart" hidden>Restart</button>
@@ -258,6 +305,7 @@ export class NumosEmulatorElement extends HTMLElement {
             <span class="context-strip-mod" data-context-mod hidden></span>
             <span class="context-strip-keys" data-context-keys></span>
           </div>
+          <p class="app-tip" data-app-tip hidden></p>
           <div class="status-row">
             <output data-status>Not started</output>
             <span class="persistence"><span class="dot"></span><span data-persistence>Storage not initialized</span></span>
@@ -271,7 +319,7 @@ export class NumosEmulatorElement extends HTMLElement {
           <dl>
             <dt>Lifecycle</dt><dd data-detail-state>idle</dd>
             <dt>Build</dt><dd data-detail-build>not loaded</dd>
-            <dt>Display</dt><dd data-detail-scale>320×240 logical</dd>
+            <dt>Display</dt><dd data-detail-scale>320×156 logical</dd>
             <dt>Storage</dt><dd data-detail-storage>not initialized</dd>
             <dt>Error</dt><dd data-detail-error>none</dd>
           </dl>
@@ -485,6 +533,9 @@ export class NumosEmulatorElement extends HTMLElement {
     module.callMain([]);
     await this.#waitForLauncher(token);
     this.#assertCurrent(token);
+    // main() created the SDL window, which set the canvas backing store to the
+    // firmware's real logical size. Re-run the CSS fit now that it is known.
+    this.#scheduleCanvasFit();
     this.#timings.bootMs = performance.now() - bootStarted;
     this.#timings.startToLauncherMs = performance.now() - this.#timings.startAt;
     this.#inputEnabled = true;
@@ -563,6 +614,8 @@ export class NumosEmulatorElement extends HTMLElement {
         this.#module = null;
         this.#manifest = null;
         this.#startupAbort = null;
+        this.#appSlug = "";
+        this.#renderAppTip(null);
         this.#removeCanvas();
         if (this.#activeGuardOwned &&
             ACTIVE_BY_DOCUMENT.get(this.ownerDocument) === this) {
@@ -594,7 +647,13 @@ export class NumosEmulatorElement extends HTMLElement {
   }
 
   async restart() {
-    await this.shutdown();
+    // A failed shutdown (e.g. a persistence flush error) must not leave the
+    // element permanently stopped: always attempt to start again.
+    try {
+      await this.shutdown();
+    } catch (error) {
+      this.#warn(`restart: shutdown reported ${boundedText(error)}`);
+    }
     return this.start();
   }
 
@@ -637,6 +696,32 @@ export class NumosEmulatorElement extends HTMLElement {
     const pressed = this.sendLogicalKey(keyCode, KEY_PRESS);
     const released = this.sendLogicalKey(keyCode, KEY_RELEASE);
     return Boolean(pressed && released);
+  }
+
+  /**
+   * Switch between the NumOS and Casio themes, exactly as the device's
+   * ALPHA+AC hotkey does (SystemApp::handleKey, doc 10).
+   *
+   * Sent as explicit press/release edges rather than two `key` lines: a
+   * complete press+release of ALPHA would release the modifier before AC
+   * arrives, so the combo would never fire while looking like it did. The same
+   * shape the .numos scripts use (`keydown alpha` / `key ac` / `keyup alpha`).
+   *
+   * Returns true when the combo was delivered; false when the runtime is not
+   * accepting input yet.
+   */
+  toggleTheme() {
+    const alpha = KEY_CODE_BY_ID.get("ALPHA");
+    const ac = KEY_CODE_BY_ID.get("AC");
+    if (!this.#inputEnabled || !this.#module ||
+        alpha === undefined || ac === undefined) {
+      return false;
+    }
+    this.sendLogicalKey(alpha, KEY_PRESS);
+    this.sendLogicalKey(ac, KEY_PRESS);
+    this.sendLogicalKey(ac, KEY_RELEASE);
+    this.sendLogicalKey(alpha, KEY_RELEASE);
+    return true;
   }
 
   sendLogicalKey(keyCode, actionCode = KEY_PRESS) {
@@ -883,9 +968,22 @@ export class NumosEmulatorElement extends HTMLElement {
     canvas.dataset.generation = String(token);
     this.#shadow.querySelector(".canvas-mount").append(canvas);
     this.#canvas = canvas;
+    // SDL sets the backing store to the real logical size (320x156) while
+    // main() runs, after the CSS fit has already been computed. Re-fit whenever
+    // the backing store changes so the CSS size keeps the correct aspect ratio.
+    this.#canvasObserver?.disconnect();
+    if (globalThis.MutationObserver) {
+      this.#canvasObserver = new MutationObserver(() => this.#scheduleCanvasFit());
+      this.#canvasObserver.observe(canvas, {
+        attributes: true,
+        attributeFilter: ["width", "height"],
+      });
+    }
   }
 
   #removeCanvas() {
+    this.#canvasObserver?.disconnect();
+    this.#canvasObserver = null;
     this.#canvas?.remove();
     this.#canvas = null;
   }
@@ -953,16 +1051,21 @@ export class NumosEmulatorElement extends HTMLElement {
   #fitCanvas() {
     if (!this.#canvas) return;
     const stage = this.#shadow.querySelector(".display-stage");
+    // Trust the real backing store: SDL resizes it to the firmware's logical
+    // resolution (320x156) once main() runs. Deriving the CSS box from the
+    // backing store keeps the aspect ratio right without hardcoding the panel.
+    const backingWidth = this.#canvas.width || LOGICAL_WIDTH;
+    const backingHeight = this.#canvas.height || LOGICAL_HEIGHT;
     const width = Math.max(1, stage.clientWidth - 16);
     const viewportHeight = this.ownerDocument.fullscreenElement === this
-      ? Math.max(1, this.clientHeight - 170)
-      : Math.max(1, this.ownerDocument.defaultView.innerHeight * .68);
+      ? Math.max(1, this.clientHeight - 120)
+      : Math.max(1, this.ownerDocument.defaultView.innerHeight * .62);
     const height = Math.max(1, viewportHeight);
-    const fitting = Math.min(width / LOGICAL_WIDTH, height / LOGICAL_HEIGHT);
+    const fitting = Math.min(width / backingWidth, height / backingHeight);
     const integer = Math.floor(fitting);
     const scale = integer >= 1 ? integer : Math.max(.1, fitting);
-    const cssWidth = Math.max(1, Math.round(LOGICAL_WIDTH * scale));
-    const cssHeight = Math.max(1, Math.round(LOGICAL_HEIGHT * scale));
+    const cssWidth = Math.max(1, Math.round(backingWidth * scale));
+    const cssHeight = Math.max(1, Math.round(backingHeight * scale));
     if (this.#canvas.style.width !== `${cssWidth}px`) {
       this.#canvas.style.width = `${cssWidth}px`;
     }
@@ -970,7 +1073,7 @@ export class NumosEmulatorElement extends HTMLElement {
       this.#canvas.style.height = `${cssHeight}px`;
     }
     this.#shadow.querySelector("[data-detail-scale]").textContent =
-      `${LOGICAL_WIDTH}×${LOGICAL_HEIGHT} logical · ${scale.toFixed(3)}× CSS · ` +
+      `${backingWidth}×${backingHeight} logical · ${scale.toFixed(3)}× CSS · ` +
       `${globalThis.devicePixelRatio || 1} DPR`;
   }
 
@@ -1077,6 +1180,8 @@ export class NumosEmulatorElement extends HTMLElement {
       } else if (action === "fullscreen") {
         this.#ignore(this.ownerDocument.fullscreenElement === this
           ? this.exitFullscreen() : this.enterFullscreen());
+      } else if (action === "theme") {
+        this.toggleTheme();
       } else if (action === "controls") {
         this.#controlsOverride = !this.#controlsVisible();
         this.#renderControls();
@@ -1269,6 +1374,7 @@ export class NumosEmulatorElement extends HTMLElement {
     const shutdown = this.#shadow.querySelector('[data-action="shutdown"]');
     const restart = this.#shadow.querySelector('[data-action="restart"]');
     const power = this.#shadow.querySelector('[data-action="power"]');
+    const theme = this.#shadow.querySelector('[data-action="theme"]');
     const overlay = this.#shadow.querySelector(".overlay");
     const title = overlay.querySelector("h2");
     const description = overlay.querySelector("p");
@@ -1284,6 +1390,10 @@ export class NumosEmulatorElement extends HTMLElement {
     power.hidden = !runtimeReady;
     restart.disabled = this.#state !== "ready";
     power.disabled = this.#state === "shutting_down";
+    // The theme button mirrors the ALPHA+AC hotkey, so it is only meaningful
+    // once the runtime is taking input.
+    theme.hidden = !runtimeReady;
+    theme.disabled = !this.#inputEnabled;
     overlay.hidden = this.#state === "ready" || this.#state === "flushing";
     if (!loading) this.#shadow.querySelector(".progress").hidden = true;
     if (this.#state === "error") {
@@ -1425,6 +1535,11 @@ export class NumosEmulatorElement extends HTMLElement {
    */
   #onRuntimeLine(line, isError) {
     const text = String(line ?? "");
+    const appMatch = APP_LINE.exec(text);
+    if (appMatch) {
+      this.#applyAppOpen(Number(appMatch[1]), appMatch[2], appMatch[3]);
+      return;
+    }
     const match = CONTEXT_LINE.exec(text);
     if (match) {
       this.#applyContext(Number(match[1]), match[2], match[3]);
@@ -1432,6 +1547,46 @@ export class NumosEmulatorElement extends HTMLElement {
     }
     if (isError) console.warn(`[NumOS] ${text}`);
     else console.debug(`[NumOS] ${text}`);
+  }
+
+  /**
+   * The device just opened (or left) an app. This is the hook the page uses to
+   * show something app-specific: the firmware resolves the slug and the long
+   * name, the host renders it — no parsing of launch-time prose, and the event
+   * carries everything a tooltip needs.
+   *
+   * Everything that is NOT an app context is "no tip", so Menu/Splash emit no
+   * `numos-appopen` at all — only a `numos-appclose` when an app is left, which
+   * is what a page needs to dismiss whatever it showed.
+   */
+  #applyAppOpen(id, slug, name) {
+    const previous = this.#appSlug;
+    if (slug === previous) return;
+    if (!NUMOS_KEY_CONTEXT_SLUGS.includes(slug)) {
+      this.#warn(
+        `the runtime reported app "${slug}" (id ${id}) which this build of ` +
+        `the component does not know; no tip is shown for it`,
+      );
+      return;
+    }
+    this.#appSlug = slug;
+    this.dataset.app = slug;
+    const tip = APP_TIPS[slug] || null;
+    this.#renderAppTip(tip);
+
+    const leavingApp = previous && previous !== "menu" && previous !== "splash";
+    if (leavingApp) {
+      this.#emit("numos-appclose", { id, slug, name, previous });
+    }
+    if (slug === "menu" || slug === "splash") return;
+    this.#emit("numos-appopen", { id, slug, name, previous, tip });
+  }
+
+  #renderAppTip(tip) {
+    const element = this.#shadow.querySelector("[data-app-tip]");
+    if (!element) return;
+    element.hidden = !tip;
+    element.textContent = tip || "";
   }
 
   /**

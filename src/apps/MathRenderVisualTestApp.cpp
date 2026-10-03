@@ -1,6 +1,7 @@
 #if defined(NUMOS_MATH_VISUAL_VERIFY) || !defined(ARDUINO)
 
 #include "MathRenderVisualTestApp.h"
+#include "../ui/ThemeFonts.h"
 
 #include <cstdio>
 
@@ -89,12 +90,12 @@ void MathRenderVisualTestApp::createUI() {
     // like "2 + 2/2" tofu'd at every space under LV_USE_FONT_PLACEHOLDER. The
     // MathCanvas rendering is unchanged.
     _indexLabel = lv_label_create(_screen);
-    lv_obj_set_style_text_font(_indexLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_indexLabel, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_indexLabel, lv_color_hex(COL_ACCENT), LV_PART_MAIN);
     lv_obj_set_pos(_indexLabel, PAD, 28);
 
     _caseLabel = lv_label_create(_screen);
-    lv_obj_set_style_text_font(_caseLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_caseLabel, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_caseLabel, lv_color_hex(COL_TEXT), LV_PART_MAIN);
     lv_obj_set_width(_caseLabel, SCREEN_W - 90);
     lv_label_set_long_mode(_caseLabel, LV_LABEL_LONG_CLIP);

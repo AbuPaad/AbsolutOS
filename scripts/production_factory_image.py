@@ -23,9 +23,9 @@ BOARD_IDENTIFIER = "numos-esp32-s3-wroom-1u-n16r8"
 # Offsets here must track boards/numos-16mb.csv, which drops the unused ota_1
 # slot (NumOS has no OTA workflow) and gives the space to LittleFS.
 APP_OFFSET = 0x010000
-APP_MAX_BYTES = 0x600000          # app0 size in boards/numos-16mb.csv
-FS_OFFSET = 0x610000              # spiffs offset in boards/numos-16mb.csv
-FS_MAX_BYTES = 0x9E0000           # spiffs size in boards/numos-16mb.csv
+APP_MAX_BYTES = 0x800000          # app0 size in boards/numos-16mb.csv
+FS_OFFSET = 0x810000              # spiffs offset in boards/numos-16mb.csv
+FS_MAX_BYTES = 0x7F0000           # spiffs size in boards/numos-16mb.csv
 PROFILES = {
     "numos-esp32-s3-wroom-1u-n16r8": "normal",
     "numos-esp32-s3-wroom-1u-n16r8-bringup": "bringup",

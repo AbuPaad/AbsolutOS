@@ -26,6 +26,7 @@
  */
 
 #include "OpticsLabApp.h"
+#include "../ui/ThemeFonts.h"
 #include "OpticsRenderer.h"
 #include <cstdio>
 #include <cstring>
@@ -243,7 +244,7 @@ void OpticsLabApp::createUI() {
     // key-binding hints.
     _infoLabel = lv_label_create(_screen);
     lv_obj_align(_infoLabel, LV_ALIGN_BOTTOM_LEFT, 2, -2);
-    lv_obj_set_style_text_font(_infoLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(_infoLabel, ui::fontUi(), 0);
     lv_obj_set_style_text_color(_infoLabel,
                                  lv_color_hex(0xAAAAAA), 0);
     lv_obj_set_style_bg_opa(_infoLabel, LV_OPA_TRANSP, 0);

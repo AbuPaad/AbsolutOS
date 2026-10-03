@@ -21,6 +21,7 @@
  */
 
 #include "CircuitCoreApp.h"
+#include "../ui/ThemeFonts.h"
 #include "ComponentFactory.h"
 #include "LogicGates.h"
 #include "PowerSystems.h"
@@ -283,7 +284,7 @@ void CircuitCoreApp::createToolbar() {
 
     // Page indicator label (shows "1/3", "2/3", "3/3")
     _pageLabel = lv_label_create(_toolbarObj);
-    lv_obj_set_style_text_font(_pageLabel, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_pageLabel, ui::fontMono(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_pageLabel, lv_color_hex(0xFFD700), LV_PART_MAIN);
 
     // Build toolbar for initial page
@@ -317,7 +318,7 @@ void CircuitCoreApp::rebuildToolbarPage() {
 
         lv_obj_t* lbl = lv_label_create(btn);
         lv_label_set_text(lbl, labels[i]);
-        lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl, ui::fontMono(), LV_PART_MAIN);
         lv_obj_set_style_text_color(lbl, lv_color_hex(COL_TOOL_DIM), LV_PART_MAIN);
         lv_obj_center(lbl);
 
@@ -352,7 +353,7 @@ void CircuitCoreApp::createInfoBar() {
     lv_obj_set_size(_infoLabel, SCREEN_W - 8, INFOBAR_H);
     lv_obj_set_style_bg_color(_infoLabel, lv_color_hex(COL_INFO_BG), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_infoLabel, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_text_font(_infoLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_infoLabel, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_infoLabel, lv_color_hex(COL_INFO_TEXT), LV_PART_MAIN);
     lv_label_set_text(_infoLabel, "Ready");
 }
@@ -1113,7 +1114,7 @@ void CircuitCoreApp::drawScope(lv_layer_t* layer, int objX, int objY) {
     lv_draw_label_dsc_t labDsc;
     lv_draw_label_dsc_init(&labDsc);
     labDsc.color = lv_color_hex(0x3FB950);
-    labDsc.font  = &lv_font_unscii_8;
+    labDsc.font  = ui::fontMono();
     labDsc.text  = probeBuf;
 
     lv_area_t labArea;
@@ -1163,7 +1164,7 @@ void CircuitCoreApp::drawNodeLabels(lv_layer_t* layer, int objX, int objY) {
         lv_draw_label_dsc_t labDsc;
         lv_draw_label_dsc_init(&labDsc);
         labDsc.color = lv_color_hex(0xFFD700);  // gold
-        labDsc.font  = &lv_font_unscii_8;
+        labDsc.font  = ui::fontMono();
         labDsc.text  = voltageBuf;
 
         lv_area_t labArea;
@@ -1343,7 +1344,7 @@ void CircuitCoreApp::drawMultimeter(lv_layer_t* layer, int objX, int objY) {
     lv_draw_label_dsc_t labDsc;
     lv_draw_label_dsc_init(&labDsc);
     labDsc.color = lv_color_hex(0xFFD700);
-    labDsc.font  = &lv_font_unscii_8;
+    labDsc.font  = ui::fontMono();
 
     labDsc.text = line1;
     lv_area_t la;
@@ -1951,7 +1952,7 @@ void CircuitCoreApp::openIDE() {
     lv_obj_t* title = lv_label_create(_ideContainer);
     lv_label_set_text(title, "MCU IDE");
     lv_obj_set_style_text_color(title, lv_color_hex(0x58A6FF), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, ui::fontMono(), LV_PART_MAIN);
     lv_obj_set_pos(title, 4, 2);
 
     // Text area
@@ -1961,7 +1962,7 @@ void CircuitCoreApp::openIDE() {
                     lv_obj_get_height(_ideContainer) - 30);
     lv_obj_set_style_bg_color(_ideTextArea, lv_color_hex(0x0D1117), LV_PART_MAIN);
     lv_obj_set_style_text_color(_ideTextArea, lv_color_hex(0xE0E0E0), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_ideTextArea, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_ideTextArea, ui::fontMono(), LV_PART_MAIN);
     lv_textarea_set_text(_ideTextArea, "void setup(){\n}\nvoid loop(){\n}");
     lv_textarea_set_one_line(_ideTextArea, false);
     lv_textarea_set_max_length(_ideTextArea, 480);
@@ -1970,7 +1971,7 @@ void CircuitCoreApp::openIDE() {
     _ideAutoLabel = lv_label_create(_ideContainer);
     lv_label_set_text(_ideAutoLabel, "");
     lv_obj_set_style_text_color(_ideAutoLabel, lv_color_hex(0x606060), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_ideAutoLabel, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_ideAutoLabel, ui::fontMono(), LV_PART_MAIN);
     lv_obj_set_pos(_ideAutoLabel, 4, lv_obj_get_height(_ideContainer) - 14);
 
     if (_infoLabel) lv_label_set_text(_infoLabel, "IDE: F4=Accept AC=Close");

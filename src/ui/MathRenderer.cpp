@@ -34,6 +34,7 @@
 #include "MathSymbols.h"
 #include "MathTextNormalization.h"
 #include "MathTypography.h"
+#include "ThemeManager.h"   // canvas background = theme bg token (no literals)
 #include "../math/font/stix_math_variants.h"
 #include "../math/font/MathGlyphAssembly.h"
 
@@ -580,8 +581,11 @@ void MathCanvas::create(lv_obj_t* parent) {
     _obj = lv_obj_create(parent);
     if (_obj == nullptr) return;
 
-    // Fondo blanco, sin bordes, sin scroll
-    lv_obj_set_style_bg_color(_obj, lv_color_white(), LV_PART_MAIN);
+    // Fondo = token del tema, nunca un literal (SPEC-stageC). El bg de numos es
+    // 0xFFFFFF, exactamente lv_color_white(), asi que su frame no cambia; bajo
+    // casio el canvas pinta el fondo del tema en vez de un rectangulo blanco.
+    lv_obj_set_style_bg_color(_obj,
+        lv_color_hex(ui::ThemeManager::instance().current().bg), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_obj, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(_obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_obj, 0, LV_PART_MAIN);
@@ -660,6 +664,36 @@ void MathCanvas::setMathStyle(MathStyle style) {
         return;
     }
     _root->calculateLayout(_fmNormal);
+    invalidate();
+}
+
+void MathCanvas::setFontSet(const ui::MathFontSet& fonts) {
+    if (fonts.primary)      _fontNormal = fonts.primary;
+    if (fonts.script)       _fontSmall = fonts.script;
+    if (fonts.scriptScript) _fontScriptScript = fonts.scriptScript;
+
+    // Recomputed exactly like the constructor (doc 13 Phase 2).
+    _fmNormal = metricsFromFont(_fontNormal);
+    _fmSmall  = metricsFromFont(_fontSmall);
+    _fmScriptScript = metricsFromFont(_fontScriptScript);
+    _fmNormal.scriptLevel = 0;
+    _fmSmall.scriptLevel  = 1;
+    _fmScriptScript.scriptLevel = 2;
+    _fmNormal.script = &_fmSmall;
+    _fmSmall.script = &_fmScriptScript;
+    _fmScriptScript.script = nullptr;
+
+    // Re-probe U+239C (parenthesis extender) for the new face: if the extensible
+    // delimiter assembly glyphs are absent, the vector fallback must engage.
+    if (_fontNormal) {
+        lv_font_glyph_dsc_t g;
+        g_delimiterAssemblyRenderable =
+            lv_font_get_glyph_dsc(_fontNormal, &g, 0x239C, 0);
+    }
+
+    if (_root) {
+        _root->calculateLayout(_fmNormal);
+    }
     invalidate();
 }
 

@@ -44,6 +44,12 @@
 #include "MainMenu.h"
 #include "../display/DisplayDriver.h"
 #include "../Config.h"
+#include "ThemeManager.h"   // interaction() + current() tokens (doc 12/02)
+#include "ThemeFonts.h"   // theme font ladder (no font face in app code)
+#include "generated/CasioSlots.generated.h"   // Casio slot order + labels (generated)
+#include "generated/CasioArrowMasks.generated.h"   // page-turn arrow A8 masks (generated)
+#include "Theme.h"
+#include <cstdio>
 
 #if NUMOS_PRODUCTION_DEMO_PROFILE
 #include "../demo/DemoBootHealth.h"
@@ -76,6 +82,17 @@ static constexpr int CARD_PAD      = 6;
 static constexpr int ROW_H         = 78;
 static constexpr int CARD_W        = 94;   // 3×94 + 2×6(gap) + 2×8(pad) = 310 ≤ 320
 static constexpr int CARD_H        = ROW_H; // icon(44)+label(18)+padding(16)
+
+// ── Casio MenuList geometry (CASIO_SPEC §3a — measured, not re-measured) ──
+static constexpr int MENU_COLS      = 2;      // 4 rows x 2 columns = 8 slots
+static constexpr int MENU_ROWS      = 4;
+static constexpr int MENU_ROW_TOP   = 24;     // first row text top
+static constexpr int MENU_ROW_PITCH = 34;     // row pitch
+static constexpr int MENU_LEFT_X    = 8;      // left column
+static constexpr int MENU_RIGHT_X   = 162;    // right column
+static constexpr int MENU_ROW_H     = 30;     // focus box height (text ≈ 26)
+static constexpr int MENU_SLOT_W    = 150;    // focus box / label area width
+static constexpr int MENU_PAGE_CAP  = 8;      // slots per full page
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // NumWorks colour palette
@@ -158,6 +175,15 @@ void MainMenu::setLaunchCallback(std::function<void(int)> cb) {
 }
 
 void MainMenu::load() {
+    // A theme change made while an APP was on screen never reached the
+    // launcher: reloadActiveView() reloads the running app, and returnToMenu()
+    // only loads the existing screen. The launcher latches its topology
+    // (grid vs 4x2 MenuList) and its colours at create() time, so rebuild here
+    // when the active theme is no longer the one these widgets were built with.
+    if (_screen &&
+        _builtThemeId != static_cast<uint8_t>(ui::ThemeManager::instance().id())) {
+        create();   // swaps the fresh screen in and frees the old one
+    }
     if (_screen) {
         lv_screen_load_anim(_screen, LV_SCREEN_LOAD_ANIM_FADE_IN, 200, 0, false);
         lv_group_set_default(_group);
@@ -165,6 +191,13 @@ void MainMenu::load() {
 }
 
 bool MainMenu::moveFocusByDelta(int dCol, int dRow) {
+    // Casio MenuList: same verbs, different topology (doc 12). UP/DOWN move the
+    // row; LEFT/RIGHT turn the page. Pages never wrap (casio wrap=false).
+    if (_listMode) {
+        if (dRow != 0) moveListRow(dRow);
+        if (dCol != 0) setListPage(_listPage + dCol);
+        return true;
+    }
     if (!_group || !_grid) return false;
 
     int currentId = focusedCardId();
@@ -214,6 +247,164 @@ bool MainMenu::moveFocusByDelta(int dCol, int dRow) {
     if (!target) return false;
 
     lv_group_focus_obj(target);
+    return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Casio MenuList (4×2 N:NAME pages) — geometry per CASIO_SPEC §3a
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Slots present on a page (p1/p2 = 8, p3 = 22-16 = 6; slots 7/8 on p3 omitted).
+int MainMenu::menuListSlotsOnPage(int page) {
+    const int first = page * MENU_PAGE_CAP;
+    // Casio slot count, NOT APPS[].count: the casio order/labels come from the
+    // generated table so numos' card set stays untouched.
+    const int remain = ui::kCasioSlotCount - first;
+    if (remain <= 0) return 0;
+    return remain > MENU_PAGE_CAP ? MENU_PAGE_CAP : remain;
+}
+
+int MainMenu::menuListPageCount() {
+    return (ui::kCasioSlotCount + MENU_PAGE_CAP - 1) / MENU_PAGE_CAP;
+}
+
+void MainMenu::buildMenuList() {
+    const ui::Theme& th = ui::ThemeManager::instance().current();
+    const lv_font_t* font = ui::fontUi();   // theme face (no literal face here)
+
+    // Full-bleed: no status bar (unlike numos' 24 px bar).
+    _screen = lv_obj_create(nullptr);
+    lv_obj_set_size(_screen, SCREEN_W, SCREEN_H);
+    lv_obj_set_style_bg_color(_screen, lv_color_hex(th.bg), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_screen, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_clear_flag(_screen, LV_OBJ_FLAG_SCROLLABLE);
+
+    // NO focus rectangle in casio mode (operator decision): focus is tracked in
+    // _listSlot and shown by TEXT COLOUR only (updateListFocus). There is
+    // deliberately no selection card, no fill and no outline here.
+
+    // 8 positional slot labels; text set by rebuildListPage().
+    for (int s = 0; s < MENU_PAGE_CAP; ++s) {
+        const int row = s / MENU_COLS;
+        const int col = s % MENU_COLS;
+        lv_obj_t* lbl = lv_label_create(_screen);
+        lv_obj_set_style_text_font(lbl, font, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(th.text), LV_PART_MAIN);
+        lv_obj_set_style_text_opa(lbl, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_pos(lbl,
+                       col == 0 ? MENU_LEFT_X : MENU_RIGHT_X,
+                       MENU_ROW_TOP + row * MENU_ROW_PITCH);
+        _listSlots[s] = lbl;
+    }
+
+    // Edge arrows are the operator's BITMAP, not drawn geometry and not a font
+    // glyph (SPEC-stageC §C6). Generated A8 masks (24x40, cropped to the ink
+    // bbox): the right arrow is the supplied asset, the left is its horizontal
+    // mirror made at generation time. The ink colour is the theme token via
+    // image_recolor, so a mask carries coverage only — no baked-in colour.
+    // (The mockup's top-right "more" mark is still deliberately NOT modelled.)
+    _listArrowLeft = lv_image_create(_screen);
+    lv_image_set_src(_listArrowLeft, &ui::kCasioArrowLeft);
+    lv_obj_set_style_image_recolor(_listArrowLeft, lv_color_hex(th.text), LV_PART_MAIN);
+    lv_obj_set_style_image_recolor_opa(_listArrowLeft, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_align(_listArrowLeft, LV_ALIGN_LEFT_MID, 0, 0);
+
+    _listArrowRight = lv_image_create(_screen);
+    lv_image_set_src(_listArrowRight, &ui::kCasioArrowRight);
+    lv_obj_set_style_image_recolor(_listArrowRight, lv_color_hex(th.text), LV_PART_MAIN);
+    lv_obj_set_style_image_recolor_opa(_listArrowRight, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_align(_listArrowRight, LV_ALIGN_RIGHT_MID, -2, 0);
+
+    rebuildListPage();
+    updateListFocus();
+}
+
+void MainMenu::rebuildListPage() {
+    if (!_screen) return;
+    const int first = _listPage * MENU_PAGE_CAP;
+    const int slots = menuListSlotsOnPage(_listPage);
+    for (int s = 0; s < MENU_PAGE_CAP; ++s) {
+        if (!_listSlots[s]) continue;
+        if (s < slots) {
+            // Positional slot -> generated (id, <=5-char label) row. The launcher
+            // order/labels live in IMPLEMENTATION.md §1, never in APPS[].
+            const ui::CasioSlot& cs = ui::kCasioSlots[first + s];
+            char buf[40];
+            std::snprintf(buf, sizeof(buf), "%d:%s", s + 1, cs.label);
+            lv_label_set_text(_listSlots[s], buf);
+            lv_obj_clear_flag(_listSlots[s], LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(_listSlots[s], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    // Edge arrows: left visible on p2/p3, right on p1/p2; both vanish at the ends.
+    if (_listArrowLeft) {
+        if (_listPage > 0) lv_obj_clear_flag(_listArrowLeft, LV_OBJ_FLAG_HIDDEN);
+        else               lv_obj_add_flag(_listArrowLeft, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (_listArrowRight) {
+        if (_listPage < menuListPageCount() - 1)
+            lv_obj_clear_flag(_listArrowRight, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(_listArrowRight, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void MainMenu::updateListFocus() {
+    // Focus feedback = text colour only (no rect, no fill, no card). The focused
+    // slot takes the accent ink, every other slot the normal text ink.
+    const ui::Theme& th = ui::ThemeManager::instance().current();
+    const int slots = menuListSlotsOnPage(_listPage);
+    for (int s = 0; s < MENU_PAGE_CAP; ++s) {
+        if (!_listSlots[s]) continue;
+        const bool focused = (s == _listSlot) && (s < slots);
+        lv_obj_set_style_text_color(_listSlots[s],
+            lv_color_hex(focused ? th.accent : th.text), LV_PART_MAIN);
+    }
+}
+
+void MainMenu::setListPage(int page) {
+    if (!_listMode) return;
+    if (page < 0 || page >= menuListPageCount()) return;   // no wrap at the ends
+    if (page == _listPage) return;
+    _listPage = page;
+    const int slots = menuListSlotsOnPage(_listPage);
+    if (_listSlot >= slots) {
+        // Clamp to a valid slot, staying in the left column (col-major focus).
+        _listSlot = (slots > 0) ? ((slots - 1) / MENU_COLS) * MENU_COLS : 0;
+    }
+    rebuildListPage();
+    updateListFocus();
+}
+
+void MainMenu::moveListRow(int dRow) {
+    if (!_listMode) return;
+    const int slots = menuListSlotsOnPage(_listPage);
+    const int row = _listSlot / MENU_COLS;
+    const int col = _listSlot % MENU_COLS;
+    const int nRow = row + dRow;
+    if (nRow < 0 || nRow >= MENU_ROWS) return;     // no wrap
+    const int nSlot = nRow * MENU_COLS + col;
+    if (nSlot >= slots) return;                    // p3 slots 7/8 omitted
+    _listSlot = nSlot;
+    updateListFocus();
+}
+
+bool MainMenu::launchFocusedSlot() {
+    return launchSlot(_listSlot);
+}
+
+bool MainMenu::launchSlot(int slot) {
+    if (!_listMode) return false;
+    if (slot < 0 || slot >= MENU_PAGE_CAP) return false;
+    const int idx = _listPage * MENU_PAGE_CAP + slot;
+    if (idx < 0 || idx >= ui::kCasioSlotCount) return false;   // p3 has 6
+    _listSlot = slot;
+    updateListFocus();
+    const ui::CasioSlot& cs = ui::kCasioSlots[idx];
+    Serial.printf("[GUI] MenuList launch slot %d (id %d '%s')\n",
+                  slot + 1, cs.id, cs.label);
+    if (_launchCb) _launchCb(cs.id);
     return true;
 }
 
@@ -309,26 +500,47 @@ const char* MainMenu::debugCardNameById(int id) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void MainMenu::create() {
-    // Memory safety: destroy any previous state if create() is re-called
-    if (_screen) {
-        if (_group)  { lv_group_delete(_group); _group  = nullptr; }
-        lv_obj_delete(_screen);   _screen    = nullptr;
-        _grid      = nullptr;
-        _firstCard = nullptr;
-    }
+    // The old screen may be the ACTIVE screen (theme toggle rebuilds the
+    // launcher live). LVGL tolerates deleting the active screen but the
+    // display's act_scr dangles until a replacement is loaded, so the NEW
+    // screen is fully built first and only then switched in + the old one
+    // deleted — never delete a live screen expecting the next load() to fix it.
+    lv_obj_t* prevScreen = _screen;
+    if (_group)  { lv_group_delete(_group); _group  = nullptr; }
+    _screen    = nullptr;
+    _grid      = nullptr;
+    _firstCard = nullptr;
+    for (int i = 0; i < MENU_PAGE_CAP; ++i) _listSlots[i] = nullptr;
+    _listArrowLeft  = nullptr;
+    _listArrowRight = nullptr;
 
-    initStyles();
-
-    _screen = lv_obj_create(nullptr);
-    lv_obj_set_size(_screen, SCREEN_W, SCREEN_H);
-    lv_obj_add_style(_screen, &_styleScreen, LV_PART_MAIN);
-    lv_obj_clear_flag(_screen, LV_OBJ_FLAG_SCROLLABLE);
+    // The launcher's topology is the InteractionModel's, never the theme id
+    // (doc 12): casio's MenuList is a paged 4×2 N:NAME list; numos keeps the
+    // card grid. Numbered across the interaction, not hard-coded.
+    _listMode =
+        ui::ThemeManager::instance().interaction().launcher ==
+        ui::LauncherStyle::MenuList;
+    _listPage = 0;
+    _listSlot = 0;
+    // Record the theme these widgets are built from; load() compares against it
+    // so a theme change made elsewhere forces a rebuild instead of a stale load.
+    _builtThemeId = static_cast<uint8_t>(ui::ThemeManager::instance().id());
 
     _group = lv_group_create();
-    lv_group_set_wrap(_group, true);   // Wrap-around: last→first, first→last
+    lv_group_set_wrap(_group, true);
 
-    buildStatusBar();
-    buildGrid();
+    if (_listMode) {
+        buildMenuList();
+    } else {
+        initStyles();
+
+        _screen = lv_obj_create(nullptr);
+        lv_obj_set_size(_screen, SCREEN_W, SCREEN_H);
+        lv_obj_add_style(_screen, &_styleScreen, LV_PART_MAIN);
+        lv_obj_clear_flag(_screen, LV_OBJ_FLAG_SCROLLABLE);
+
+        buildStatusBar();
+        buildGrid();
 
     // Force LVGL to resolve all flex card positions NOW — without this the
     // layout is computed lazily at the next render frame, so the card
@@ -342,6 +554,16 @@ void MainMenu::create() {
         lv_group_focus_obj(_firstCard);
         lv_obj_scroll_to_view(_firstCard, LV_ANIM_OFF);
         Serial.println("[GUI] Initial scroll to App ID 0: Done.");
+    }
+    }
+
+    // Live rebuild (theme toggle): switch the display to the fresh screen and
+    // only then free the previous one. At boot there is no previous screen.
+    if (prevScreen && prevScreen != _screen) {
+        lv_scr_load(_screen);
+        lv_group_set_default(_group);
+        lv_obj_delete(prevScreen);
+        Serial.println("[GUI] Launcher screen swapped (old freed).");
     }
 }
 
@@ -363,7 +585,7 @@ void MainMenu::buildStatusBar() {
     // Left: angle mode
     lv_obj_t* modeLabel = lv_label_create(bar);
     lv_label_set_text(modeLabel, "rad");
-    lv_obj_set_style_text_font(modeLabel, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(modeLabel, ui::fontUi(), 0);
     lv_obj_set_style_text_color(modeLabel, lv_color_hex(COL_STATUS_TEXT), 0);
     lv_obj_set_style_text_opa(modeLabel, LV_OPA_COVER, 0);
     lv_obj_align(modeLabel, LV_ALIGN_LEFT_MID, 8, 0);
@@ -376,7 +598,7 @@ void MainMenu::buildStatusBar() {
 #else
     lv_label_set_text(title, "APPLICATIONS");
 #endif
-    lv_obj_set_style_text_font(title, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(title, ui::fontUi(), 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COL_STATUS_TEXT), 0);
     lv_obj_set_style_text_opa(title, LV_OPA_COVER, 0);
     lv_obj_set_style_text_letter_space(title, 1, 0);
@@ -385,7 +607,7 @@ void MainMenu::buildStatusBar() {
     // Right: battery
     lv_obj_t* batt = lv_label_create(bar);
     lv_label_set_text(batt, LV_SYMBOL_BATTERY_FULL);
-    lv_obj_set_style_text_font(batt, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(batt, ui::fontUi(), 0);
     lv_obj_set_style_text_color(batt, lv_color_hex(COL_STATUS_TEXT), 0);
     lv_obj_set_style_text_opa(batt, LV_OPA_COVER, 0);
     lv_obj_align(batt, LV_ALIGN_RIGHT_MID, -8, 0);
@@ -941,7 +1163,7 @@ void MainMenu::initStyles() {
 
     // ── App name (UI default font) ──────────────────────────────────────
     lv_style_init(&_styleAppName);
-    lv_style_set_text_font(&_styleAppName,  LV_FONT_DEFAULT);
+    lv_style_set_text_font(&_styleAppName,  ui::fontUi());
     lv_style_set_text_color(&_styleAppName, lv_color_hex(COL_LABEL_TEXT));
     lv_style_set_text_opa(&_styleAppName,   LV_OPA_COVER);
     lv_style_set_text_align(&_styleAppName, LV_TEXT_ALIGN_CENTER);

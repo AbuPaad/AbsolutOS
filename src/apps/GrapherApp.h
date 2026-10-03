@@ -41,6 +41,9 @@
 #include "../input/KeyboardManager.h"
 #include "GraphModel.h"
 #include "../ui/GraphView.h"
+#include "../ui/Theme.h"
+#include "../ui/ThemeManager.h"
+#include "../ui/nav/InteractionModel.h"
 
 class GrapherApp {
 public:
@@ -55,8 +58,11 @@ public:
     bool isActive()        const { return _screen != nullptr; }
     bool navigateBack();
     uint8_t retainedExpressionCount() const;
-    bool atTabLevel()      const { return _focus == Focus::TAB_BAR; }
-    bool isOnExpressions() const { return _tab == Tab::EXPRESSIONS; }
+    // Casio split: no tab bar; AC belongs to the app while a row is being typed
+    // into (first AC commits the row, the next one leaves). In table mode the
+    // first AC returns to the list. Both read the profile, never a theme id.
+    bool atTabLevel()      const { return _casio ? (_casioEdit < 0) : (_focus == Focus::TAB_BAR); }
+    bool isOnExpressions() const { return _casio ? (_tab != Tab::TABLE) : (_tab == Tab::EXPRESSIONS); }
 
     // Viewport access for grid draw callback
     void getViewport(float& xMin, float& xMax, float& yMin, float& yMax) const {
@@ -106,6 +112,28 @@ private:
     static constexpr int PAD          = 6;
     static constexpr int ROW_H        = 32;   // Expression row height
     static constexpr int ROW_GAP      = 2;
+
+    // ── Casio split layout (profile `splitGraph`) ────────────────────────
+    // The Casio shape is a two-pane split: a narrow left column holding the
+    // numbered function list (or the value table), and a tall right pane with a
+    // live graph. Geometry is measured from the fitted 320x156 canvas so the
+    // left column's slot count is a hard, derived limit — not a magic 6.
+    static constexpr int CASIO_COL_X    = 2;
+    static constexpr int CASIO_COL_Y    = 2;
+    static constexpr int CASIO_COL_W    = 110;
+    static constexpr int CASIO_COL_H    = SCREEN_H - CASIO_COL_Y - 2;
+    static constexpr int CASIO_ROW_H    = 24;
+    static constexpr int CASIO_ROW_GAP  = 1;
+    static constexpr int CASIO_PANE_X   = CASIO_COL_X + CASIO_COL_W + 4;
+    static constexpr int CASIO_PANE_Y   = CASIO_COL_Y;
+    static constexpr int CASIO_PANE_W   = SCREEN_W - CASIO_PANE_X - 4;
+    static constexpr int CASIO_PANE_H   = CASIO_COL_H;
+    // Hard limit: how many numbered slots actually fit the left column.
+    static constexpr int CASIO_SLOTS_MAX =
+        CASIO_COL_H / (CASIO_ROW_H + CASIO_ROW_GAP);
+    static constexpr int CASIO_MAX_FUNCS =
+        (CASIO_SLOTS_MAX < MAX_FUNCS) ? CASIO_SLOTS_MAX : MAX_FUNCS;
+    static_assert(CASIO_MAX_FUNCS >= 1, "casio left column must fit >= 1 slot");
     static constexpr int PILL_RADIUS  = 6;    // NumWorks pill corner radius
     static constexpr int PILL_PAD     = 5;    // Internal padding (all sides)
     static constexpr int TPL_LOAD_INTERVAL_MS = 30;  // Lazy template load interval
@@ -222,6 +250,15 @@ private:
     lv_obj_t*       _infoLabel;
     lv_obj_t*       _modeBadge;         // Mode indicator "[Trace]" / "[Pan]"
 
+    // ── Casio split state (profile `splitGraph`) ─────────────────────────
+    bool            _casio;             // Casio shape active for this build
+    ui::AppColours  _sc;                // resolved surface for appid::kGrapher
+    uint8_t         _curveW;            // graph curve thickness (theme dial)
+    int             _casioEdit;         // slot being typed into (-1 = none)
+    lv_obj_t*       _casioCol;          // left column container (list / table)
+    lv_obj_t*       _casioPaneBox;      // right pane frame (the graph)
+    int             _tblW;              // value-table width (pane width in casio)
+
     // ── Calculate menu (floating overlay) ────────────────────────────
     static constexpr int CALC_MENU_ITEMS = 6;  // +1 for "Draw Tangent"
     static_assert(CALC_MENU_ITEMS == 6, "CALC_MENU_ITEMS must match CALC_MENU_LABELS");
@@ -305,6 +342,18 @@ private:
     void createExpressionsPanel();
     void createGraphPanel();
     void createTablePanel();
+
+    // ── Casio split builders (profile `splitGraph`) ───────────────────────
+    void readProfile();
+    void createCasioUI();
+    void createCasioList();
+    void createCasioPane();
+    void refreshCasioList();
+    void refreshCasioFocus();
+    void handleCasioKey(const KeyEvent& ev);
+    /// Trace cursor dot + crosshair + readout pill, parented to `parent`.
+    /// Shared by the numos graph area and the Casio right pane.
+    void createTraceOverlay(lv_obj_t* parent, int pillW);
 
     // ── Tab switching ────────────────────────────────────────────────
     void switchTab(Tab t);

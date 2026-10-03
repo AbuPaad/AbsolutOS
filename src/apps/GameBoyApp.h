@@ -53,6 +53,7 @@
 
 #include "emulation/GameBoyCore.h"
 #include "input/KeyCodes.h"
+#include "../ui/Theme.h"
 
 class GameBoyApp {
 public:
@@ -112,10 +113,16 @@ private:
     static constexpr const char* kRomDir = "/roms";
 
     void begin();                 ///< build the root screen (once)
+    /// Resolve the app surface from the active theme + interaction model
+    /// (`ui::appSurface(ui::appid::kGameBoy)`): numos resolves to the black
+    /// chrome this app has always had, casio to the light LCD tokens. No
+    /// literals, and no branch on the theme id.
+    void readSurface();
     void buildPicker();           ///< build the ROM list UI
     void destroyPicker();
     void buildPlayer();           ///< build the game surface UI
     void destroyPlayer();
+    void buildSoftkey(const char* label);
     void rescanRoms();            ///< fill _roms from kRomDir
     void refreshSelectionUi();
     void setMessage(const char* text);
@@ -133,10 +140,16 @@ private:
     lv_obj_t* _picker  = nullptr;   ///< picker container
     lv_obj_t* _title   = nullptr;
     lv_obj_t* _message = nullptr;
+    lv_obj_t* _softkey = nullptr;   ///< casio bottom softkey band (picker only)
     lv_obj_t* _player  = nullptr;   ///< game container
     lv_obj_t* _image   = nullptr;   ///< the 160×144 surface
     std::vector<lv_obj_t*> _rows;   ///< picker rows (index == _roms index)
     std::vector<lv_obj_t*> _rowLabels;
+
+    // ── Theme state (readSurface) ────────────────────────────────────────
+    ui::AppColours _sc{};           ///< resolved surface
+    int            _softkeyH  = 0;  ///< 0 unless the profile shows a softkey row
+    bool           _focusFill = true;  ///< does focus paint a fill? (casio: no)
 
     // ── State ────────────────────────────────────────────────────────────
     State                    _state = State::Idle;

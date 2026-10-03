@@ -18,34 +18,36 @@
 #   0x000000  32 KiB  bootloader        (written by esptool, not a partition)
 #   0x008000   4 KiB  partition table   (written by esptool, not a partition)
 #   nvs        0x9000    28 KiB  (was 20 KiB; absorbed the old 8 KiB otadata)
-#   app0       0x10000 6,144 KiB  firmware slot (single)
-#   spiffs     0x610000 10,176 KiB  LittleFS — mounted by its "spiffs" label
+#   app0       0x10000 8,192 KiB  firmware slot (single, 8 MiB)
+#   spiffs     0x810000 8,128 KiB  LittleFS — mounted by its "spiffs" label
 #
-#   28 + 6144 + 10176 = 16,348 KiB, plus the 32 KiB bootloader and the 4 KiB
+#   28 + 8192 + 8128 = 16,348 KiB, plus the 32 KiB bootloader and the 4 KiB
 #   partition table = 16,384 KiB = 16 MiB. Nothing is unallocated.
 #
-# LittleFS grew 10,112 -> 10,176 KiB (+64 KiB, the old coredump partition) and
-# nvs grew 20 -> 28 KiB (the old otadata). That +64 KiB is the ONLY storage
-# that was recoverable: the two hard constraints below pin everything else.
-#
-# WHY THE FILESYSTEM CANNOT BE BIGGER (measured, not guessed):
+# WHY THE APP SLOT IS 8 MiB AND NOT THE WHOLE 16 MiB:
 #
 #   * app0 MUST start at 0x10000. PlatformIO's esptool uploader hardcodes the
 #     app offset (`ESP32_APP_OFFSET = board.get("upload.offset_address",
 #     "0x10000")`, builder/main.py), and ESP-IDF requires an app partition to be
 #     64 KiB aligned for MMU mapping. So the 8 KiB below app0 is padding no
 #     filesystem can use — hence folding it into nvs.
-#   * app0 = 6 MiB is a deliberate floor. The firmware measured 5,793,581 bytes
-#     (92.1%) against it, so ~497 KiB of headroom is all a feature can ever spend
-#     without a repartition. Upstream's per-slot size was 0x640000 (6.25 MiB);
-#     the 256 KiB difference is handed to LittleFS here on purpose.
+#   * The bootloader, partition table and NVS live below app0, so app0 can never
+#     be 16 MiB. Above that, the slot size is purely a split decision: bytes the
+#     app does not take are bytes LittleFS cannot have.
+#   * app0 was 6,144 KiB (0x600000) from 2026-10-01; raised to 8,192 KiB
+#     (0x800000) on 2026-10-03 because the firmware measured 5,793,581 bytes
+#     (94.4 % of the old slot, ~470 KiB headroom) and new apps kept landing —
+#     there was no room left to spend without a repartition. At 8 MiB the same
+#     image is 69.1 %, i.e. ~2.47 MiB of headroom, and LittleFS keeps 7.9375 MiB
+#     (≈7 ROMs of 1 MiB, or 1 GBC 8 MiB ROM plus AI prompts and answers).
 #
-# HOW THE 6 MB LIMIT IS DERIVED (answers "who capped this?" — nobody upstream):
+# HOW THE APP LIMIT IS DERIVED (answers "who capped this?" — nobody upstream):
 #
 #   PlatformIO reads THIS file and sets `upload.maximum_size` from the app
 #   partition with subtype factory/ota_0 (builder/main.py _update_max_upload_size).
-#   The board json's own "maximum_size" is therefore overridden and the "-e size
-#   guard" is a straight read of `app0` = 0x600000. Upstream is not involved.
+#   The board json's own "maximum_size" is therefore overridden and the "size
+#   guard" in the PlatformIO/VSCode UI is a straight read of `app0` = 0x800000.
+#   Upstream is not involved.
 #
 # OTA-RELATED FLASH WRITES ARE GONE WITH otadata:
 #
@@ -57,16 +59,18 @@
 #   convention (noota_ffat.csv does exactly this) and the bootloader boots it
 #   directly when no OTA data partition exists.
 #
-# WHEN THE BUILD STOPS FITTING — the swap points (do NOT drop a feature):
+# WHEN THE BUILD STOPS FITTING AGAIN — the swap points (do NOT drop a feature):
 #
-#   app0 6.25 MiB / spiffs 9.6875 MiB:  app0 0x10000, 0x640000; spiffs 0x650000, 0x9B0000
-#   app0 6.50 MiB / spiffs 9.4375 MiB:  app0 0x10000, 0x680000; spiffs 0x690000, 0x970000
+#   app0 9 MiB / spiffs 6.9375 MiB:  app0 0x10000, 0x900000; spiffs 0x910000, 0x6F0000
+#   app0 10 MiB / spiffs 5.9375 MiB: app0 0x10000, 0xA00000; spiffs 0xA10000, 0x5F0000
 #
+# Every size here must also be mirrored in boards/*.json (`upload.maximum_size`),
+# scripts/production_factory_image.py and scripts/check-production-target.py.
 # Flashing a table change repartitions flash and WIPES LittleFS, so any user
 # ROMs and saved answers go with it. Treat this as a one-way move on a unit
 # already in the field. (`pio run -t uploadfs` is needed once after this change
 # for the new size to be visible.)
 # Name,   Type, SubType, Offset,  Size, Flags
 nvs,      data, nvs,     0x9000,  0x7000,
-app0,     app,  ota_0,   0x10000, 0x600000,
-spiffs,   data, spiffs,  0x610000,0x9F0000,
+app0,     app,  ota_0,   0x10000, 0x800000,
+spiffs,   data, spiffs,  0x810000,0x7F0000,

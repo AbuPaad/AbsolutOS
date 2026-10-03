@@ -37,6 +37,7 @@ uint8_t setting_brightness =
 #else
 uint8_t setting_brightness = 96;
 #endif
+uint8_t setting_theme = 0;              // ThemeId::NumOS
 #include "display/DisplayDriver.h"
 #include "input/KeyMatrix.h"   // legacy driver — no instanciado; conservado por si acaso
 #include "drivers/Keyboard.h"  // nuevo driver 5×10

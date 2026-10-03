@@ -1,0 +1,37 @@
+# casio_theme_toggle.numos — Stage C4: the ALPHA+AC hotkey must (a) switch to
+# the casio theme from the launcher and (b) when pressed inside Calculation,
+# keep the SAME app active (doc 10: never eject the user).
+#
+# The ALPHA+AC combo is expressible in a script: keydown alpha, key ac, keyup alpha.
+# Every assert FAILS the run (exit 4) instead of producing a plausible screenshot.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/casio_theme_toggle.numos \
+#           --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse error · 3 screenshot error · 4 assertion failure.
+
+log "casio_theme_toggle: waiting for launcher"
+wait 200
+
+assert_app Menu
+
+# Toggle to casio from the launcher.
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+assert_app Menu
+
+# Open Calculation under the casio theme.
+open_app Calculation
+wait 60
+assert_app Calculation
+
+# Toggle back to numos while INSIDE Calculation: the same app must stay active.
+keydown alpha
+key ac
+keyup alpha
+assert_theme numos
+assert_app Calculation
+
+log "casio_theme_toggle: assertions passed"

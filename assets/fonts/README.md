@@ -2,7 +2,8 @@
 
 The binary fonts in this directory are Font Software, each under its own license
 (the SIL Open Font License 1.1 for Montserrat and STIX Two Math; CC BY-SA 3.0 for
-the CASIO Calculator Font). They are not relicensed under NumOS's GPL. Full,
+the **math** face `casio-calculator-font.otf`; CC BY 3.0 for the **UI** face
+`casio-fx-9860gii.ttf`). They are not relicensed under NumOS's GPL. Full,
 upstream-supplied licence and copyright notices are in `LICENSES/`.
 
 ## Montserrat
@@ -105,6 +106,31 @@ include the extensible-delimiter assembly glyphs, the double-struck sets (ℂℕ
 
 Generated LVGL subsets (to be produced) are CC BY-SA-derived and must carry this
 attribution in their provenance header.
+
+## CASIO FX-9860GII UI Face
+
+- Local file: `casio-fx-9860gii.ttf`
+- Format: TrueType (`glyf`), `unitsPerEm` 4096
+- SHA-256: `0a97642fb20694bfa277a2fdbf0d10d85b6228cd0584712ad61fd28e9af20f4e`
+- FontStruction: `CASIO-Calculator-Font`
+- Author: `TH3_C0N-MAN`
+- Source: <https://fontstruct.com/fontstructions/show/1672425>
+  (the **2019 release**; the 2017 release, id 1475969, is the math face above)
+- License: `CC-BY-3.0` (Creative Commons Attribution 3.0 Unported)
+- License text: `LICENSES/CasioFx9860GII-CC-BY-3.0.txt`
+- Attribution (as supplied by the author): *The FontStruction
+  "CASIO-Calculator-Font" (https://fontstruct.com/fontstructions/show/1672425) by
+  "TH3_C0N-MAN" is licensed under a Creative Commons Attribution license
+  (https://creativecommons.org/licenses/by/3.0/).*
+
+This is the device **UI** face: it is what the casio theme's `fontUi`/`fontDisplay`
+uses for menus, labels and the calculator strip (sizes 12/18/26). Unlike the math
+face it is **attribution-only** (no ShareAlike), so generated LVGL subsets of this
+face carry a CC BY provenance header, never CC BY-SA.
+
+Generated LVGL subsets: `src/fonts/casio_ui_{12,18,26}.c`, declared by
+`src/fonts/CasioUiFont.h`. Regenerate with
+`bash scripts/generate_casio_ui_font.sh`.
 
 ## Licensing of generated data
 

@@ -25,12 +25,12 @@
   margin-inline: auto;
   overflow: hidden;
   border: 1px solid var(--numos-line);
-  border-radius: 24px;
+  border-radius: 14px;
   background: var(--numos-bg);
   color: var(--numos-text);
   box-shadow:
     0 1px 0 rgb(255 255 255 / 85%) inset,
-    0 20px 45px rgb(31 34 39 / 14%);
+    0 12px 28px rgb(31 34 39 / 14%);
 }
 
 .topbar, .actions, .persistence, .status-row {
@@ -41,15 +41,15 @@
 
 .topbar {
   justify-content: space-between;
-  padding: .9rem 1rem;
+  padding: .4rem .55rem;
   border-bottom: 1px solid var(--numos-line);
   background: color-mix(in srgb, var(--numos-panel) 78%, transparent);
 }
 
-.brand { display: grid; gap: .05rem; }
-.brand strong { font-size: .95rem; letter-spacing: .01em; }
-.brand span { color: var(--numos-muted); font-size: .72rem; }
-.actions { flex-wrap: wrap; justify-content: flex-end; }
+.brand { display: grid; gap: 0; }
+.brand strong { font-size: .74rem; letter-spacing: .01em; line-height: 1.1; }
+.brand span { color: var(--numos-muted); font-size: .56rem; line-height: 1.1; }
+.actions { flex-wrap: wrap; justify-content: flex-end; gap: .22rem; }
 
 button, summary {
   color: inherit;
@@ -57,13 +57,15 @@ button, summary {
 }
 
 button {
-  min-height: 2.25rem;
-  padding: .4rem .68rem;
+  min-height: 1.3rem;
+  padding: .1rem .42rem;
   border: 1px solid var(--numos-line);
-  border-radius: .65rem;
+  border-radius: .32rem;
   background: var(--numos-panel-2);
   box-shadow: 0 1px 0 rgb(255 255 255 / 80%) inset;
   cursor: pointer;
+  font-size: .66rem;
+  line-height: 1.2;
 }
 
 button:hover {
@@ -114,17 +116,17 @@ button:focus-visible, canvas:focus-visible, summary:focus-visible {
 
 .display-column {
   min-width: 0;
-  padding: clamp(.75rem, 2.4vw, 1.2rem) clamp(.75rem, 2.4vw, 1.2rem) .45rem;
+  padding: .45rem .55rem .3rem;
 }
 
 .display-stage {
   position: relative;
   display: grid;
-  min-height: 250px;
+  min-height: 0;
   place-items: center;
   overflow: hidden;
-  border: 7px solid #25272b;
-  border-radius: 14px;
+  border: 4px solid #25272b;
+  border-radius: 9px;
   background: #07080a;
   box-shadow: 0 1px 0 rgb(255 255 255 / 10%) inset;
 }
@@ -139,7 +141,7 @@ button:focus-visible, canvas:focus-visible, summary:focus-visible {
 canvas {
   display: block;
   width: 320px;
-  height: 240px;
+  height: 156px;
   max-width: none;
   background: #000;
   image-rendering: pixelated;
@@ -183,10 +185,10 @@ canvas {
 
 .status-row {
   justify-content: space-between;
-  min-height: 2.6rem;
-  padding: .55rem .15rem .05rem;
+  min-height: 1.4rem;
+  padding: .22rem .1rem 0;
   color: var(--numos-muted);
-  font-size: .82rem;
+  font-size: .66rem;
 }
 .status-row output { color: var(--numos-text); }
 .persistence { white-space: nowrap; }
@@ -205,58 +207,73 @@ canvas {
 .context-strip {
   display: flex;
   align-items: center;
-  gap: .45rem;
+  gap: .28rem;
   flex-wrap: wrap;
-  min-height: 2.2rem;
-  padding: .35rem .15rem .05rem;
+  min-height: 1.3rem;
+  padding: .2rem .1rem 0;
   color: var(--numos-muted);
-  font-size: .78rem;
+  font-size: .62rem;
 }
 .context-strip[hidden] { display: none; }
 .context-strip-app {
-  padding: .12rem .45rem;
+  padding: .06rem .3rem;
   border: 1px solid var(--numos-line-strong);
-  border-radius: .5rem;
+  border-radius: .3rem;
   background: var(--numos-panel-2);
   color: var(--numos-text);
   font-weight: 700;
 }
 .context-strip-mod {
-  padding: .12rem .4rem;
-  border-radius: .5rem;
+  padding: .06rem .28rem;
+  border-radius: .3rem;
   background: var(--numos-accent);
   color: #fff;
-  font: 700 .72rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 700 .56rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   letter-spacing: .04em;
 }
 .context-strip-mod[hidden] { display: none; }
 .context-strip-keys { display: flex; flex-wrap: wrap; gap: .3rem; }
-.context-chip {
-  padding: .1rem .42rem;
+/* Per-app tip, driven by the firmware's @app line. It sits between the context
+   strip and the status row and only appears for an app that has one. */
+.app-tip {
+  margin: .1rem 0 .25rem;
+  padding: .28rem .42rem;
   border: 1px solid var(--numos-line);
-  border-radius: .45rem;
+  border-left: 2px solid var(--numos-accent);
+  border-radius: .35rem;
+  background: var(--numos-accent-soft);
+  color: var(--numos-text);
+  font-size: .66rem;
+  line-height: 1.35;
+}
+.app-tip[hidden] { display: none; }
+.context-chip {
+  padding: .05rem .28rem;
+  border: 1px solid var(--numos-line);
+  border-radius: .28rem;
   background: var(--numos-panel);
   color: var(--numos-text);
-  font: 600 .72rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 600 .56rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+/* Dim, never blank. At the compact 20px face the old 34% opacity plus a forced
+   dark background left category keys (numbers, modifiers) looking empty, so the
+   keypad read as broken in the launcher. Keep each category's own surface and
+   fade just enough to show it is not the point of this screen. */
 .key[data-context-role="disabled"] {
-  opacity: .34;
-  filter: saturate(.5) brightness(1.05);
-  border-color: #2a3037;
-  background: #262c33;
+  opacity: .62;
+  filter: saturate(.6);
 }
 /* A disabled key still responds, so it must not pretend to be hoverable. */
 .key[data-context-role="disabled"]:hover {
-  border-color: #2a3037;
-  background: #262c33;
+  opacity: .8;
 }
 .key[data-context-role="secondary"] { opacity: .82; }
 /* Primary keys are what this screen is for: lift them off the panel. */
 .key[data-context-role="primary"] {
   border-color: var(--numos-accent);
   box-shadow:
-    0 3px 0 #1f252a,
-    0 0 0 2px var(--numos-accent-soft),
+    0 1px 0 #1f252a,
+    0 0 0 1px var(--numos-accent-soft),
     0 1px 0 rgb(255 255 255 / 11%) inset;
 }
 @media (prefers-contrast: more) {
@@ -266,7 +283,7 @@ canvas {
 .controls {
   display: grid;
   max-height: none;
-  padding: 1rem clamp(.75rem, 2.4vw, 1.2rem) 1.35rem;
+  padding: .35rem .55rem .5rem;
   overflow: visible;
   border-top: 1px solid var(--numos-line);
   background: #e5e3dc;
@@ -290,61 +307,71 @@ canvas {
 .key-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: .52rem;
+  gap: .16rem;
 }
+/* Compact face: 20px tall so the ten keypad rows and the 320x156 screen both
+   fit the viewport without scrolling. The SHIFT/ALPHA legends do not fit at
+   this height; they stay in each key's accessible name (aria-label). Hover and
+   focus reveal them for pointer users. */
 .key {
   position: relative;
   display: grid;
-  align-items: end;
+  align-items: center;
   justify-items: center;
   min-width: 0;
-  min-height: 4.25rem;
-  padding: 1.35rem .35rem .62rem;
+  min-height: 20px;
+  padding: .02rem .18rem;
   overflow: hidden;
   border-color: #4b535a;
-  border-radius: .82rem;
+  border-radius: .3rem;
   background: #303840;
   color: #f7f7f5;
   box-shadow:
-    0 3px 0 #1f252a,
+    0 1px 0 #1f252a,
     0 1px 0 rgb(255 255 255 / 11%) inset;
   touch-action: none;
-  font-size: .76rem;
+  font-size: .6rem;
 }
 .key:hover {
   border-color: #66717a;
   background: #37414a;
 }
 .key:active, .key.is-pressed {
-  transform: translateY(3px);
+  transform: translateY(1px);
   box-shadow: none;
 }
 .key-primary {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  font: 700 clamp(.82rem, 2.2vw, 1.12rem)/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  letter-spacing: -.025em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.key-legend {
-  position: absolute;
-  top: .42rem;
-  max-width: calc(50% - .45rem);
-  overflow: hidden;
-  font: 700 clamp(.5rem, 1.45vw, .66rem)/1.1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 700 .62rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   letter-spacing: -.02em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.key-legend {
+  display: none;
+  position: absolute;
+  top: 1px;
+  max-width: calc(50% - 2px);
+  overflow: hidden;
+  font: 700 .4rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: -.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.key:hover .key-legend,
+.key:focus-visible .key-legend {
+  display: block;
+}
 .key-legend-shift {
-  left: .46rem;
+  left: 2px;
   color: #e0a800;
   text-align: left;
 }
 .key-legend-alpha {
-  right: .46rem;
+  right: 2px;
   color: #d45a46;
   text-align: right;
 }
@@ -356,7 +383,7 @@ canvas {
   background: #fbfaf6;
   color: #1c2024;
   box-shadow:
-    0 3px 0 #b8b7b0,
+    0 1px 0 #b8b7b0,
     0 1px 0 #fff inset;
 }
 .key-number:hover {
@@ -368,12 +395,12 @@ canvas {
   background: #e8e1ce;
   color: #282820;
   box-shadow:
-    0 3px 0 #b7ae95,
+    0 1px 0 #b7ae95,
     0 1px 0 rgb(255 255 255 / 70%) inset;
 }
 .key-modifier.is-modifier-active {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 #9e916b;
+  transform: translateY(1px);
+  box-shadow: none;
 }
 .key[data-key-id="SHIFT"].is-modifier-active {
   border-color: #b69128;
@@ -392,7 +419,7 @@ canvas {
   background: #e8ecf1;
   color: #252a30;
   box-shadow:
-    0 3px 0 #aab2bb,
+    0 1px 0 #aab2bb,
     0 1px 0 rgb(255 255 255 / 70%) inset;
 }
 .key-system:hover,
@@ -403,7 +430,7 @@ canvas {
   border-color: var(--numos-accent);
   background: var(--numos-accent);
   color: #fff;
-  box-shadow: 0 3px 0 #1e477f;
+  box-shadow: 0 1px 0 #1e477f;
 }
 .key-execute:hover {
   border-color: #214f8e;
@@ -415,12 +442,12 @@ details {
   background: var(--numos-panel);
   color: var(--numos-muted);
 }
-summary { padding: .72rem 1rem; cursor: pointer; }
-.details-body { display: grid; gap: .55rem; padding: 0 1rem 1rem; }
+summary { padding: .35rem .55rem; cursor: pointer; font-size: .68rem; }
+.details-body { display: grid; gap: .3rem; padding: 0 .55rem .5rem; font-size: .68rem; }
 .details-body dl {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  gap: .25rem .7rem;
+  gap: .18rem .5rem;
   margin: 0;
 }
 .details-body dt { color: var(--numos-text); }
@@ -453,26 +480,23 @@ summary { padding: .72rem 1rem; cursor: pointer; }
 :host(:fullscreen) .display-stage { min-height: 50vh; }
 
 @media (max-width: 600px) {
-  .shell { border-radius: 16px; }
+  .shell { border-radius: 12px; }
   .topbar { align-items: flex-start; }
   .brand span { max-width: 14rem; }
-  .display-stage {
-    min-height: 190px;
-    border-width: 5px;
-  }
-  .status-row { align-items: flex-start; flex-direction: column; }
-  .key-grid { gap: .3rem; }
+  /* Touch targets get a floor on phones; the desktop demo (the target for the
+     1920x1080 single-screen fit) keeps the 20px compact face. */
+  .key-grid { gap: .24rem; }
   .key {
-    min-height: 3.8rem;
-    padding: 1.2rem .12rem .52rem;
-    border-radius: .58rem;
+    min-height: 2rem;
+    padding: .1rem .12rem;
+    border-radius: .4rem;
   }
   .key-primary {
-    font-size: clamp(.72rem, 3.2vw, .98rem);
+    font-size: .72rem;
   }
   .key-legend {
-    top: .35rem;
-    font-size: clamp(.43rem, 1.85vw, .58rem);
+    top: 2px;
+    font-size: .48rem;
   }
 }
 

@@ -1,0 +1,24 @@
+# theme_hotkey_launcher.numos — reference: the launcher the ALPHA+AC hotkey
+# produces. Paired with settings_theme_switch.numos, which reaches the same
+# theme through the Settings picker instead; the two captures must agree.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/theme_hotkey_launcher.numos \
+#           --fs-root tests/emulator/fs --frames 900 --quiet
+
+log "theme_hotkey_launcher: waiting for launcher"
+wait 260
+
+assert_app Menu
+assert_theme numos
+
+keydown alpha
+key ac
+keyup alpha
+wait 40
+
+assert_theme casio
+assert_app Menu
+screenshot out/theme_via_hotkey.ppm
+
+log "theme_hotkey_launcher: captured"

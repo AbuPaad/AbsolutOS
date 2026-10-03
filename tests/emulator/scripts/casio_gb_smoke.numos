@@ -1,0 +1,43 @@
+# casio_gb_smoke.numos — the Game Boy app under the CASIO theme: the ROM picker
+# gets the light LCD chrome + softkey band, while the emulated picture itself
+# keeps its black letterbox (the game is the game).
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/casio_gb_smoke.numos \
+#           --fs-root tests/emulator/fs --frames 1600 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "casio_gb_smoke: waiting for launcher"
+wait 200
+assert_app Menu
+
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+assert_app Menu
+
+open_app gameboy
+wait 60
+assert_app gameboy
+# The picker, in casio chrome.
+screenshot out/casio_gb_picker.ppm
+log "casio_gb_smoke: picker captured"
+
+# Digit-launch: 1 = the first ROM, directly.
+key 1
+wait 240
+assert_app gameboy
+screenshot out/casio_gb_playing.ppm
+log "casio_gb_smoke: first ROM running"
+
+key ac
+wait 30
+assert_app gameboy
+log "casio_gb_smoke: back to the picker"
+
+key mode
+wait 90
+assert_app menu
+log "casio_gb_smoke: left the app"

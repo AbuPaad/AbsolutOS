@@ -113,6 +113,11 @@ public:
     bool                  debugHasResult() const { return _hasResult; }
     const vpam::ExactVal& debugLastResult() const { return _lastResult; }
 
+    /// History-strip indicator state: "up" (older entries above), "down"
+    /// (paged back into history), "none" (history empty). Read-only view of
+    /// _history/_historyIndex — assert_history_arrow reads this.
+    const char* debugHistoryArrow() const;
+
     // ── GIAC-B01 probes (assert_calc_engine / _result_kind / _status) ────
     const char* debugCalcEngine() const { return "giac"; }
     const char* debugCalcResultKind() const;   // "structured"|"text_fallback"|"none"
@@ -127,6 +132,12 @@ private:
     lv_obj_t*          _resultSep;     ///< Línea separadora expr↔resultado
     vpam::MathCanvas   _mathCanvas;    ///< Canvas de la expresión (arriba)
     vpam::MathCanvas   _resultCanvas;  ///< Canvas del resultado (abajo)
+    // Casio strip (Layout::Casio; replaces the numos StatusBar): a thin,
+    // unfilled text strip — mode letter left, "Math" + history arrow right.
+    bool               _casioLayout   = false;
+    lv_obj_t*          _casioModeLabel = nullptr;
+    lv_obj_t*          _casioRightLabel = nullptr;   ///< "Math" (input/output mode)
+    lv_obj_t*          _casioHistArrow  = nullptr;   ///< history hint bitmap (top-right)
 
     // ── Motor VPAM ───────────────────────────────────────────────────────
     vpam::NodePtr              _rootNode;    ///< Nodo raíz del AST (owned)
@@ -200,6 +211,11 @@ private:
     void evaluateExpression();
     void showResult();
     void clearResult();
+
+    /// Casio strip: refresh mode letter + history arrow (thousands of small
+    /// call sites are avoided by calling only the state-changing points).
+    void buildCasioStrip();
+    void updateCasioStrip();
 
     /// Dynamically repositions the separator and result canvas after
     /// trimming the expression canvas to its actual content height.

@@ -21,6 +21,7 @@
  */
 
 #include "PythonApp.h"
+#include "../ui/ThemeFonts.h"
 #include <cstring>
 #include <cstdio>
 #include <cctype>
@@ -238,7 +239,7 @@ void PythonApp::createEditorPanel() {
     lv_textarea_set_placeholder_text(_editorTA, "# Write Python code here...");
     lv_obj_set_style_bg_color(_editorTA, lv_color_hex(COL_EDITOR_BG), LV_PART_MAIN);
     lv_obj_set_style_text_color(_editorTA, lv_color_hex(COL_EDITOR_TXT), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_editorTA, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_editorTA, ui::fontMono(), LV_PART_MAIN);
     lv_obj_set_style_border_width(_editorTA, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(_editorTA, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_editorTA, 4, LV_PART_MAIN);
@@ -254,7 +255,7 @@ void PythonApp::createEditorPanel() {
     lv_obj_add_flag(_acPopup, LV_OBJ_FLAG_HIDDEN);
     for (int i = 0; i < 8; ++i) {
         _acRows[i] = makePanel(_acPopup, 0, i * 16, 120, 16, COL_AC_BG);
-        _acLabels[i] = makeLabel(_acRows[i], 4, 2, "", 0xCCCCCC, &lv_font_unscii_8);
+        _acLabels[i] = makeLabel(_acRows[i], 4, 2, "", 0xCCCCCC, ui::fontMono());
         lv_obj_add_flag(_acRows[i], LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -268,7 +269,7 @@ void PythonApp::createConsolePanel() {
     lv_textarea_set_text(_consoleTA, ">>> Python Console\n");
     lv_obj_set_style_bg_color(_consoleTA, lv_color_hex(COL_CONSOLE_BG), LV_PART_MAIN);
     lv_obj_set_style_text_color(_consoleTA, lv_color_hex(COL_CONSOLE_TXT), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_consoleTA, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_consoleTA, ui::fontMono(), LV_PART_MAIN);
     lv_obj_set_style_border_width(_consoleTA, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(_consoleTA, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_consoleTA, 4, LV_PART_MAIN);
@@ -395,7 +396,7 @@ void PythonApp::refreshScriptList() {
 
     if (_scriptCount == 0) {
         makeLabel(_panelScripts, SCREEN_W / 2 - 50, CONTENT_H / 2 - 20,
-                  "No scripts found", 0x999999, &lv_font_montserrat_14);
+                  "No scripts found", 0x999999, ui::fontUi());
     }
 
     refreshScriptFocus();

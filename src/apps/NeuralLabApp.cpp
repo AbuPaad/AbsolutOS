@@ -23,6 +23,7 @@
  */
 
 #include "NeuralLabApp.h"
+#include "../ui/ThemeFonts.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -207,7 +208,7 @@ void NeuralLabApp::createUI() {
     // Plain UI prose: stix_math_18 has no U+0020 glyph (spaces tofu as '?').
     // lv_font_montserrat_14 covers ASCII + spaces. See updateInfoLabel() for the
     // RUN/PAUSE ASCII status (montserrat does not cover U+25B6/U+23F8 either).
-    lv_obj_set_style_text_font(_infoLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(_infoLabel, ui::fontUi(), 0);
     lv_obj_align(_infoLabel, LV_ALIGN_BOTTOM_LEFT, 4, -2);
     lv_label_set_text(_infoLabel, "Neural Lab | F2:Train F4:Scenario");
 
@@ -216,7 +217,7 @@ void NeuralLabApp::createUI() {
     lv_obj_set_style_text_color(_hudLabel, lv_color_hex(COL_ACCENT), 0);
     // Topology HUD is plain ASCII status text with spaces; use montserrat_14
     // so the spaces render (stix_math_18 has no U+0020 glyph).
-    lv_obj_set_style_text_font(_hudLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(_hudLabel, ui::fontUi(), 0);
     lv_obj_set_style_bg_color(_hudLabel, lv_color_hex(COL_HUD_BG), 0);
     lv_obj_set_style_bg_opa(_hudLabel, LV_OPA_70, 0);
     lv_obj_set_style_pad_all(_hudLabel, 3, 0);

@@ -1,0 +1,66 @@
+# casio_ai_smoke.numos — the AI app under the CASIO theme: palette, softkey row,
+# no focus rectangle, and digit-launch (SPEC-stageC C2).
+#
+# transport = replay, so this run sends NOTHING anywhere.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/casio_ai_smoke.numos \
+#           --fs-root tests/emulator/fs --frames 1400 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "casio_ai_smoke: waiting for launcher"
+wait 200
+assert_app Menu
+
+# Toggle to casio from the launcher (the ALPHA+AC hotkey, doc 10).
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+assert_app Menu
+
+open_app ai
+wait 40
+assert_app AI
+# The action menu: four rows, no focus rectangle, softkey band at the bottom.
+screenshot out/casio_ai_menu.ppm
+log "casio_ai_smoke: menu captured"
+
+# Digit-launch: 1 = Ask, directly (no cursor walk, no ENTER).
+key 1
+wait 20
+assert_app AI
+screenshot out/casio_ai_ask.ppm
+log "casio_ai_smoke: ask captured via digit 1"
+
+# AC -> menu, digit 4 -> Settings (the 7-row list, scrollable).
+key ac
+wait 20
+key 4
+wait 20
+assert_app AI
+screenshot out/casio_ai_settings.ppm
+log "casio_ai_smoke: settings captured via digit 4"
+
+# Settings row 1 = the model picker.
+key 1
+wait 20
+assert_app AI
+screenshot out/casio_ai_models.ppm
+log "casio_ai_smoke: model picker captured"
+
+# Model picker -> back to Settings -> back to menu -> Ask -> send -> result.
+key ac
+wait 20
+key ac
+wait 20
+key 1
+wait 20
+key enter
+wait 220
+assert_app AI
+screenshot out/casio_ai_result.ppm
+log "casio_ai_smoke: answer page 1 captured"
+
+log "casio_ai_smoke: done"

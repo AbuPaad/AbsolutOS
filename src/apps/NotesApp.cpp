@@ -19,6 +19,7 @@
  */
 
 #include "apps/NotesApp.h"
+#include "../ui/ThemeFonts.h"
 
 #include <cstdio>
 
@@ -65,7 +66,7 @@ void NotesApp::openNote(const char* path) {
 void NotesApp::buildChrome() {
     _title = lv_label_create(_screen);
     lv_obj_set_style_text_color(_title, lv_color_hex(COL_TITLE), LV_PART_MAIN);
-    lv_obj_set_style_text_font(_title, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_title, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_pos(_title, 4, 3);
 
     _content = lv_obj_create(_screen);

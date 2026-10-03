@@ -25,6 +25,9 @@
 
 #include "apps/GameBoyApp.h"
 
+#include "../ui/ThemeFonts.h"
+#include "../ui/ThemeManager.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -47,14 +50,13 @@ using numos::emulation::GbButton;
 
 namespace {
 
-// ── Palette for the app chrome (the emulated picture has its own palettes) ──
-constexpr uint32_t COL_BG       = 0x000000;   // letterbox around the image
-constexpr uint32_t COL_TEXT     = 0xFFFFFF;
-constexpr uint32_t COL_DIM      = 0x9E9E9E;
-constexpr uint32_t COL_ROW      = 0x1C1C1C;
-constexpr uint32_t COL_ROW_SEL  = 0x1565C0;   // same blue as launcher focus
-constexpr int      ROW_H        = 26;
-constexpr int      PAD          = 6;
+// ── Chrome ──
+// Every colour comes from `ui::appSurface(ui::appid::kGameBoy)`: numos resolves
+// to the black chrome this app has always had (pinned in Theme.cpp), casio to
+// the light LCD tokens. No literal palette lives here any more (agents.md §5.6).
+constexpr int ROW_H      = 26;
+constexpr int PAD        = 6;
+constexpr int kSoftkeyH  = 18;   ///< casio bottom band height
 
 std::string toLower(std::string s) {
     for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -84,9 +86,29 @@ GameBoyApp::~GameBoyApp() {
     end();
 }
 
+void GameBoyApp::readSurface() {
+    _sc = ui::appSurface(ui::appid::kGameBoy);
+
+    const ui::InteractionModel& im = ui::ThemeManager::instance().interaction();
+    _softkeyH  = im.softkeyRow ? kSoftkeyH : 0;
+    _focusFill = im.focusFill;
+}
+
+/** The casio softkey band. Only ever built for the picker, and only when the
+ *  interaction profile asks for one — the running game owns the whole screen. */
+void GameBoyApp::buildSoftkey(const char* label) {
+    if (_softkeyH == 0 || !_screen) return;
+    _softkey = lv_label_create(_screen);
+    lv_label_set_text(_softkey, label);
+    lv_obj_set_style_text_font(_softkey, ui::fontUiSmall(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_softkey, lv_color_hex(_sc.textDim), LV_PART_MAIN);
+    lv_obj_set_pos(_softkey, PAD, kScreenH - kSoftkeyH + 3);
+}
+
 void GameBoyApp::begin() {
     _screen = lv_obj_create(nullptr);           // own screen, no parent
-    lv_obj_set_style_bg_color(_screen, lv_color_hex(COL_BG), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_screen, lv_color_hex(ui::appSurface(ui::appid::kGameBoy).bg),
+                              LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_screen, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(_screen, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_screen, 0, LV_PART_MAIN);
@@ -96,6 +118,7 @@ void GameBoyApp::begin() {
 
 void GameBoyApp::load() {
     if (!_screen) begin();
+    readSurface();
 
     _exitRequested = false;
     _state = State::Picker;
@@ -179,17 +202,22 @@ void GameBoyApp::buildPicker() {
 
     _title = lv_label_create(_screen);
     lv_label_set_text(_title, "Game Boy");
-    lv_obj_set_style_text_color(_title, lv_color_hex(COL_TEXT), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_title, lv_color_hex(_sc.title), LV_PART_MAIN);
+    lv_obj_set_style_text_font(_title, ui::fontUi(), LV_PART_MAIN);
     lv_obj_align(_title, LV_ALIGN_TOP_LEFT, PAD, PAD);
 
     _message = lv_label_create(_screen);
-    lv_obj_set_style_text_color(_message, lv_color_hex(COL_DIM), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_message, lv_color_hex(_sc.textDim), LV_PART_MAIN);
+    // ui::fontUi() (not fontUiSmall) because the message inherited the theme's
+    // default face before this change — montserrat 14 under numos — so naming
+    // the body rung keeps the numos pixels identical and lets casio restyle it.
+    lv_obj_set_style_text_font(_message, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_align(_message, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_width(_message, lv_pct(100));
-    lv_obj_align(_message, LV_ALIGN_BOTTOM_MID, 0, -PAD);
+    lv_obj_align(_message, LV_ALIGN_BOTTOM_MID, 0, -(PAD + _softkeyH));
 
     _picker = lv_obj_create(_screen);
-    lv_obj_set_size(_picker, lv_pct(100), kScreenH - 2 * PAD - 24);
+    lv_obj_set_size(_picker, lv_pct(100), kScreenH - 2 * PAD - 24 - _softkeyH);
     lv_obj_align(_picker, LV_ALIGN_TOP_LEFT, 0, PAD + 22);
     lv_obj_set_style_bg_opa(_picker, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(_picker, 0, LV_PART_MAIN);
@@ -200,6 +228,7 @@ void GameBoyApp::buildPicker() {
 
     if (_roms.empty()) {
         setMessage("No ROMs.\nDrop .gb / .gbc files in /roms, then reopen.");
+        buildSoftkey("AC exit");
         return;
     }
 
@@ -208,7 +237,7 @@ void GameBoyApp::buildPicker() {
     for (size_t i = 0; i < _roms.size(); ++i) {
         lv_obj_t* row = lv_obj_create(_picker);
         lv_obj_set_size(row, lv_pct(100), ROW_H);
-        lv_obj_set_style_radius(row, 4, LV_PART_MAIN);
+        lv_obj_set_style_radius(row, _sc.radiusRow, LV_PART_MAIN);
         lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_left(row, 8, LV_PART_MAIN);
         lv_obj_set_style_pad_all(row, 0, LV_PART_MAIN);
@@ -217,14 +246,19 @@ void GameBoyApp::buildPicker() {
 
         lv_obj_t* label = lv_label_create(row);
         lv_label_set_text(label, _roms[i].c_str());
-        lv_obj_set_style_text_color(label, lv_color_hex(COL_TEXT), LV_PART_MAIN);
+        lv_obj_set_style_text_font(label, ui::fontUi(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(label, lv_color_hex(_sc.text), LV_PART_MAIN);
         lv_obj_center(label);
 
         _rows.push_back(row);
         _rowLabels.push_back(label);
     }
 
-    setMessage("ENTER play · MODE exit");
+    // Under a profile that shows a softkey band the band carries the actions, so
+    // the hint line would only repeat it (and "·" has no glyph in the Casio LCD
+    // face). Error text still lands here from setMessage().
+    setMessage(_softkeyH ? "" : "ENTER play \xC2\xB7 MODE exit");
+    buildSoftkey("1-9 play   ENTER play   AC exit");
     refreshSelectionUi();
 }
 
@@ -241,6 +275,10 @@ void GameBoyApp::destroyPicker() {
         lv_obj_delete(_message);
         _message = nullptr;
     }
+    if (_softkey) {
+        lv_obj_delete(_softkey);
+        _softkey = nullptr;
+    }
     _rows.clear();
     _rowLabels.clear();
 }
@@ -248,12 +286,24 @@ void GameBoyApp::destroyPicker() {
 void GameBoyApp::refreshSelectionUi() {
     for (size_t i = 0; i < _rows.size(); ++i) {
         const bool selected = (static_cast<int>(i) == _selected);
-        lv_obj_set_style_bg_opa(_rows[i], selected ? LV_OPA_COVER : LV_OPA_TRANSP,
+
+        // Focus is a filled card only where the interaction profile says so
+        // (numos). Casio shows it through the row's INK — never a rectangle.
+        lv_obj_set_style_bg_opa(_rows[i], (selected && _focusFill) ? LV_OPA_COVER
+                                                                   : LV_OPA_TRANSP,
                                 LV_PART_MAIN);
-        lv_obj_set_style_bg_color(_rows[i], lv_color_hex(COL_ROW_SEL), LV_PART_MAIN);
-        if (!selected) {
-            lv_obj_set_style_bg_color(_rows[i], lv_color_hex(COL_ROW), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(_rows[i], lv_color_hex(_sc.rowFocus), LV_PART_MAIN);
+
+        if (_focusFill && !selected) {
+            // numos: an unfocused row keeps its dim fill.
+            lv_obj_set_style_bg_color(_rows[i], lv_color_hex(_sc.row), LV_PART_MAIN);
             lv_obj_set_style_bg_opa(_rows[i], LV_OPA_50, LV_PART_MAIN);
+        }
+
+        if (i < _rowLabels.size()) {
+            lv_obj_set_style_text_color(_rowLabels[i],
+                                        lv_color_hex(selected ? _sc.textOnFocus : _sc.text),
+                                        LV_PART_MAIN);
         }
     }
     if (_selected >= 0 && _selected < static_cast<int>(_rows.size())) {
@@ -277,7 +327,10 @@ void GameBoyApp::buildPlayer() {
     _player = lv_obj_create(_screen);
     lv_obj_set_size(_player, lv_pct(100), lv_pct(100));
     lv_obj_center(_player);
-    lv_obj_set_style_bg_color(_player, lv_color_hex(COL_BG), LV_PART_MAIN);
+    // The letterbox around the emulated picture follows the theme surface:
+    // black under numos, the LCD colour under casio. The 160x144 picture itself
+    // is the cartridge's own output and is never tinted.
+    lv_obj_set_style_bg_color(_player, lv_color_hex(_sc.bg), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_player, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(_player, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_player, 0, LV_PART_MAIN);
@@ -479,6 +532,20 @@ void GameBoyApp::handleKey(const KeyEvent& ev) {
 
     if (_state == State::Picker) {
         if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
+
+        // Casio: a digit key launches that ROM directly — no cursor walk, no
+        // ENTER (SPEC-stageC C2, "digit = launch"). The profile decides, not a
+        // theme check; numos keeps ENTER-only navigation.
+        if (_softkeyH > 0) {
+            const int d = keyCodeDigitValue(ev.code);
+            if (d >= 1 && d <= static_cast<int>(_roms.size()) && d <= 9) {
+                _selected = d - 1;
+                refreshSelectionUi();
+                loadSelectedRom();
+                return;
+            }
+        }
+
         switch (ev.code) {
             case KeyCode::UP:
                 if (_selected > 0) { --_selected; refreshSelectionUi(); }

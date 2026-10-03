@@ -22,6 +22,7 @@
  */
 
 #include "ParticleLabApp.h"
+#include "../ui/ThemeFonts.h"
 
 #ifdef ARDUINO
 #include <esp_heap_caps.h>
@@ -195,7 +196,7 @@ void ParticleLabApp::createUI() {
     // Info label
     _infoLabel = lv_label_create(_screen);
     lv_obj_set_pos(_infoLabel, 4, SCREEN_H - INFO_H - 2);
-    lv_obj_set_style_text_font(_infoLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_infoLabel, ui::fontUi(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_infoLabel, lv_color_hex(COL_TEXT_DIM), LV_PART_MAIN);
     updateInfoLabel();
 

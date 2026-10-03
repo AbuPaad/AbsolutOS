@@ -1,0 +1,38 @@
+# casio_launcher_p2_digit.numos — Stage C4/C6: casio POSITIONAL slot -> app mapping.
+#
+# The casio launcher's order + labels come from the generated table
+# (src/ui/generated/CasioSlots.generated.h <- IMPLEMENTATION.md section 1):
+#   page 1: 1 COMP(0) 2 STAT(4) 3 GRAPH(1) 4 C'LUS(3) 5 EQN(2) 6 PROB(5) 7 REGR(6) 8 S'QNC(7)
+#   page 2: 1 PY(8) 2 M'TRX(9) 3 SET(10) 4 CHEM(11) 5 BRDG(12) 6 CIRC(13) 7 FLUID(14) 8 PRTCL(15)
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/casio_launcher_p2_digit.numos \
+#           --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok . 2 parse error . 3 screenshot error . 4 assertion failure.
+
+log "casio_launcher_p2_digit: waiting for launcher"
+wait 200
+
+assert_app Menu
+
+# Toggle to casio (list launcher, MenuList topology).
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+assert_app Menu
+
+assert_launcher_page 1
+key right
+assert_launcher_page 2
+
+# Positional mapping on a SECOND page: 3 = page 2 slot 3 = SET (Settings, id 10),
+# NOT the GRAPH that digit 3 reaches on page 1 — digits restart per page, which a
+# page-1-only test cannot show. (assert_app can only name apps compiled into the
+# emulator; Circuit on this page is not one of them.)
+key 3
+wait 60
+assert_app Settings
+screenshot out/casio/launch_p2_digit3_settings.ppm
+
+log "casio_launcher_p2_digit: assertions passed"

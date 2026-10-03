@@ -38,6 +38,7 @@
 #include "ui/GraphView.h"
 #include "ui/Icons.h"
 #include "ui/MainMenu.h"
+#include "ui/Theme.h"
 #include "input/LvglKeypad.h"
 #include "apps/CalculationApp.h"
 #include "apps/GrapherApp.h"
@@ -202,6 +203,21 @@ private:
     Mode     _pendingTeardownMode;
     uint32_t _teardownStartMs;
 
+    // ── Runtime theme (doc 03/10) ──
+    // Single owner is ThemeManager; SystemApp is only the event source.
+    // _pendingTheme is the hotkey intent; update() performs activate() then
+    // recreates the ACTIVE view (never inline in handleKey, never ejecting the
+    // user out of the running app). _themeRequested is what makes that intent
+    // one-shot: only the hotkey sets it, and only update() clears it, so a
+    // direct activate() (SettingsApp picker, browser theme button) can never be
+    // mistaken for a pending request and reverted one frame later.
+    // _appliedThemeId is the theme the ACTIVE view was built with, so a direct
+    // activate() still triggers the view reload below.
+    ui::ThemeId _pendingTheme;
+    ui::ThemeId _appliedThemeId;
+    bool        _themeRequested = false;
+    int         _activeAppId = -1;   // last launched app id, for theme reloads
+
     // Grid Menu state
     std::vector<AppData> _apps;
     int _selectedAppIndex;
@@ -227,6 +243,13 @@ private:
     void switchApp(int id);
     void teardownModeNow(Mode mode);
     void flushPendingTeardownNow(const char* reason);
+
+    /**
+     * Recreates the ACTIVE view after a theme swap (doc 10): rebuilds the
+     * launcher, or ends + reloads the same app — never ejects the user to the
+     * launcher just because the theme changed.
+     */
+    void reloadActiveView();
 
     /**
      * Vuelve al modo MENU, reanuda LVGL y recarga el launcher screen.

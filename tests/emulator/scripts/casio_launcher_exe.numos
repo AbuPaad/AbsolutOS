@@ -1,0 +1,35 @@
+# casio_launcher_exe — Stage C4/C6: casio POSITIONAL slot -> app mapping (a screenshot cannot prove it).
+#
+# The casio launcher's slot order + labels come from the generated table
+# (src/ui/generated/CasioSlots.generated.h <- IMPLEMENTATION.md section 1):
+#   page 1: 1 COMP(0) 2 STAT(4) 3 GRAPH(1) 4 C'LUS(3) 5 EQN(2) 6 PROB(5) 7 REGR(6) 8 S'QNC(7)
+#   page 2: 1 PY(8) 2 M'TRX(9) 3 SET(10) 4 CHEM(11) 5 BRDG(12) 6 CIRC(13) 7 FLUID(14) 8 PRTCL(15)
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/casio_launcher_exe.numos \
+#           --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok . 2 parse error . 3 screenshot error . 4 assertion failure.
+
+log "casio_launcher_exe: waiting for launcher"
+wait 200
+
+assert_app Menu
+
+# Toggle to casio (list launcher, MenuList topology).
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+assert_app Menu
+
+assert_launcher_page 1
+
+# Keep the d-pad path covered: DOWN moves a row (slot 3) and EXE launches the
+# focused slot. Digits remain the primary path, but EXE must still work.
+key down
+key enter
+wait 60
+assert_app Grapher
+screenshot out/casio/launch_exe_slot3.ppm
+
+log "casio_launcher_exe: assertions passed"
