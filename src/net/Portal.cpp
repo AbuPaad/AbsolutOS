@@ -402,9 +402,15 @@ function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 function toast(m,bad){$('toast').innerHTML='<div class="msg'+(bad?' err':'')+'">'+esc(m)+'</div>';
   if(!bad)setTimeout(function(){$('toast').innerHTML=''},2500)}
 function goBack(){if(history.length>1){history.back()}else{location.hash='#/'}}
-function api(path,opt){return fetch(path,opt).then(function(r){return r.text().then(function(t){
+function api(path,opt){
+  opt=opt||{};var ctl=new AbortController(),tm=setTimeout(function(){ctl.abort()},15000);
+  opt.signal=ctl.signal;
+  return fetch(path,opt).then(function(r){return r.text().then(function(t){
   try{return JSON.parse(t)}catch(e){throw new Error(t||('HTTP '+r.status))}})})
-  .then(function(j){if(j&&j.ok===false)throw new Error(j.error||'failed');return j})}
+  .then(function(j){if(j&&j.ok===false)throw new Error(j.error||'failed');return j})
+  .then(function(j){clearTimeout(tm);return j},function(e){clearTimeout(tm);
+    if(e&&e.name==='AbortError')throw new Error('timed out waiting for the device');
+    throw e})}
 function params(h){var o={},q=h.split('?')[1];if(q)q.split('&').forEach(function(kv){var p=kv.split('=');
   o[decodeURIComponent(p[0])]=decodeURIComponent((p[1]||'').replace(/\+/g,' '))});return o}
 function q(path,p){var s='?path='+encodeURIComponent(path);for(var k in (p||{}))
@@ -457,8 +463,8 @@ function viewFiles(p){
         '<span class="s">'+(e.dir?'':e.size+' B')+'</span>'+
         '<button onclick="rename(\''+full+'\')">rn</button>'+
         '<button class="d" onclick="del(\''+full+'\')">del</button></div>'});
-    $('app').innerHTML=h;$('title').textContent='Files'});
-}
+    $('app').innerHTML=h;$('title').textContent='Files'})
+    .catch(function(e){$('app').innerHTML='<div class="msg err">could not list files: '+esc(e.message)+'</div>'})}
 function openDir(p){location.hash='#/browse?path='+encodeURIComponent(p)}
 function openFile(p){location.hash='#/edit?path='+encodeURIComponent(p)}
 function goUp(p){openDir(p=='/'?'/':p.substring(0,p.lastIndexOf('/'))||'/')}
@@ -532,7 +538,8 @@ function viewConfig(){
     'and signal only; it cannot read anybody\'s password.</div>'+
     '<div id="saved"></div>';
     $('title').textContent='Config';
-    loadSaved()})}
+    loadSaved()})
+    .catch(function(e){$('app').innerHTML='<div class="msg err">could not load config: '+esc(e.message)+'</div>'})}
 function loadSaved(){api('/api/wifi-list').then(function(j){
   if(!j.nets.length)return;
   var h='<label>Saved networks on the device ('+j.nets.length+') — tried in this order</label>';
