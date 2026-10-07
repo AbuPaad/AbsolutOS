@@ -20,6 +20,7 @@
 
 #include <cstdio>
 #include <netdb.h>
+#include <strings.h>   // strcasecmp: the Location header arrives in any case
 #include <time.h>
 #include <esp_heap_caps.h>
 
@@ -58,6 +59,30 @@ namespace {
  */
 inline esp_http_client_handle_t hc(void* p) {
     return static_cast<esp_http_client_handle_t>(p);
+}
+
+/// How many requests one open() may spend chasing 3xx hops. GitHub's release
+/// asset path needs four, measured: our domain → github.com's `latest/download`
+/// → github.com's `download/vX.Y.Z` → the signed CDN host. 6 leaves headroom.
+constexpr int kMaxRedirects = 6;
+
+/// 3xx codes that are hops (RFC 9110 §15.4). 300/304/305/306 are not.
+bool isRedirectStatus(int s) {
+    return s == 301 || s == 302 || s == 303 || s == 307 || s == 308;
+}
+
+/// Absolute-ise a Location value. Cloudflare and GitHub both send absolute
+/// URLs; a leading-'/' path is joined to base's origin. Anything else comes
+/// back empty so the caller fails with a name instead of guessing a target.
+std::string resolveRedirect(const std::string& loc, const std::string& base) {
+    if (loc.rfind("http://", 0) == 0 || loc.rfind("https://", 0) == 0) return loc;
+    const size_t s = base.find("://");
+    if (s == std::string::npos) return {};
+    const size_t b = s + 3;
+    size_t e = base.find('/', b);
+    if (e == std::string::npos) e = base.size();
+    if (!loc.empty() && loc[0] == '/') return base.substr(0, e) + loc;
+    return {};
 }
 
 /// The host component of an absolute URL ("scheme://[user@]host[:port]/path").
@@ -101,10 +126,21 @@ esp_err_t onHttpEvent(esp_http_client_event_t* e) {
     if (!t) return ESP_OK;
     switch (e->event_id) {
         case HTTP_EVENT_ON_CONNECTED:
-            t->connectMs = millis() - t->t0;
+            // First hop only: a redirect re-connects, and connectMs must keep
+            // meaning "time to the first socket", not "time to the last".
+            if (t->connectMs == 0) t->connectMs = millis() - t->t0;
             break;
         case HTTP_EVENT_ON_HEADER:
             if (t->headerMs == 0) t->headerMs = millis() - t->t0;
+            // The ONLY way to see a response header: esp_http_client_get_header()
+            // reads the REQUEST headers, and the copy the parser stashes
+            // internally is never exposed. One event per header with the value
+            // complete, so assign rather than append. Case-insensitive on
+            // purpose: Cloudflare sends "location", GitHub sends "Location".
+            if (e->header_key && e->header_value &&
+                strcasecmp(e->header_key, "Location") == 0) {
+                t->location.assign(e->header_value);
+            }
             break;
         default:
             break;
@@ -165,12 +201,91 @@ bool HttpStream::open(const HttpReq& r) {
         }
     }
 
+    const int bodyLen = _body ? (int)_body->size() : 0;
+
+    // ── chase redirects, one handle per hop ─────────────────────────────────
+    // A 3xx is followed here, not by the client: IDF implements redirect
+    // following inside esp_http_client_perform()'s own loop, and this class
+    // deliberately never calls it. So a hand-driven transfer used to hand the
+    // raw 302 back as the final status — which is how OTA reported
+    // "releases/latest HTTP 302" for a release that was perfectly healthy.
+    // Rules a caller can rely on: only when followRedirects asked (the AI path
+    // stays a surface-it-instead path), only for a bodiless request (a JSON body
+    // plus a bearer token is never re-sent to a host the caller did not choose),
+    // and never https → http.
+    for (int hop = 0; ; ++hop) {
+        if (!sendOnce(r, bodyLen, hop)) return false;
+
+        const int status = esp_http_client_get_status_code(hc(_h));
+        Serial.printf("[NET] http status %d (headers %ums, hop %d)\n",
+                      status, (unsigned)_timing.headerMs, hop);
+
+        if (!r.followRedirects || !isRedirectStatus(status)) break;
+
+        if (_timing.location.empty()) {
+            _err = "redirect with no Location header";
+            logFail("http", _err);
+            close();
+            return false;
+        }
+        if (bodyLen != 0) {
+            _err = "redirect on a request that carries a body - refusing to "
+                   "re-send it to another host";
+            logFail("http", _err);
+            close();
+            return false;
+        }
+        if (hop + 1 >= kMaxRedirects) {
+            char why[64];
+            std::snprintf(why, sizeof(why), "too many redirects (%d)", hop + 1);
+            _err = why;
+            logFail("http", _err);
+            close();
+            return false;
+        }
+
+        const std::string next = resolveRedirect(_timing.location, _url);
+        if (next.empty()) {
+            char why[192];
+            std::snprintf(why, sizeof(why), "cannot resolve redirect target (%s)",
+                          _timing.location.c_str());
+            _err = why;
+            logFail("http", _err);
+            close();
+            return false;
+        }
+        if (next.compare(0, 6, "https:") != 0) {
+            char why[192];
+            std::snprintf(why, sizeof(why), "redirect to a non-https URL refused (%s)",
+                          next.c_str());
+            _err = why;
+            logFail("http", _err);
+            close();
+            return false;
+        }
+
+        // Tear this hop down before the next, exactly as close() does:
+        // esp_http_client_cleanup() is what frees mbedTLS's content buffers.
+        // The TLS slot stays held ACROSS hops — nothing else may slip in, and
+        // the one memory check open() ran still describes the whole transfer.
+        esp_http_client_close(hc(_h));
+        esp_http_client_cleanup(hc(_h));
+        _h = nullptr;
+        _url = next;
+    }
+
+    return true;
+}
+
+bool HttpStream::sendOnce(const HttpReq& r, int bodyLen, int hop) {
     esp_http_client_config_t cfg = {};
     cfg.url                   = _url.c_str();
     cfg.method                = methodFromString(r.method);
     cfg.timeout_ms            = r.timeoutMs;
     cfg.buffer_size           = r.headerBufSize;
     cfg.buffer_size_tx        = 1024;
+    // Inert by itself — IDF honours this only inside esp_http_client_perform().
+    // open() does the chasing, so this is kept purely to keep the intent legible.
     cfg.disable_auto_redirect = !r.followRedirects;
     cfg.keep_alive_enable     = false;     // one handle per request: tear mbedTLS down deterministically
     cfg.user_agent            = _userAgent.c_str();
@@ -181,10 +296,9 @@ bool HttpStream::open(const HttpReq& r) {
     _h = esp_http_client_init(&cfg);
     if (!_h) { _err = "esp_http_client_init failed"; logFail("http", _err); return false; }
 
-    Serial.printf("[NET] http %s %s (body %d, timeout %ums, hdr buf %u)\n",
+    Serial.printf("[NET] http %s %s (body %d, timeout %ums, hdr buf %u, hop %d)\n",
                   r.method.empty() ? "POST" : r.method.c_str(), _url.c_str(),
-                  (int)(_body ? _body->size() : 0), (unsigned)r.timeoutMs,
-                  (unsigned)r.headerBufSize);
+                  bodyLen, (unsigned)r.timeoutMs, (unsigned)r.headerBufSize, hop);
 
     if (!r.contentType.empty())
         esp_http_client_set_header(hc(_h), "Content-Type", r.contentType.c_str());
@@ -199,7 +313,6 @@ bool HttpStream::open(const HttpReq& r) {
         esp_http_client_set_header(hc(_h), "Authorization", auth.c_str());
     }
 
-    const int bodyLen = _body ? (int)_body->size() : 0;
     const esp_err_t oerr = esp_http_client_open(hc(_h), bodyLen);
     if (oerr != ESP_OK) {
         // Three very different faults fold into this one call, and the errno is
@@ -252,15 +365,17 @@ bool HttpStream::open(const HttpReq& r) {
     }
 
     // Consumes the status line + response headers. SSE has no Content-Length, so
-    // a 0 here is normal and get_content_length() is useless.
+    // a 0 here is normal and get_content_length() is useless. The event handler
+    // captures a Location header on the way past — cleared first so a previous
+    // hop's value can never be mistaken for this one's.
+    _timing.location.clear();
     (void)esp_http_client_fetch_headers(hc(_h));
     if (_timing.headerMs == 0) _timing.headerMs = millis() - _timing.t0;
 
-    Serial.printf("[NET] http status %d (headers %ums)\n",
-                  esp_http_client_get_status_code(hc(_h)), (unsigned)_timing.headerMs);
-
     // A >=400 is deliberately NOT an open failure: the provider's explanation is
     // the response body, and it is drained by the caller for the error string.
+    // A 3xx is not an open failure either — open(), not sendOnce, decides
+    // whether that status is a hop to chase or the answer to report.
     return true;
 }
 

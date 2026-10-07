@@ -254,12 +254,28 @@ bool jsonFindString(const std::string& js, const char* key, std::string& out) {
     if (at >= js.size() || js[at] != '"') return false;
     ++at;
     std::string v;
-    while (at < js.size() && js[at] != '"') {
-        if (js[at] == '\\' && at + 1 < js.size()) ++at;
-        v += js[at++];
+    while (at < js.size()) {
+        const char c = js[at++];
+        if (c == '"') { out = v; return true; }
+        if (c != '\\' || at >= js.size()) { v += c; continue; }
+        // Decode the escape instead of keeping the backslash and its letter.
+        // That old behaviour turned a pasted `\n` into a stray 'n' glued to the
+        // end of an API key — a credential that looks right, is stored wrong and
+        // answers 401 "User not found.", which is indistinguishable from a bad
+        // key. Matches AiClient.cpp's decoder, so both readers agree.
+        switch (js[at++]) {
+            case 'n':  v += '\n'; break;
+            case 't':  v += '\t'; break;
+            case 'r':  v += '\r'; break;
+            case 'b':  v += '\b'; break;
+            case 'f':  v += '\f'; break;
+            case '"':  v += '"';  break;
+            case '\\': v += '\\'; break;
+            case '/':  v += '/';  break;
+            default:   v += js[at - 1]; break;
+        }
     }
-    out = v;
-    return true;
+    return false;
 }
 
 /**
@@ -825,7 +841,7 @@ void handleConfigGet() {
                            "\",\"key_set\":" + (cfg.apiKey.empty() ? "false" : "true") +
                            // The AppID's PRESENCE and where it came from; never the value.
                            ",\"wa_appid_set\":" + (cfg.waAppId.empty() ? "false" : "true") +
-                           ",\"wa_appid_source\":\"" + jsonEscape(cfg.waKeySource()) +
+                           ",\"wa_appid_source\":\"" + jsonEscape(cfg.waKeySource()) + "\"" +
                            ",\"wifi_ssid\":\"" + jsonEscape(ssid) +
                            "\",\"wifi_set\":" + (wifiSet ? "true" : "false") +
                            ",\"diag\":\"" + jsonEscape(diag) + "\"}";

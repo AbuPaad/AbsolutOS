@@ -19,9 +19,11 @@
  *  - `esp_crt_bundle_attach` for validation. Never setInsecure(), never pin a
  *    leaf or root — CA rotation would turn into a dead device.
  *  - NOT `esp_http_client_perform()`: that blocks the calling task through the
- *    whole exchange and gives no streaming control.
- *  - disable_auto_redirect: a silent hop is an availability and security
- *    surprise; surface it instead.
+ *    whole exchange and gives no streaming control. Consequence: 3xx following
+ *    (which lives inside perform()'s loop in IDF) is done by open() itself, hop
+ *    by hop, only when HttpReq::followRedirects asks for it.
+ *  - No silent hop for the AI path: followRedirects defaults to false, and a 3xx
+ *    is then left as the final status for the caller to report.
  *  - SSE has no Content-Length, so end detection is read() <= 0 /
  *    esp_http_client_is_complete_data_received().
  */
@@ -47,20 +49,32 @@ struct HttpReq {
     int                timeoutMs   = 60000;   ///< socket timeout, NOT the stall rule
     int                headerBufSize = 2048;  ///< 512 (default) is too small for headers
     /**
-     * Follow 3xx hops. OFF for the AI path on purpose (a silent hop is an
-     * availability/security surprise). ON for OTA: GitHub serves a release asset
-     * as a 302 to a signed CDN host, so the download must chase it.
+     * Chase 3xx hops. OFF for the AI path on purpose (a silent hop is an
+     * availability/security surprise). ON for OTA: our own domain 302s to
+     * GitHub's `releases/latest`, which 302s again to a signed CDN host, so both
+     * the version check and the download must chase them. Chased only for a
+     * bodiless request, and never from https down to http.
      */
     bool               followRedirects = false;
 };
 
 class HttpStream {
 public:
-    /** Timing carried into the http event handler; public so the .cpp can use it. */
+    /** Timing + redirect capture, carried into the http event handler; public so
+     *  the .cpp can use it. */
     struct Timing {
         uint32_t t0        = 0;
         uint32_t connectMs = 0;
         uint32_t headerMs  = 0;
+        /**
+         * The last response's Location header, captured by the event handler.
+         * Not a convenience: response headers have no other public accessor
+         * (esp_http_client_get_header() reads the REQUEST headers), and IDF 4.4
+         * follows 3xx only inside esp_http_client_perform(), which this class
+         * does not call. Without it, open() sees a bare status code and a
+         * redirect is indistinguishable from a final answer.
+         */
+        std::string location;
     };
 
     ~HttpStream();
@@ -91,6 +105,11 @@ public:
     uint32_t headerMs()  const { return _timing.headerMs; }
 
 private:
+    /// One hop: init → headers → open(len) → write body in chunks →
+    /// fetch_headers. Sets _err and closes on failure. `hop` is for logging.
+    /// Called in a loop by open(); it never follows a redirect itself.
+    bool sendOnce(const HttpReq& r, int bodyLen, int hop);
+
     void*       _h         = nullptr;   ///< esp_http_client_handle_t
     /// True between a successful tlsSessionAcquire() and close(); guarantees the
     /// one-and-only TLS slot is given back exactly once, from any task.

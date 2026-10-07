@@ -230,12 +230,12 @@ AiConfig AiConfig::load(const std::string& path) {
         if (jsonFindString(js, "wa_units", s))     c.waUnits = s;
         if (jsonFindString(js, "wa_location", s))  c.waLocation = s;
         if (jsonFindString(js, "wa_language", s))  c.waLanguage = s;
-        if (jsonFindString(js, "wa_appid", s) && !s.empty()) {
-            c.waAppId = s;
+        if (jsonFindString(js, "wa_appid", s) && !trimCopy(s).empty()) {
+            c.waAppId = trimCopy(s);
             c._waKeySource = "config";
         }
-        if (jsonFindString(js, "api_key", s) && !s.empty()) {
-            c.apiKey = s;
+        if (jsonFindString(js, "api_key", s) && !trimCopy(s).empty()) {
+            c.apiKey = trimCopy(s);
             c._keySource = "config";   // bringup only — the SD card is readable
         }
     }
@@ -250,12 +250,12 @@ AiConfig AiConfig::load(const std::string& path) {
             const String w = prefs.getString("wa_appid", String());
             prefs.end();
             if (k.length() > 0) {
-                c.apiKey = std::string(k.c_str());
-                c._keySource = "nvs";
+                const std::string kk = trimCopy(std::string(k.c_str()));
+                if (!kk.empty()) { c.apiKey = kk; c._keySource = "nvs"; }
             }
             if (w.length() > 0) {
-                c.waAppId = std::string(w.c_str());
-                c._waKeySource = "nvs";
+                const std::string ww = trimCopy(std::string(w.c_str()));
+                if (!ww.empty()) { c.waAppId = ww; c._waKeySource = "nvs"; }
             }
         }
     }
