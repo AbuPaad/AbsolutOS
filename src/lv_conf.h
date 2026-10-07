@@ -80,8 +80,23 @@
 #ifndef LV_USE_STDLIB_MALLOC
   #define LV_USE_STDLIB_MALLOC LV_STDLIB_BUILTIN
 #endif
+/*
+ * 48 KB, down from 64 KB. The fixed pool is committed internal `.bss`, and the
+ * MT-01 heartbeat showed LVGL peaking at 50 % of 64 KB (~32 KB) while a TLS
+ * handshake starved next to it: mbedTLS needs TWO ~16 KB internal blocks
+ * (MBEDTLS_SSL_MAX_CONTENT_LEN=16384, no asymmetric/dynamic buffers in the
+ * prebuilt libmbedtls.a) and the second allocation fails once the first has
+ * consumed the largest free block. That surfaced as an unnamed
+ * ESP_ERR_HTTP_CONNECT, not as an allocation error.
+ *
+ * 48 KB keeps ~33 % headroom over the measured 32 KB peak. The policy above
+ * bounds RAISING the pool; lowering it is the unconstrained direction, and a
+ * scratch build already exercises LV_MEM_SIZE=16384 for the OOM path. If a
+ * new screen pushes LVGL past 48 KB the failure is an LVGL OOM (crash/blank),
+ * never a net error — raise it and take the RAM from the OTA body instead.
+ */
 #ifndef LV_MEM_SIZE
-  #define LV_MEM_SIZE (64U * 1024U)   /* fixed internal-DRAM pool (firmware) */
+  #define LV_MEM_SIZE (48U * 1024U)   /* fixed internal-DRAM pool (firmware) */
 #endif
 #ifndef LV_MEM_POOL_EXPAND_SIZE
   #define LV_MEM_POOL_EXPAND_SIZE 0   /* no growth: exhaustion must be visible */

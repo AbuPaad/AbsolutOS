@@ -1,0 +1,231 @@
+# grapher.numos — Grapher screenshots for paadweb/public/apps/index.html
+#
+# 3 shots, each asserted BEFORE the capture that proves the state:
+#   shot 1  -> /assets/img/apps/grapher-1.webp  casio split: four slots live —
+#              y=x^2-4, y=2x+3, x^2+y^2=9, y<sin(x) — numbered list AND the grid
+#              in one frame (im.splitGraph).
+#   shot 3  -> /assets/img/apps/grapher-3.webp  numos: Calculate menu open on
+#              the parabola trace, intersection markers where the line cuts it.
+#   shot 2  -> /assets/img/apps/grapher-2.webp  numos: trace cursor walking the
+#              implicit circle, floating x/y readout, camera locked on the curve.
+#
+# Why both themes: the casio split is the only view with the function slots AND
+# the plotted grid together (shot 1). Trace and the Calculate menu are numos-tab
+# features ONLY (handleCasioKey never enters TRACE), so shots 2 & 3 run under the
+# numos skin. The theme is swapped from the LAUNCHER (the documented ALPHA+AC
+# hotkey) and Grapher is reopened fresh — avoiding the in-app reload path, which
+# asserts on the fixed 64 KiB LVGL pool (lv_obj_tree.c OOM/NULL).
+#
+# Run (repo root):
+#   ./"C:/.piobuild/numOS/emulator_pc/program" --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/grapher.numos \
+#       --fs-root tests/emulator/fs --frames 1600 --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "grapher: waiting for launcher"
+wait 200
+assert_app Menu
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SHOT 1 — casio split (`im.splitGraph`). Numbered slots LEFT, live graph RIGHT:
+# the one view where four expression slots and the plotted grid share a frame.
+# ─────────────────────────────────────────────────────────────────────────────
+keydown alpha
+key ac
+keyup alpha
+wait 60
+assert_theme casio
+assert_app Menu
+
+open_app grapher
+wait 60
+assert_app Grapher
+assert_theme casio
+
+# Slot 1: y = x^2 - 4  (explicit parabola)
+key 1
+wait 3
+key y
+key =
+key x
+key ^
+key 2
+key right
+key -
+key 4
+key exe
+wait 10
+
+# Slot 2: y = 2x + 3  (line)
+key 2
+wait 3
+key y
+key =
+key 2
+key *
+key x
+key +
+key 3
+key exe
+wait 10
+
+# Slot 3: x^2 + y^2 = 9  (implicit circle, marching squares)
+key 3
+wait 3
+key x
+key ^
+key 2
+key right
+key +
+key y
+key ^
+key 2
+key right
+key =
+key 9
+key exe
+wait 10
+
+# Slot 4: y < sin(x)  (shaded inequality)
+key 4
+wait 3
+key y
+key <
+key sin
+key x
+key exe
+wait 80
+
+assert_app Grapher
+assert_theme casio
+screenshot out/shots-grapher-1.ppm
+log "grapher: shot 1 captured (casio split, four slots + grid)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Return to the launcher (MODE), swap to the numos skin there, reopen Grapher.
+# Grapher is fully torn down on the way out, so the second build starts from a
+# clean LVGL pool.
+# ─────────────────────────────────────────────────────────────────────────────
+key mode
+wait 140
+assert_app Menu
+
+keydown alpha
+key ac
+keyup alpha
+wait 60
+assert_theme numos
+assert_app Menu
+
+open_app grapher
+wait 60
+assert_app Grapher
+assert_theme numos
+
+# ── Re-enter the four functions on the numos Expressions tab ──
+# down = TAB_BAR -> CONTENT, enter on "Add an element" -> edit slot, type, enter.
+# Slot 0: y = x^2 - 4
+key down
+key enter
+key y
+key =
+key x
+key ^
+key 2
+key right
+key -
+key 4
+key enter
+wait 10
+
+# Slot 1: y = 2x + 3
+key down
+key enter
+key y
+key =
+key 2
+key *
+key x
+key +
+key 3
+key enter
+wait 10
+
+# Slot 2: x^2 + y^2 = 9
+key down
+key enter
+key x
+key ^
+key 2
+key right
+key +
+key y
+key ^
+key 2
+key right
+key =
+key 9
+key enter
+wait 10
+
+# Slot 3: y < sin(x)
+key down
+key enter
+key y
+key <
+key sin
+key x
+key enter
+wait 60
+
+assert_app Grapher
+assert_theme numos
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SHOT 3 — the Graph tab opens in auto-trace on the first traceable curve (the
+# parabola). The async POI sweep paints the line∩parabola intersection markers;
+# ENTER opens the Calculate menu on the trace.
+# ─────────────────────────────────────────────────────────────────────────────
+key graph
+wait 120
+key enter
+wait 40
+assert_app Grapher
+assert_theme numos
+screenshot out/shots-grapher-3.ppm
+log "grapher: shot 3 captured (Calculate menu on parabola trace + intersections)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SHOT 2 — close the menu, walk UP the traceable list to the implicit circle,
+# then walk the contour with RIGHT (predictor-corrector; camera locked via
+# syncViewportToCursor so the circle stays centred under the cursor).
+# ─────────────────────────────────────────────────────────────────────────────
+key ac
+wait 20
+key up
+wait 30
+key up
+wait 30
+key right
+wait 12
+key right
+wait 12
+key right
+wait 12
+key right
+wait 12
+key right
+wait 12
+key right
+wait 12
+key right
+wait 12
+key right
+wait 12
+wait 60
+assert_app Grapher
+assert_theme numos
+screenshot out/shots-grapher-2.ppm
+log "grapher: shot 2 captured (trace walking the implicit circle)"
+
+log "grapher: all 3 shots captured"

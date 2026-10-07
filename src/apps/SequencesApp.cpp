@@ -404,7 +404,7 @@ void SequencesApp::handleKeyDefine(const KeyEvent& ev) {
     if (_editing) {
         // Edit mode: type characters into the expression
         switch (ev.code) {
-            case KeyCode::ENTER:
+            case KeyCode::EXE:
                 finishEdit();
                 break;
             case KeyCode::AC:
@@ -459,7 +459,7 @@ void SequencesApp::handleKeyDefine(const KeyEvent& ev) {
             case KeyCode::RIGHT:
                 switchTab(_activeTab == Tab::DEFINE ? Tab::TABLE : Tab::DEFINE);
                 break;
-            case KeyCode::ENTER:
+            case KeyCode::EXE:
                 startEdit();
                 if (_seqExprs[_selectedSeq])
                     lv_label_set_text(_seqExprs[_selectedSeq], _editBuf);

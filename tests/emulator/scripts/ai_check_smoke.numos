@@ -1,0 +1,122 @@
+# ai_check_smoke.numos — the Wolfram|Alpha check: confirm screen, edit, result.
+#
+# Runs against a THROWAWAY fs root that carries an AppID (see
+# tests/emulator/tools/make_check_fs.py):
+#   python3 tests/emulator/tools/make_check_fs.py prepare replay
+#   C:/.piobuild/numOS/emulator_pc/program --headless --deterministic \
+#       --script tests/emulator/scripts/ai_check_smoke.numos \
+#       --fs-root tests/emulator/fs-check --frames 900 \
+#       --screenshot out/ai_check.ppm --quiet
+#
+# transport = replay, so NOTHING is sent anywhere: the check's body comes from the
+# recorded /ai/replay/wolfram-llm-api.txt, exactly as the answer stream comes from
+# /ai/replay/answer.sse. The whole hop runs offline: confirm screen, the
+# digits-only edit, the fetch, the pagination and the sibling _Wolfram.md.
+#
+# What it proves, in order:
+#   1. Key 7 on an answer that CARRIES a check opens the confirm screen (and the
+#      answer screen itself says so: the title reads "7 check").
+#   2. The transcription is shown (the user checks the READING, not the maths).
+#   3. Digits-only editing: the caret walks, a digit lands AT the caret, DEL rubs
+#      out, AC restores the model's original.
+#   4. EXE runs it, and the result page carries Wolfram's own reading — plus the
+#      results-page link on its own page.
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "ai_check_smoke: waiting for launcher"
+wait 200
+
+open_app ai
+wait 40
+assert_app AI
+
+# Action menu -> Recent answers (third row). The seed answer is the one that
+# carries tool_query/tool_server in its %%ai: line.
+key down
+wait 10
+key down
+wait 10
+key exe
+wait 20
+screenshot out/ai_check_recent.ppm
+
+# Open the seed answer: it is the newest-normalised entry, so walk the list until
+# the page shows it. With a single-answer results dir it is the first row.
+key exe
+wait 30
+assert_ai_page_contains "Derivative of x^3"
+screenshot out/ai_check_answer.ppm
+log "ai_check_smoke: the answer is open; the title should now read '7 check'"
+
+# 1. Key 7 -> the confirm screen.
+key 7
+wait 20
+assert_ai_check_contains "offered=1"
+assert_ai_check_contains "query=derivative of x^3"
+assert_ai_check_contains "caret=17"
+assert_ai_check_contains "edited=0"
+assert_ai_check_contains "trans=d/dx x^3"
+screenshot out/ai_check_confirm.ppm
+log "ai_check_smoke: confirm screen captured (query + transcription + caret)"
+
+# 2. The digits-only edit: caret walks left, a digit goes in AT the caret.
+key left
+wait 5
+assert_ai_check_contains "caret=16"
+key 4
+wait 5
+assert_ai_check_contains "query=derivative of x^43"
+assert_ai_check_contains "caret=17"
+assert_ai_check_contains "edited=1"
+screenshot out/ai_check_edited.ppm
+log "ai_check_smoke: a digit was typed at the caret"
+
+# DEL rubs out the character BEFORE the caret.
+key del
+wait 5
+assert_ai_check_contains "query=derivative of x^3"
+assert_ai_check_contains "caret=16"
+
+# AC restores the model's ORIGINAL (this is the contract, not "back").
+key 9
+wait 5
+assert_ai_check_contains "query=derivative of x^93"
+key ac
+wait 10
+assert_ai_check_contains "query=derivative of x^3"
+assert_ai_check_contains "edited=0"
+assert_ai_check_contains "caret=17"
+screenshot out/ai_check_restored.ppm
+log "ai_check_smoke: AC restored the model's original query"
+
+# 3. EXE runs the check. The recorded body lands in one chunk, so the app goes
+#    straight to the paginated result.
+key exe
+wait 40
+assert_app AI
+# Wolfram's own reading (parsed out of the body's `Input interpretation:`) and the
+# result body itself. `x^2` renders as a superscript run, so the probe text has no
+# caret in it — that is the renderer, not a lost character.
+assert_ai_page_contains "Wolfram|Alpha check"
+assert_ai_page_contains "Wolfram read it as"
+assert_ai_page_contains "d/dx (x^3)"
+assert_ai_page_contains "Derivative"
+screenshot out/ai_check_result_p1.ppm
+log "ai_check_smoke: result page 1 captured (Wolfram's own reading)"
+
+# The link gets its own page: it is what the terms require the user to be able to
+# reach, and a page is the atomic unit on this device.
+key right
+wait 10
+assert_ai_page_contains "wolframalpha.com/input"
+screenshot out/ai_check_result_link.ppm
+log "ai_check_smoke: the results-page link captured"
+
+# AC goes back to the answer this check was about (NOT to the menu, and NOT the
+# check's own text: the answer is re-opened from disk).
+key ac
+wait 20
+assert_ai_page_contains "Derivative of x^3"
+screenshot out/ai_check_back.ppm
+log "ai_check_smoke: back on the answer"

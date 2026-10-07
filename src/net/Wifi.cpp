@@ -38,6 +38,8 @@
 
 #include <cstdio>
 
+#include "net/Clock.h"   // start SNTP once the link is up (TLS needs a real clock)
+
 namespace net {
 namespace {
 
@@ -50,6 +52,22 @@ constexpr const char* kKeyCount     = "n";      ///< entries in the saved list
 
 constexpr uint32_t kRetryMinMs = 5000;    ///< never tighter than 5 s
 constexpr uint32_t kRetryMaxMs = 60000;
+
+/// SNTP is fire-and-forget: configTzTime() resolves the server and sends one
+/// request. If that first exchange misses — the usual cause is DNS not yet
+/// answering in the moment right after DHCP — nothing retried, the clock stayed
+/// at 1970 for the whole boot, and every HTTPS call then died inside
+/// certificate validation as an unnamed ESP_ERR_HTTP_CONNECT/errno 0. Re-fire
+/// until the clock is actually plausible.
+constexpr uint32_t kTimeSyncRetryMs = 5000;
+
+/// Fixed channel + client cap for the provisioning AP. Pinning the channel is
+/// half the "authenticating forever" fix: in AP_STA the AP otherwise follows
+/// the STA, so a client that associated while the STA searched loses the AP.
+/// With the radio-ownership guard (tick() below) the STA is quiet, so the AP
+/// stays put. Channel 1 is the ESP-IDF softAP default and universally usable.
+constexpr uint8_t kApChannel   = 1;
+constexpr uint8_t kApMaxClients = 4;
 
 /// Attempts on ONE saved network before the list moves on (failover).
 constexpr uint8_t kAttemptsPerNetwork = 3;
@@ -78,6 +96,11 @@ volatile int  s_reason       = 0;
 bool              s_begun        = false;
 uint32_t          s_lastRetryMs  = 0;
 uint32_t          s_retryDelayMs = kRetryMinMs;
+volatile bool     s_apOwnsRadio  = false;  ///< portal AP up: suspend STA auto-retry
+bool              s_timeSyncStarted = false; ///< SNTP kicked off for this association
+uint32_t          s_timeSyncNextMs  = 0;     ///< when to re-fire SNTP while unsynced
+uint8_t           s_timeSyncTries   = 0;     ///< attempts so far, for the log line
+bool              s_timeLoggedSync  = false; ///< "clock set" logged once per boot
 bool              s_evtsUp       = false;
 wifi_event_id_t   s_evtGotIp     = 0;
 wifi_event_id_t   s_evtDown      = 0;
@@ -280,10 +303,35 @@ bool Wifi::connect(const std::string& ssid, const std::string& pass, int timeout
     return WiFi.isConnected();
 }
 
+bool Wifi::connectAsync(const std::string& ssid, const std::string& pass) {
+    if (ssid.empty()) return false;
+    if (!s_begun) {
+        WiFi.persistent(false);
+        WiFi.setHostname(kHostname);
+        WiFi.mode(WIFI_STA);
+        WiFi.setAutoReconnect(true);
+        registerEvents();
+        s_begun = true;
+    }
+    WiFi.begin(ssid.c_str(), pass.c_str());
+    // Remember the target for the UI. networkIndex() reads NVS, but only here,
+    // once per explicit request — never per tick.
+    s_activeIndex       = networkIndex(ssid);
+    s_activeSsid        = ssid;
+    s_attemptsOnCurrent = 0;
+    s_retryDelayMs      = kRetryMinMs;
+    s_lastRetryMs       = millis();
+    return true;
+}
+
 void Wifi::disconnect(bool eraseCreds) {
     unregisterEvents();
     WiFi.disconnect(/*wifioff=*/true, /*eraseap=*/eraseCreds);
     WiFi.mode(WIFI_OFF);        // actually powers the radio down
+    s_apOwnsRadio  = false;     // radio is off; nothing owns it any more
+    s_timeSyncStarted = false;
+    s_timeSyncNextMs  = 0;
+    s_timeSyncTries   = 0;
     s_begun        = false;
     s_gotIp        = false;
     s_disconnected = false;
@@ -379,6 +427,29 @@ void Wifi::tick(uint32_t nowMs) {
     if (WiFi.isConnected()) {
         s_retryDelayMs = kRetryMinMs;
         s_attemptsOnCurrent = 0;
+        // The link is up: start SNTP once. TLS validates notBefore/notAfter, so
+        // a request made before this settles fails inside the handshake and
+        // surfaces as an opaque "esp_http_client_open failed".
+        if (!s_timeSyncStarted) {
+            net::startTimeSync();
+            s_timeSyncStarted = true;
+            s_timeSyncNextMs  = nowMs + kTimeSyncRetryMs;
+            s_timeSyncTries   = 1;
+            Serial.println("[NET] ntp: first request sent (TLS needs a real clock)");
+        } else if (!net::timeSynced() &&
+                   (int32_t)(nowMs - s_timeSyncNextMs) >= 0) {
+            // The first exchange did not land. Keep re-arming until the clock
+            // is set; the moment timeSynced() goes true this stops for good.
+            net::startTimeSync();
+            s_timeSyncNextMs = nowMs + kTimeSyncRetryMs;
+            ++s_timeSyncTries;
+            Serial.printf("[NET] ntp: attempt %u, clock still %ld\n",
+                          (unsigned)s_timeSyncTries, (long)time(nullptr));
+        }
+        if (!s_timeLoggedSync && net::timeSynced()) {
+            s_timeLoggedSync = true;
+            Serial.printf("[NET] ntp: clock set, epoch %ld\n", (long)time(nullptr));
+        }
         const String cur = WiFi.SSID();
         if (cur.length() && s_activeSsid != cur.c_str()) {
             // Landed on a different saved slot (or the driver roamed): remember
@@ -390,6 +461,13 @@ void Wifi::tick(uint32_t nowMs) {
         }
         return;
     }
+
+    // The provisioning AP owns the radio: do NOT walk the saved list or call
+    // reconnect(). Each attempt moves the shared AP_STA radio off kApChannel,
+    // and a client mid-association then gets no answer — the "authenticating
+    // forever" symptom. A deliberate portal "Test" still joins (it calls
+    // Wifi::connect() directly); automatic retries resume once the AP is down.
+    if (s_apOwnsRadio) return;
 
     const uint32_t jitter = nowMs % 977u;   // spread the retries of many units
     if ((nowMs - s_lastRetryMs) < (s_retryDelayMs + jitter)) return;
@@ -412,15 +490,39 @@ void Wifi::tick(uint32_t nowMs) {
 
 bool Wifi::startProvisioningAp(const char* ssid, const char* pass) {
     // AP_STA so the AP exists while STA keeps trying to associate (the portal's
-    // "test before save" needs exactly this shape).
-    if (!WiFi.mode(WIFI_AP_STA)) return false;
+    // "test before save" needs exactly this shape) — AND so it can be raised
+    // while the STA is ALREADY associated: moving WIFI_STA -> WIFI_AP_STA keeps
+    // the live link, it does not drop it. The old form bailed whenever
+    // WiFi.mode() returned false, but mode() is not a reliable failure signal
+    // (it also reports false when the requested mode is already in force), so a
+    // unit that had joined a network could fail to raise the portal for no real
+    // reason. The softAP() result is the real gate.
+    const wifi_mode_t want = WIFI_AP_STA;
+    if (WiFi.getMode() != want) {
+        if (!WiFi.mode(want) && WiFi.getMode() != want) return false;
+    }
     registerEvents();
-    return WiFi.softAP(ssid, pass);
+
+    // Claim the radio BEFORE the AP is up: from here until stopProvisioningAp()
+    // the STA will not auto-retry/failover, so the AP keeps its channel.
+    s_apOwnsRadio = true;
+
+    if (WiFi.softAP(ssid, pass, kApChannel, /*hidden=*/false, kApMaxClients)) return true;
+
+    // softAP() can report false when an AP is already serving (a re-toggle, or a
+    // retained AP config). A live softAPIP means the AP interface is genuinely
+    // up and reachable, which is all the caller needs — do not fail a portal the
+    // phone can actually use.
+    if (WiFi.softAPIP() != IPAddress(0, 0, 0, 0)) return true;
+
+    s_apOwnsRadio = false;   // the AP never came up; release the STA
+    return false;
 }
 
 void Wifi::stopProvisioningAp() {
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
+    s_apOwnsRadio = false;
 }
 
 bool Wifi::saveCredentials(const std::string& ssid, const std::string& pass) {
@@ -592,6 +694,7 @@ namespace net {
 
 bool      Wifi::begin()                                                            { return false; }
 bool      Wifi::connect(const std::string&, const std::string&, int)               { return false; }
+bool      Wifi::connectAsync(const std::string&, const std::string&)              { return false; }
 void      Wifi::disconnect(bool)                                                   {}
 WifiState Wifi::state()                                                            { return {}; }
 void      Wifi::setPowerSave(bool)                                                 {}

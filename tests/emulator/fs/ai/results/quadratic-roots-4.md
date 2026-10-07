@@ -1,0 +1,42 @@
+# Greek, roots and powers
+
+The display face carries the full Greek alphabet: α β γ δ ε θ λ μ ν π ρ σ τ φ χ ψ ω
+and the capitals Γ Δ Θ Λ Σ Φ Ψ Ω.
+
+Inline maths swaps LaTeX tokens for real glyphs, so $\sqrt{2}$, $\pi r^2$ and
+$x^2 + y^2 = r^2$ come out as symbols rather than as command names.
+
+---
+
+# Display maths is drawn, not spelled
+
+A $$...$$ block goes through the 2D renderer, so fractions stack and limits sit
+over their operator:
+
+$$\int_{0}^{1} x^2 dx = \frac{1}{3}$$
+
+$$\sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}$$
+
+Those two fractions are laid out with a real horizontal bar.
+
+---
+
+# Comparisons, arrows and subscripts
+
+Every comparison the face can draw: $x \leq 5$, $y \geq 3$, $a \neq b$.
+
+Implication and arrows render too: $A \implies B$ and $f: X \to Y$.
+
+Subscripts use the ten subscript digits: $a_0 a_1 a_2 a_3 a_4 a_5 a_6 a_7 a_8 a_9$.
+
+---
+
+# Symbols with no glyph
+
+Some symbols have no glyph in the face. Write them in ASCII instead: "+-" for
+plus-or-minus, the word "approximately" as a stand-in for the approx sign,
+d/dx for a partial derivative, -> for a right arrow, <= and >= for
+less-or-equal and greater-or-equal.
+
+Use the plain ASCII hyphen - as a minus sign.
+%%ai: model=google/gemini-2.5-flash-lite hash=0fb72aa0 pages=4 image=-%%

@@ -494,7 +494,7 @@ void TutorApp::handleKey(const KeyEvent& ev) {
     if (ev.action != KeyAction::PRESS && ev.action != KeyAction::REPEAT) return;
 
     switch (ev.code) {
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
         case KeyCode::F5:
             onSolveClicked();
             break;

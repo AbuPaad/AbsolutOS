@@ -212,9 +212,28 @@ AiConfig AiConfig::load(const std::string& path) {
         if (jsonFindString(js, "prompts_dir", s)) c.promptsDir = s;
         if (jsonFindString(js, "results_dir", s)) c.resultsDir = s;
         if (jsonFindString(js, "sys_prompt", s))  c.sysPrompt = s;
+#if !defined(ARDUINO)
+        // Host/emulator only: a dev may force "emulator" (libcurl) or "replay".
+        // On hardware the transport is fixed to "wifi" below — it is not a
+        // setting, so a stale value in the file cannot divert the radio.
         if (jsonFindString(js, "transport", s) && !s.empty()) c.transport = s;
+#endif
         if (jsonFindInt(js, "retention_max_files", n)) c.retentionMaxFiles = static_cast<int>(n);
         if (jsonFindInt(js, "retention_max_bytes", n)) c.retentionMaxBytes = n;
+        // Wolfram|Alpha: the AppID is BYO and lives beside the provider key, in
+        // the same file and the same NVS namespace — one config surface, one
+        // resolution ladder, one place the portal has to write.
+        if (jsonFindString(js, "wa_host", s))      c.waHost = s;
+        if (jsonFindString(js, "wa_path", s))      c.waPath = s;
+        if (jsonFindInt(js, "wa_maxchars", n))     c.waMaxChars = static_cast<int>(n);
+        if (jsonFindInt(js, "wa_timeout_ms", n))   c.waTimeoutMs = static_cast<int>(n);
+        if (jsonFindString(js, "wa_units", s))     c.waUnits = s;
+        if (jsonFindString(js, "wa_location", s))  c.waLocation = s;
+        if (jsonFindString(js, "wa_language", s))  c.waLanguage = s;
+        if (jsonFindString(js, "wa_appid", s) && !s.empty()) {
+            c.waAppId = s;
+            c._waKeySource = "config";
+        }
         if (jsonFindString(js, "api_key", s) && !s.empty()) {
             c.apiKey = s;
             c._keySource = "config";   // bringup only — the SD card is readable
@@ -228,64 +247,103 @@ AiConfig AiConfig::load(const std::string& path) {
         Preferences prefs;
         if (prefs.begin("numos-ai", true)) {
             const String k = prefs.getString("api_key", String());
+            const String w = prefs.getString("wa_appid", String());
             prefs.end();
             if (k.length() > 0) {
                 c.apiKey = std::string(k.c_str());
                 c._keySource = "nvs";
             }
+            if (w.length() > 0) {
+                c.waAppId = std::string(w.c_str());
+                c._waKeySource = "nvs";
+            }
         }
     }
 #endif
+#if defined(ARDUINO)
+    // Hardware is WiFi-only. The AI path is always the board's own radio + TLS;
+    // "transport" is not a user setting, so nothing in config.json can send the
+    // app back onto the recorded fixture.
+    c.transport = "wifi";
+#endif
     if (c.apiKey.empty()) c._keySource = "none";
+    if (c.waAppId.empty()) c._waKeySource = "none";
     return c;
 }
 
-bool setConfigModel(const std::string& path, const std::string& modelId) {
-    if (modelId.empty()) return false;
+namespace {
+/**
+ * Create the folders that hold `path`. LittleFS.open(..., "w") does NOT create
+ * parents, so writing /ai/config.json on a unit whose /ai was never made failed
+ * at the last step and the app reported "not saved" — which is what a fresh
+ * board, and a fresh emulator fs root, did every time. The portal's config
+ * writer already mkdirs /ai; this brings the on-device save path in line.
+ */
+void ensureParentDir(const std::string& path) {
+    for (size_t at = path.find('/', 1); at != std::string::npos;
+         at = path.find('/', at + 1)) {
+        ensureDir(path.substr(0, at));
+    }
+}
+
+/**
+ * Replace (or insert) one flat "key": "value" string in the config file, via
+ * temp+rename. Shared by the two on-device settings the app can change. A
+ * round-trip through the AiConfig struct would drop keys this build does not
+ * model, so the edit is textual and surgical, exactly like the model picker's.
+ */
+bool setConfigString(const std::string& path, const char* keyName,
+                     const std::string& value) {
+    if (value.empty()) return false;
+    ensureParentDir(path);
 
     std::string esc;
-    for (char ch : modelId) {
+    for (char ch : value) {
         if (ch == '"' || ch == '\\') esc += '\\';
         esc += ch;
     }
 
-    const std::string js = readTextFile(path);
+    const std::string key = std::string("\"") + keyName + "\"";
+    const std::string js  = readTextFile(path);
     if (js.empty()) {
         // No config yet. load() fills everything else from compiled defaults, so
-        // a file holding just the model is a valid config.
-        return writeTextFile(path, "{\n  \"model\": \"" + esc + "\"\n}\n");
+        // a file holding just this key is a valid config.
+        return writeTextFile(path, "{\n  " + key + ": \"" + esc + "\"\n}\n");
     }
 
-    // Find `"model"` as a whole key. The quotes are what keep this from matching
-    // the `model` inside `"models_url"`.
-    const std::string key = "\"model\"";
-    size_t k = js.find(key);
+    std::string out = js;
+    const size_t k = js.find(key);
     if (k == std::string::npos) {
         const size_t open = js.find('{');
         if (open == std::string::npos) return false;
-        std::string out = js;
-        out.insert(open + 1, "\n  \"model\": \"" + esc + "\",");
-        const std::string tmp = path + ".tmp";
-        if (!writeTextFile(tmp, out)) return false;
-        return LittleFS.rename(tmp.c_str(), path.c_str());
+        out.insert(open + 1, "\n  " + key + ": \"" + esc + "\",");
+    } else {
+        // Advance past the ':' to the value's opening quote. The quotes on the
+        // key are what keep "model" from matching inside "models_url".
+        const size_t v = js.find('"', js.find(':', k + key.size()));
+        if (v == std::string::npos) return false;
+        size_t e = v + 1;
+        while (e < js.size() && js[e] != '"') {
+            if (js[e] == '\\') ++e;
+            ++e;
+        }
+        if (e >= js.size()) return false;
+        out.replace(v + 1, e - v - 1, esc);
     }
-
-    // Advance to the value: past the ':' after the key, then to its opening quote.
-    size_t v = js.find('"', js.find(':', k + key.size()));
-    if (v == std::string::npos) return false;
-    size_t e = v + 1;
-    while (e < js.size() && js[e] != '"') {
-        if (js[e] == '\\') ++e;
-        ++e;
-    }
-    if (e >= js.size()) return false;
-
-    std::string out = js;
-    out.replace(v + 1, e - v - 1, esc);
 
     const std::string tmp = path + ".tmp";
     if (!writeTextFile(tmp, out)) return false;
-    return LittleFS.rename(tmp.c_str(), path.c_str());
+    if (LittleFS.rename(tmp.c_str(), path.c_str())) return true;
+    // LittleFS's rename() can refuse when the destination already exists; a plain
+    // overwrite is better than reporting a failed save for a write that works.
+    const bool ok = writeTextFile(path, out);
+    LittleFS.remove(tmp.c_str());
+    return ok;
+}
+}  // namespace
+
+bool setConfigModel(const std::string& path, const std::string& modelId) {
+    return setConfigString(path, "model", modelId);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -678,7 +736,7 @@ AiTransport* makeTransport(const AiConfig& cfg) {
             "emulator transport needs libcurl (-DNUMOS_HAVE_LIBCURL + -lcurl)");
 #endif
     }
-    if (cfg.transport == "device") {
+    if (cfg.transport == "device" || cfg.transport == "wifi") {
 #if defined(ARDUINO)
         // net/DeviceTransport.cpp. Guarded so the host test and the emulator
         // build keep compiling with `g++ -I src` and no Arduino headers.
@@ -706,6 +764,9 @@ void AiScanner::reset() {
     _key.clear();
     _title.clear();
     _answer.clear();
+    _toolQuery.clear();
+    _toolServer.clear();
+    _transcribed.clear();
     _depth = 0;
     _fence = false;
     _ticks = 0;
@@ -795,12 +856,36 @@ void AiScanner::pushAnswerChar(char c) {
     }
 }
 
+/**
+ * The single place a decoded VALUE character is routed to a field.
+ *
+ * Adding tool_query / tool_server / transcribed_question by copying the old
+ * two-branch `if (_key == "answer") ... else if (_key == "title") ...` into four
+ * separate spots is how a field ends up present in one escape path and silently
+ * missing in another — and that class of bug is invisible in the app, because
+ * the stream still "succeeds".
+ */
+void AiScanner::pushField(char c) {
+    if (_key == "answer")                    pushAnswerChar(c);
+    else if (_key == "title")                _title.push_back(c);
+    else if (_key == "tool_query")           _toolQuery.push_back(c);
+    else if (_key == "tool_server")          _toolServer.push_back(c);
+    else if (_key == "transcribed_question") _transcribed.push_back(c);
+}
+
 void AiScanner::walkJson(char c) {
     // ── inside a JSON string ────────────────────────────────────────────────
     if (_inStr) {
         if (_esc) {
             _esc = false;
             if (c == 'u') {              // \uXXXX
+                // Collect four hex digits, then emit UTF-8. The guard below is
+                // `_inUni`, NOT `_uniLen > 0`: entering the escape leaves the
+                // digit count at 0, so a count-based guard was never true and the
+                // four hex characters fell through as literal text — every \u
+                // escape in an answer was written out as bare hex (Greek letters
+                // arrived as "03b1 03b2 ..." and rendered as that text).
+                _inUni = true;
                 _uniLen = 0;
                 _uniVal = 0;
                 return;
@@ -818,35 +903,33 @@ void AiScanner::walkJson(char c) {
                 default:   d = c;    break;
             }
             if (_st == St::InKey) _key.push_back(d);
-            else if (_st == St::InValue) {
-                if (_key == "answer") pushAnswerChar(d);
-                else if (_key == "title") _title.push_back(d);
-            }
+            else                  pushField(d);
             return;
         }
-        if (_uniLen > 0) {               // collecting \uXXXX digits
+        if (_inUni) {                    // collecting \uXXXX digits
             const int hex = std::isdigit(static_cast<unsigned char>(c))
                                 ? c - '0'
                                 : (std::tolower(c) >= 'a' && std::tolower(c) <= 'f'
                                        ? std::tolower(c) - 'a' + 10 : -1);
-            if (hex < 0) { _uniLen = 0; return; }
+            if (hex < 0) { _inUni = false; _uniLen = 0; return; }
             _uniVal = (_uniVal << 4) | static_cast<unsigned>(hex);
             if (++_uniLen == 4) {
+                _inUni = false;
                 _uniLen = 0;
                 const unsigned cp = _uniVal;
                 if (cp < 0x80) {
-                    if (_st == St::InValue && _key == "answer") pushAnswerChar(static_cast<char>(cp));
+                    if (_st == St::InValue) pushField(static_cast<char>(cp));
                 } else if (cp < 0x800) {
                     char b[2] = {static_cast<char>(0xC0 | (cp >> 6)),
                                  static_cast<char>(0x80 | (cp & 0x3F))};
-                    for (char x : b) if (_st == St::InValue && _key == "answer") pushAnswerChar(x);
+                    for (char x : b) if (_st == St::InValue) pushField(x);
                 } else if (cp >= 0xD800 && cp <= 0xDFFF) {
-                    if (_st == St::InValue && _key == "answer") pushAnswerChar('?');
+                    if (_st == St::InValue) pushField('?');
                 } else {
                     char b[3] = {static_cast<char>(0xE0 | (cp >> 12)),
                                  static_cast<char>(0x80 | ((cp >> 6) & 0x3F)),
                                  static_cast<char>(0x80 | (cp & 0x3F))};
-                    for (char x : b) if (_st == St::InValue && _key == "answer") pushAnswerChar(x);
+                    for (char x : b) if (_st == St::InValue) pushField(x);
                 }
             }
             return;
@@ -854,10 +937,7 @@ void AiScanner::walkJson(char c) {
         if (c == '\\') { _esc = true; return; }   // held until the next char arrives
         if (c == '"')  { endString(); return; }
         if (_st == St::InKey) _key.push_back(c);
-        else if (_st == St::InValue) {
-            if (_key == "answer") pushAnswerChar(c);
-            else if (_key == "title") _title.push_back(c);
-        }
+        else if (_st == St::InValue) pushField(c);
         return;
     }
 
@@ -1121,8 +1201,8 @@ void AiSession::abort() {
     if (_state == State::Running) _state = State::Idle;
 }
 
-std::string AiSession::slug() const {
-    std::string s = lower(trimCopy(_scan.title()));
+std::string slugify(const std::string& title) {
+    std::string s = lower(trimCopy(title));
     std::string out;
     for (const char c : s) {
         if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) out.push_back(c);
@@ -1133,6 +1213,10 @@ std::string AiSession::slug() const {
     while (!out.empty() && out.front() == '-') out.erase(out.begin());
     if (out.empty()) out = "answer";
     return out;
+}
+
+std::string AiSession::slug() const {
+    return slugify(_scan.title());
 }
 
 bool AiSession::commit(std::string* savedPathOut) {
@@ -1170,8 +1254,20 @@ bool AiSession::commit(std::string* savedPathOut) {
     out += "%%ai: model=" + _cfg.model +
            " hash=" + hash +
            " pages=" + std::to_string(_scan.pageCount()) +
-           " image=" + (_image.empty() ? std::string("-") : _image) +
-           "%%\n";
+           " image=" + (_image.empty() ? std::string("-") : _image);
+    // The check hop's fields ride here too. The live run has them in the
+    // scanner's RAM, but an answer REOPENED from Recent has only what the
+    // document kept — and a Wolfram check that only ever works right after the
+    // run that produced it is half a feature. Both values are free English, so
+    // they are encoded; absent fields add nothing, which leaves every earlier
+    // answer's metadata line byte-identical.
+    if (!_scan.toolQuery().empty())
+        out += " tool_query=" + encodeMetaValue(_scan.toolQuery());
+    if (!_scan.toolServer().empty())
+        out += " tool_server=" + encodeMetaValue(_scan.toolServer());
+    if (!_scan.transcribedQuestion().empty())
+        out += " transcribed=" + encodeMetaValue(_scan.transcribedQuestion());
+    out += "%%\n";
 
     // temp + rename: a half-written answer is never readable.
     const std::string tmp = path + ".tmp";
@@ -1186,6 +1282,123 @@ bool AiSession::commit(std::string* savedPathOut) {
     _committed = true;
     if (savedPathOut) *savedPathOut = path;
     return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The %%ai: line — encode, decode, read back
+// ═══════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+/// Characters that survive a round trip inside the space-separated token line.
+bool metaSafeChar(char c) {
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
+        return true;
+    switch (c) {
+        case '.': case '_': case ':': case '/': case '-': case '+': return true;
+        default: return false;
+    }
+}
+
+int hexDigit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
+
+bool metaSpace(char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+}  // namespace
+
+std::string encodeMetaValue(const std::string& v) {
+    static const char* kHex = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(v.size());
+    for (char ch : v) {
+        if (metaSafeChar(ch)) {
+            out += ch;
+            continue;
+        }
+        const unsigned char u = static_cast<unsigned char>(ch);
+        out += '%';
+        out += kHex[(u >> 4) & 0x0F];
+        out += kHex[u & 0x0F];
+    }
+    return out;
+}
+
+bool decodeMetaValue(const std::string& v, std::string* out) {
+    std::string r;
+    r.reserve(v.size());
+    for (size_t i = 0; i < v.size(); ++i) {
+        if (v[i] != '%') { r += v[i]; continue; }
+        // A truncated or non-hex escape is reported, never half-decoded: a
+        // silently-kept "%2" would be a query nobody typed.
+        if (i + 2 >= v.size()) return false;
+        const int hi = hexDigit(v[i + 1]);
+        const int lo = hexDigit(v[i + 2]);
+        if (hi < 0 || lo < 0) return false;
+        r += static_cast<char>((hi << 4) | lo);
+        i += 2;
+    }
+    if (out) *out = r;
+    return true;
+}
+
+AnswerMeta parseAnswerMeta(const std::string& text) {
+    AnswerMeta m;
+
+    // The LAST `%%ai:` in the file: a saved answer holds exactly one, and taking
+    // the last means a body that happens to quote one cannot shadow it.
+    size_t at = std::string::npos;
+    for (size_t p = text.find("%%ai:"); p != std::string::npos;
+         p = text.find("%%ai:", p + 1)) {
+        at = p;
+    }
+    if (at == std::string::npos) return m;
+    const size_t end = text.find("%%", at + 5);
+    if (end == std::string::npos) return m;
+    const std::string line = text.substr(at + 5, end - (at + 5));
+
+    bool any = false;
+    size_t i = 0;
+    while (i < line.size()) {
+        while (i < line.size() && metaSpace(line[i])) ++i;
+        size_t j = i;
+        while (j < line.size() && !metaSpace(line[j])) ++j;
+        if (j > i) {
+            const std::string tok = line.substr(i, j - i);
+            const size_t eq = tok.find('=');
+            if (eq != std::string::npos) {
+                const std::string key = tok.substr(0, eq);
+                std::string val;
+                if (decodeMetaValue(tok.substr(eq + 1), &val)) {
+                    // `kind=wolfram` is a check document, not an answer: it sets
+                    // no known key, so it leaves found == false.
+                    if      (key == "model")       { m.model = val;        any = true; }
+                    else if (key == "hash")        { m.hash = val;         any = true; }
+                    else if (key == "image")       { m.image = val;        any = true; }
+                    else if (key == "tool_query")  { m.toolQuery = val;    any = true; }
+                    else if (key == "tool_server") { m.toolServer = val;   any = true; }
+                    else if (key == "transcribed") { m.transcribed = val;  any = true; }
+                    else if (key == "pages") {
+                        m.pages = std::atoi(val.c_str());
+                        any = true;
+                    }
+                }
+            }
+        }
+        i = j;
+    }
+    m.found = any;
+    return m;
+}
+
+AnswerMeta readAnswerMeta(const std::string& path) {
+    return parseAnswerMeta(readTextFile(path));
 }
 
 }  // namespace ai

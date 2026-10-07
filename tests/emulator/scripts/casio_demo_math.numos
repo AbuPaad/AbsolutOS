@@ -1,0 +1,85 @@
+# casio_demo_math.numos — demo capture: the AI answer surface under the CASIO
+# theme, showing display math drawn by the 2D renderer (MathCanvas) instead of
+# glyph substitution.
+#
+# transport = replay, so this run sends NOTHING anywhere; the stream comes from
+# the recorded fixture at <fs-root>/ai/replay/answer.sse.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/casio_demo_math.numos \
+#           --fs-root tests/emulator/fs --frames 1400 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "casio_demo_math: waiting for launcher"
+wait 200
+assert_app Menu
+
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+assert_app Menu
+
+open_app ai
+wait 40
+assert_app AI
+
+# Digit 1 = Ask, then ENTER sends.
+key 1
+wait 20
+assert_app AI
+
+key enter
+wait 320
+assert_app AI
+screenshot out/casio/ai_math_p1.ppm
+log "casio_demo_math: answer page 1 captured"
+
+key right
+wait 20
+screenshot out/casio/ai_math_p2.ppm
+log "casio_demo_math: page 2 captured"
+
+key right
+wait 20
+screenshot out/casio/ai_math_p3.ppm
+log "casio_demo_math: page 3 captured"
+
+key right
+wait 20
+screenshot out/casio/ai_math_p4.ppm
+log "casio_demo_math: page 4 captured"
+
+key right
+wait 20
+screenshot out/casio/ai_math_p5.ppm
+log "casio_demo_math: page 5 captured"
+
+key right
+wait 20
+screenshot out/casio/ai_math_p6.ppm
+log "casio_demo_math: page 6 captured"
+
+key right
+wait 20
+screenshot out/casio/ai_math_p7.ppm
+log "casio_demo_math: page 7 captured"
+
+key right
+wait 20
+screenshot out/casio/ai_math_p8.ppm
+log "casio_demo_math: page 8 captured"
+
+key right
+wait 20
+screenshot out/casio/ai_math_p9.ppm
+log "casio_demo_math: page 9 captured"
+
+key right
+wait 20
+screenshot out/casio/ai_math_p10.ppm
+log "casio_demo_math: page 10 captured"
+
+
+log "casio_demo_math: done"

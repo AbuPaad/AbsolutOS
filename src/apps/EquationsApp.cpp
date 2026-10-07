@@ -1814,7 +1814,7 @@ void EquationsApp::handleKeyList(const KeyEvent& ev) {
             }
             break;
 
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             if (_listFocus < _numEquations) {
                 // Edit existing equation
                 showEditing(_listFocus);
@@ -1887,7 +1887,7 @@ void EquationsApp::handleKeyTemplate(const KeyEvent& ev) {
             }
             break;
 
-        case KeyCode::ENTER: {
+        case KeyCode::EXE: {
             // Apply template and go to editor
             int slot = _numEquations;
             if (slot >= MAX_EQS) { break; }
@@ -2051,7 +2051,7 @@ void EquationsApp::handleKeyEditing(const KeyEvent& ev) {
             break;
 
         // ── ENTER → confirm editing, save to slot, back to list ──
-        case KeyCode::ENTER: {
+        case KeyCode::EXE: {
             _editCanvas.stopCursorBlink();
 
             // Save the edited expression to the equation slot

@@ -1,0 +1,187 @@
+# regression.numos — Screenshot script for Regression app (RegressionApp, APP 06)
+#
+# Three shots required by the website (DELIVERABLES.md):
+# 1. /assets/img/apps/regression-1.webp — Equation tab after a QUADRATIC fit:
+#    equation, each coefficient, R2, point count.
+# 2. /assets/img/apps/regression-2.webp — Graph tab: entered points as scatter
+#    and the fitted curve passing through them.
+# 3. /assets/img/apps/regression-3.webp — the same graph after switching the
+#    model, the quadratic curve replaced by a straight line.
+#
+# ── App state machine (src/apps/RegressionApp.cpp) ──────────────────────
+#   * begin()/load() build a 3-tab screen: Data (table X|Y), Equation, Graph.
+#     load() resets _activeTab=DATA, tableRow=0, tableCol=0, _editing=false and
+#     calls refreshTable() (RegressionApp.cpp:138-149). _model is set ONCE in the
+#     constructor to LINEAR (RegressionApp.cpp:69) and is never persisted.
+#   * Data tab nav (handleKeyData, :750-848): a DIGIT in nav mode starts an edit
+#     and re-processes itself (startEdit + recurse, :842-845); ENTER commits
+#     (finishEdit, :785-788); RIGHT/LEFT move between the X and Y columns (they
+#     are column nav, NOT a tab switch, :810-821); AC appends a fresh row and
+#     DOWN walks onto it (:831-838); DEL clears the focused cell; in edit mode
+#     digits/DOT append, DEL backspaces, ENTER commits, AC cancels.
+#   * startEdit() pre-fills the buffer with the cell's current value whenever the
+#     row already holds data (:417-424). Every cell written below is either on a
+#     freshly appended last row (x=0,y=0, row==_numRows-1 -> NO pre-fill) or a
+#     Y cell whose pre-fill "0" is absorbed by atof ("011" == 11), so the
+#     committed values are exactly the ones listed at the bottom.
+#   * Tab switching when not editing: F1 = previous, F2 = next, GRAPH cycles
+#     Data -> Equation -> Graph -> Data (:720-737). GRAPH is the only key that
+#     leaves the Data tab. switchTab(EQUATION) runs recompute()+updateEquationDisplay();
+#     switchTab(GRAPH) runs recompute()+updateGraph() (:334-348).
+#
+# ── Model toggle: UNREACHABLE in this build (why shots 1 and 3 are absent) ──
+#   * RegressionApp toggles _model LINEAR<->QUADRATIC on KeyCode::SHIFT in the
+#     Equation and Graph tab handlers ONLY (RegressionApp.cpp:854-877); the
+#     Equation label literally says "(SHIFT to toggle)". There is no other key,
+#     no other entry point and no persistence that can change _model.
+#   * The emulator routes keys through NativeHal::dispatchKey(), which swallows
+#     SHIFT on its DOWN edge for every mode that does not own its modifiers
+#     (NativeHal.cpp:767-775: appOwnsModifiers = CALCULATION|CALCULUS|EQUATIONS|
+#     GAMEBOY). REGRESSION is not in that list, so `key shift` sets the shared
+#     KeyboardManager and RETURNs — RegressionApp::handleKey never sees it. The
+#     trailing RELEASE does reach the app but is discarded by its own action
+#     filter (RegressionApp.cpp:717 accepts only PRESS/REPEAT).
+#   * PROVEN empirically on this binary, not just read: emitContextLineIfChanged()
+#     prints "@ctx <id> <slug> <modifier>" at the end of every frame whenever the
+#     modifier indicator changes, unconditionally (NativeHal.cpp:4246-4249). A
+#     `key shift` inside Regression emits "@ctx 8 regression S" — the KeyboardManager
+#     took the key — while the control `key shift` inside the Menu emits
+#     "@ctx 1 menu S". If the app had received the key, no modifier line would
+#     appear. (The same swallow exists on the device: SystemApp.cpp:782-787.)
+#   * Therefore the model stays LINEAR for the whole run: shot 1 (a quadratic
+#     fit) and shot 3 (a model switch) CANNOT be reached, and there is no
+#     assertion anywhere that can read _model or any label text to prove a model
+#     claim anyway. Both shots are reported COULD NOT CAPTURE rather than
+#     photographed as the wrong screen.
+#
+# ── Dataset typed here (linear on purpose) ──────────────────────────────
+#   (0,1) (1,3) (2,5) (3,7) (4,9) (5,11)   ->  n = 6, y = 2x + 1, R2 = 1
+#   Lying exactly on a straight line means the LINEAR fit — the only model this
+#   build can select — passes through every plotted point, which is what shot 2's
+#   SHOW asks for. It also keeps x=0 and y=0 inside the auto-scaled ranges, so
+#   updateGraph()->drawAxes() actually draws both axis lines (RegressionApp.cpp:611-636);
+#   all-positive data would leave 0 outside the 15% margins and draw no axes at all.
+#   Fitted values the Equation tab would carry (from RegressionEngine::fitLinear):
+#   m = 2, b = 1, c = N/A, R2 = 1, n = 6 — derived from the engine, not observed.
+#
+# Theme: default is NumOS (ThemeManager ctor); Regression has no casio-specific
+# code, so assert_theme numos holds with no toggle.
+#
+# NOTE: the script parser reads a whole token per command, so no inline '#'
+# comments are allowed after key/wait/screenshot/assert — every comment sits
+# on its own line.
+#
+# Run (from repo root):
+#   ./C:/.piobuild/numOS/emulator_pc/program --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/regression.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "regression: waiting for launcher"
+wait 200
+assert_app Menu
+assert_theme numos
+
+# Open Regression directly (emulator launchApp id 6, same id as the launcher card).
+open_app Regression
+wait 60
+assert_app Regression
+assert_theme numos
+
+# ── Data entry: six rows ────────────────────────────────────────────────
+# Row 0: X=0, Y=1. Starts at row 0 / col 0 in nav mode; the first row is the
+# only empty row, so both edits open with no pre-fill.
+key 0
+key enter
+key right
+key 1
+key enter
+
+# Row 1: back to the X column, append a row, walk down onto it, X=1, Y=3.
+key left
+key ac
+key down
+key 1
+key enter
+key right
+key 3
+key enter
+
+# Row 2: X=2, Y=5.
+key left
+key ac
+key down
+key 2
+key enter
+key right
+key 5
+key enter
+
+# Row 3: X=3, Y=7.
+key left
+key ac
+key down
+key 3
+key enter
+key right
+key 7
+key enter
+
+# Row 4: X=4, Y=9.
+key left
+key ac
+key down
+key 4
+key enter
+key right
+key 9
+key enter
+
+# Row 5: X=5, Y=11 (two digits; the Y pre-fill "0" yields "011" -> 11).
+key left
+key ac
+key down
+key 5
+key enter
+key right
+key 1
+key 1
+key enter
+
+# ── SHOT 1 target: Equation tab, quadratic fit — REACHED, NOT CAPTURED ──
+# GRAPH cycles Data -> Equation, which recomputes and fills the six labels
+# (equation, slope/a, intercept/b, c, R2, points). The site wants this tab AFTER
+# A QUADRATIC FIT; the only key that changes the model is SHIFT and the emulator
+# swallows it before the app (see header). Press it anyway so the run log carries
+# the proof: "@ctx 8 regression S" right after this line means KeyboardManager
+# took the key and the app did not.
+key graph
+wait 120
+assert_app Regression
+assert_theme numos
+key shift
+wait 5
+assert_app Regression
+log "regression: equation tab reached with 6 points; SHIFT swallowed (see @ctx line above), model still LINEAR -> shot 1 NOT captured"
+
+# ── SHOT 2: Graph tab, scatter + fitted curve ──────────────────────────
+# GRAPH cycles Equation -> Graph; switchTab(GRAPH) runs recompute()+updateGraph():
+# 6 scatter dots, both axis lines (0 lies inside both auto-scaled ranges) and the
+# least-squares line y = 2x + 1 drawn over them (RegressionApp.cpp:593-597).
+key graph
+wait 120
+assert_app Regression
+assert_theme numos
+screenshot out/shots-regression-2.ppm
+log "regression: shot 2 captured (graph tab: 6 points + fitted line y=2x+1)"
+
+# ── SHOT 3 target: same graph with the model switched — NOT CAPTURED ───
+# The site wants the quadratic curve replaced by a straight line here. That needs
+# a second SHIFT (handleKeyGraph, RegressionApp.cpp:869-877); the same swallow
+# blocks it, and no assertion can read _model, so there is nothing to capture and
+# nothing to prove. Logged, not screenshotted — a second identical frame would
+# ship as a false "after switching" picture.
+assert_app Regression
+assert_theme numos
+log "regression: model switch not reachable (key shift is consumed by dispatchKey) -> shot 3 NOT captured"
+log "regression: done"

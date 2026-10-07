@@ -1,0 +1,14 @@
+Query:
+"derivative of x^3"
+
+Input interpretation:
+d/dx (x^3)
+
+Derivative:
+d/dx (x^3) = 3 x^2
+
+Plots:
+image: https://www6b3.wolframalpha.com/Calculate/MSP/MSP9999h0000000000000000000?MSPStoreType=image/png&s=1
+
+Wolfram|Alpha website result for "derivative of x^3":
+https://www.wolframalpha.com/input?i=derivative+of+x%5E3

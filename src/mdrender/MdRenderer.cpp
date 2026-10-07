@@ -44,11 +44,19 @@
 // LVGL-free header, so this TU still compiles unchanged on host, emulator and
 // device. See render() for where it is applied.
 #include "../ui/MathTextNormalization.h"
+// The 2D path: a block-math run that compiles is drawn by the real renderer
+// instead of glyph-substituted. LatexToAst is LVGL-free (host-safe); the canvas
+// needs LVGL, so it is pulled in only for the draw stage.
+#include "../math/LatexToAst.h"
+#if defined(ARDUINO) || defined(NATIVE_SIM)
+#include "../ui/MathRenderer.h"   // vpam::MathCanvas — LVGL builds only
+#endif
 
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 #ifdef ARDUINO
   #include <LittleFS.h>
@@ -264,13 +272,22 @@ static int styleSize(const MdStyles& s, StyleId id) {
 
 static StyleId spanTypeToStyle(SpanType t, StyleId base) {
     switch (t) {
-        case SpanType::Text:      return base;
+        // A paragraph that CONTAINS display maths is flagged BlockType::MathBlock so
+        // its line metrics suit a drawn formula, but that must NOT leak into the
+        // prose around it — only the display-math span is display maths. Without
+        // this, the words of such a paragraph rendered in the maths style.
+        case SpanType::Text:      return base == StyleId::MathBlock ? StyleId::Body : base;
         case SpanType::Code:      return StyleId::Code;
         case SpanType::Emph:      return StyleId::Emph;
         case SpanType::Strong:    return StyleId::Strong;
         case SpanType::Strike:    return StyleId::Strike;
         case SpanType::Highlight: return StyleId::Highlight;
-        case SpanType::Math:      return StyleId::Math;
+        // Inline stays on glyph substitution; only the display SPAN gets the 2D
+        // style. This is keyed on the span (not the enclosing block) because md4c
+        // marks `$$...$$` as MD_SPAN_LATEXMATH_DISPLAY even when it sits mid-
+        // sentence, and the block-level flag alone cannot tell that case apart.
+        case SpanType::Math:        return StyleId::Math;
+        case SpanType::MathDisplay: return StyleId::MathBlock;
         case SpanType::Link:      return StyleId::Link;
         case SpanType::Wikilink:  return StyleId::Wikilink;
         case SpanType::Tag:       return StyleId::Tag;
@@ -517,8 +534,8 @@ static SpanType mapMdSpan(int mdSpan) {
         case MD_SPAN_CODE: return SpanType::Code;
         case MD_SPAN_DEL: return SpanType::Strike;
         case MD_SPAN_MARK: return SpanType::Highlight;
-        case MD_SPAN_LATEXMATH:
-        case MD_SPAN_LATEXMATH_DISPLAY: return SpanType::Math;
+        case MD_SPAN_LATEXMATH:         return SpanType::Math;
+        case MD_SPAN_LATEXMATH_DISPLAY: return SpanType::MathDisplay;
         case MD_SPAN_WIKILINK: return SpanType::Wikilink;
         case MD_SPAN_A: return SpanType::Link;
         case MD_SPAN_IMG: return SpanType::Link;   // stub as a link span
@@ -591,7 +608,13 @@ static int emitText(ParseState& st, MD_TEXTTYPE ttype, const char* text, MD_SIZE
     SpanType stype = SpanType::Text;
     if (!st.spanStack.empty()) stype = mapMdSpan(st.spanStack.back());
     if (ttype == MD_TEXT_CODE) stype = SpanType::Code;
-    if (ttype == MD_TEXT_LATEXMATH) stype = SpanType::Math;
+    // md4c reports the CONTENT of both $...$ and $$...$$ as MD_TEXT_LATEXMATH, so
+    // the text type alone cannot tell inline from display — and this line used to
+    // force Math unconditionally, clobbering the display decision mapMdSpan had
+    // just made from the span stack. The stack is the only thing that knows, so
+    // only fall back to the inline type when the span is not the display one.
+    if (ttype == MD_TEXT_LATEXMATH && stype != SpanType::MathDisplay)
+        stype = SpanType::Math;
 
     uint32_t target = 0;
     if (!st.targetStack.empty() && st.targetStack.back().second) target = st.targetStack.back().first;
@@ -759,6 +782,27 @@ static void finalizeTable(ParseState& st) {
     st.tableCols = 0;
 }
 
+/// True only when every span is display maths (or whitespace between them).
+///
+/// md4c sets displayMath for ANY paragraph that merely CONTAINS a $$...$$ span, so
+/// a sentence like "A $$x$$ block ..." was being promoted to a display-maths block.
+/// That styled its prose as maths, and once display maths began laying out as a
+/// single unwrapped run it also stopped the sentence wrapping at all.
+static bool spansAreOnlyDisplayMath(const MdDocument& doc, uint32_t start, uint32_t count) {
+    const uint32_t end = start + count;
+    for (uint32_t i = start; i < end && i < doc.spans.size(); ++i) {
+        const Span& sp = doc.spans[i];
+        if (sp.type == SpanType::MathDisplay) continue;
+        bool blank = sp.len > 0;
+        for (uint32_t k = 0; k < sp.len; ++k) {
+            const char c = static_cast<char>(doc.pool[sp.off + k]);
+            if (c != ' ' && c != '\t' && c != '\n' && c != '\r') { blank = false; break; }
+        }
+        if (!blank) return false;
+    }
+    return true;
+}
+
 static int mdLeaveBlock(MD_BLOCKTYPE type, void* detail, void* userdata) {
     ParseState& st = *static_cast<ParseState*>(userdata);
     MdDocument* doc = st.doc;
@@ -843,7 +887,9 @@ static int mdLeaveBlock(MD_BLOCKTYPE type, void* detail, void* userdata) {
     if (bCount == 0) { clearSlot(); return 0; }
 
     slot.type = f.type;
-    if (type == MD_BLOCK_P && f.displayMath > 0) slot.type = BlockType::MathBlock;
+    if (type == MD_BLOCK_P && f.displayMath > 0 &&
+        spansAreOnlyDisplayMath(*doc, bStart, bCount))
+        slot.type = BlockType::MathBlock;
     slot.level = f.level;
     slot.ordered = f.ordered;
     slot.checked = f.checked;
@@ -879,7 +925,11 @@ static int mdEnterSpan(MD_SPANTYPE type, void* detail, void* userdata) {
     }
     st.targetStack.push_back({target, have});
 
-    if (type == MD_SPAN_LATEXMATH_DISPLAY && !st.stack.empty()) st.stack.back().displayMath++;
+    // Tally display-math spans against the enclosing block: mdLeaveBlock reads this
+    // back to promote the P to BlockType::MathBlock. See mdLeaveSpan for why there is
+    // deliberately NO matching decrement.
+    if (type == MD_SPAN_LATEXMATH_DISPLAY && !st.stack.empty())
+        st.stack.back().displayMath++;
     return 0;
 }
 
@@ -887,8 +937,12 @@ static int mdLeaveSpan(MD_SPANTYPE type, void* /*detail*/, void* userdata) {
     ParseState& st = *static_cast<ParseState*>(userdata);
     if (!st.spanStack.empty()) st.spanStack.pop_back();
     if (!st.targetStack.empty()) st.targetStack.pop_back();
-    if (type == MD_SPAN_LATEXMATH_DISPLAY && !st.stack.empty() && st.stack.back().displayMath > 0)
-        st.stack.back().displayMath--;
+    // No decrement of Frame::displayMath here. It is a per-block TALLY of the
+    // display-math spans seen inside the block, read back in mdLeaveBlock to
+    // promote the P to BlockType::MathBlock. Decrementing it on span leave made the
+    // tally self-cancelling, so that promotion never fired and display `$$...$$`
+    // silently fell back to the inline glyph-substitution path.
+    (void)type;
     return 0;
 }
 
@@ -902,7 +956,17 @@ static int mdText(MD_TEXTTYPE type, const char* text, MD_SIZE size, void* userda
 // MdRenderer — public API
 // ═══════════════════════════════════════════════════════════════════════════
 MdRenderer::MdRenderer() = default;
-MdRenderer::~MdRenderer() = default;
+
+MdRenderer::~MdRenderer() {
+    // Drop the 2D-math wrappers and their compiled trees. Only the LVGL build has
+    // the complete types, and only there can a canvas exist.
+#if defined(ARDUINO) || defined(NATIVE_SIM)
+    for (vpam::MathCanvas* canvas : _mathCanvases) delete canvas;
+    for (vpam::MathNode*   tree   : _mathTrees)    delete tree;
+#endif
+    _mathCanvases.clear();
+    _mathTrees.clear();
+}
 
 bool MdRenderer::parse(const uint8_t* buf, size_t len) {
     _doc = MdDocument();
@@ -1253,6 +1317,14 @@ static void layoutTable(LayoutCtx& lc, const Block& block, int x, int y, int wid
     }
 }
 
+/// Vertical room reserved for one drawn display formula. A stacked fraction
+/// measures ~43px at the 12pt maths size and a \sum/\int with limits ~30px, so
+/// this covers both. It is a RESERVE, not a measurement: the layout stage has no
+/// font metrics for the AST (the 2D renderer computes those), and under-reserving
+/// is what let a formula overlap the two lines beneath it and get clipped by the
+/// page box.
+static constexpr int kDisplayMathLineH = 50;
+
 static int layoutBlock(LayoutCtx& lc, const Block& block, int x, int y, int width) {
     const MdStyles& s = *lc.styles;
     // Headings store the heading level in `level` and use no container indent;
@@ -1275,15 +1347,42 @@ static int layoutBlock(LayoutCtx& lc, const Block& block, int x, int y, int widt
         }
         case BlockType::Paragraph:
         case BlockType::Quote:
-        case BlockType::Callout:
-        case BlockType::MathBlock: {
-            const StyleId st = block.type == BlockType::Quote      ? StyleId::Quote
-                             : block.type == BlockType::Callout    ? StyleId::Callout
-                             : block.type == BlockType::MathBlock  ? StyleId::MathBlock
-                                                                    : StyleId::Body;
+        case BlockType::Callout: {
+            const StyleId st = block.type == BlockType::Quote   ? StyleId::Quote
+                             : block.type == BlockType::Callout ? StyleId::Callout
+                                                                : StyleId::Body;
             lc.baseX = bx; lc.limit = bx + bw; lc.y = y;
             openLine(lc, y, st);
             wrapSpans(lc, block.spans, block.spanCount, st);
+            closeLine(lc);
+            return lc.y;
+        }
+        // ── Display maths ──────────────────────────────────────────────────────
+        // The whole block is ONE expression, so it becomes ONE run. Running it
+        // through wrapSpans split it at every space and — for a token wider than
+        // the line — wrapped it again per codepoint, which shredded a wide \sum
+        // into single-character runs. The renderer compiles runs individually, so
+        // each fragment became its own canvas drawn on top of the others: that is
+        // the "fried" output. A drawn formula never needs to wrap, so it skips the
+        // text wrapping entirely and reserves the room the renderer will need.
+        case BlockType::MathBlock: {
+            lc.baseX = bx; lc.limit = bx + bw; lc.y = y;
+            openLine(lc, y, StyleId::MathBlock);
+
+            std::string src;
+            const uint32_t spanEnd = block.spans + block.spanCount;
+            for (uint32_t i = block.spans; i < spanEnd && i < lc.doc->spans.size(); ++i) {
+                const Span& sp = lc.doc->spans[i];
+                if (sp.len == 1 && lc.pool()[sp.off] == '\n') continue;
+                src.append(lc.pool() + sp.off, sp.len);
+            }
+            if (!src.empty()) {
+                const uint32_t len = static_cast<uint32_t>(src.size());
+                const uint32_t off = appendPool(lc, src.data(), len);
+                emitRun(lc, StyleId::MathBlock, off, len, 0,
+                        styleW(lc, src.data(), len, StyleId::MathBlock));
+            }
+            if (lc.maxH < kDisplayMathLineH) lc.maxH = kDisplayMathLineH;
             closeLine(lc);
             return lc.y;
         }
@@ -1443,6 +1542,29 @@ bool MdRenderer::paginate(const MdStyles& styles) {
 // ═══════════════════════════════════════════════════════════════════════════
 #if MDR_HAVE_LVGL
 
+/// Strip $ / $$ delimiters and surrounding whitespace from a math run's text.
+/// md4c already gives display math its own span (MD_SPAN_LATEXMATH_DISPLAY), so
+/// this is belt-and-braces: a delimiter that did reach the compiler would make it
+/// refuse the run and silently fall back, which is the thing we are testing for.
+static std::string stripMathDelims(const std::string& in) {
+    size_t a = 0, b = in.size();
+    auto skipWs = [&](size_t& i, int dir) {
+        while (dir > 0 ? (i < b && (in[i] == ' ' || in[i] == '\t' || in[i] == '\n' || in[i] == '\r'))
+                       : (i > a && (in[i - 1] == ' ' || in[i - 1] == '\t' || in[i - 1] == '\n' || in[i - 1] == '\r'))) {
+            i = static_cast<size_t>(static_cast<long>(i) + dir);
+        }
+    };
+    skipWs(a, +1);
+    skipWs(b, -1);
+    if (b - a >= 2 && in[a] == '$' && in[a + 1] == '$') a += 2;
+    else if (a < b && in[a] == '$') ++a;
+    if (b - a >= 2 && in[b - 1] == '$' && in[b - 2] == '$') b -= 2;
+    else if (b > a && in[b - 1] == '$') --b;
+    skipWs(a, +1);
+    skipWs(b, -1);
+    return in.substr(a, b - a);
+}
+
 static uint32_t styleColor(const MdStyles& s, StyleId id) {
     switch (id) {
         case StyleId::Heading1:
@@ -1467,11 +1589,32 @@ static uint32_t styleColor(const MdStyles& s, StyleId id) {
     }
 }
 
+void MdRenderer::releasePage() {
+    // Everything render() created that OUTLIVES its lv_obj: the 2D-math wrappers
+    // hold lv_objs that are children of the page object, and the page object
+    // itself is a raw pointer we would otherwise delete twice.
+    for (vpam::MathCanvas* canvas : _mathCanvases) delete canvas;
+    _mathCanvases.clear();
+    for (vpam::MathNode* tree : _mathTrees) delete tree;
+    _mathTrees.clear();
+    // NO lv_obj_delete here: the caller is releasing because it is destroying the
+    // container, which deletes the children with it.
+    _pageObj = nullptr;
+}
+
 void MdRenderer::render(int page, void* parent, const MdStyles& styles) {
     lv_obj_t* parentObj = static_cast<lv_obj_t*>(parent);
     if (!parentObj) return;
 
-    // A page change destroys and rebuilds the objects: flat pool pressure.
+    // A page change destroys and rebuilds the objects: flat pool pressure. Drop
+    // the 2D-math wrappers and their compiled trees FIRST: the canvases' lv_objs
+    // are children of the page object and die with it, but the C++ wrappers and
+    // the ASTs are ours.
+    for (vpam::MathCanvas* canvas : _mathCanvases) delete canvas;
+    _mathCanvases.clear();
+    for (vpam::MathNode* tree : _mathTrees) delete tree;
+    _mathTrees.clear();
+
     if (_pageObj) {
         lv_obj_delete(static_cast<lv_obj_t*>(_pageObj));
         _pageObj = nullptr;
@@ -1521,6 +1664,44 @@ void MdRenderer::render(int page, void* parent, const MdStyles& styles) {
             // theme math face (stylesMathFont). A run whose normalised form would
             // overflow the buffer returns the raw text unchanged, so the worst
             // case is the previous behaviour, never a truncated or invented glyph.
+            // ── Block math: real 2D rendering ────────────────────────────────
+            // Compile the run to a VPAM MathAST and let the real renderer draw it
+            // (stacked fractions, radicals, powers, limits) instead of flattening it
+            // into a label. compileSubsetLatex() is FAIL-CLOSED: anything outside its
+            // subset returns Unsupported and we fall through to the label path below,
+            // which is exactly the previous behaviour — never a plausible-but-wrong tree.
+            if (run.style == StyleId::MathBlock && !isClipped) {
+                const std::string src = stripMathDelims(text);
+                numos::mathast::CompileResult cr =
+                    numos::mathast::compileSubsetLatex(src.c_str());
+                if (cr.status == numos::mathast::CompileStatus::Ok && cr.root) {
+                    auto* canvas = new vpam::MathCanvas();
+                    canvas->create(root);
+                    canvas->setTraceLabel("md_math_block");
+                    canvas->setMathStyle(vpam::MathStyle::TEXT);
+                    canvas->setAutoHeightEnabled(false);
+                    // Contract: compileSubsetLatex() returns a NodeRow root when
+                    // status == Ok (see LatexToAst.h), and setExpression() wants
+                    // exactly that row type.
+                    canvas->setExpression(
+                        static_cast<vpam::NodeRow*>(cr.root.get()), nullptr);
+                    lv_obj_set_style_text_color(canvas->obj(),
+                        lv_color_hex(styleColor(styles, StyleId::MathBlock)), LV_PART_MAIN);
+
+                    const vpam::LayoutResult& rl = cr.root->layout();
+                    const vpam::FontMetrics&  fm = canvas->normalMetrics();
+                    lv_obj_set_size(canvas->obj(),
+                                    static_cast<int>(rl.width) + 2,
+                                    static_cast<int>(vpam::mathObjectHeightPx(rl, fm, 2)));
+                    lv_obj_set_pos(canvas->obj(), run.x - styles.marginX,
+                                   static_cast<int>(line.y) - baseY);
+
+                    _mathTrees.push_back(cr.root.release());
+                    _mathCanvases.push_back(canvas);
+                    continue;
+                }
+            }
+
             std::string shown = text;
             if (run.style == StyleId::Math || run.style == StyleId::MathBlock) {
                 char nbuf[256];

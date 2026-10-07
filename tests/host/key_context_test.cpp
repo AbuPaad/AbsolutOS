@@ -159,8 +159,8 @@ int main(int argc, char** argv)
     // breaks them is a test failure rather than a surprise in the browser.
     {
         const Ctx gb = Ctx::GameBoy;
-        require(numos::ctxRoleFor(gb, KeyCode::ENTER) == Role::Primary,
-                "Game Boy: ENTER is the A button (primary)");
+        require(numos::ctxRoleFor(gb, KeyCode::EXE) == Role::Primary,
+                "Game Boy: EXE is the A button (primary)");
         bool deadMaths = true;
         for (KeyCode math : {KeyCode::NUM_7, KeyCode::SIN, KeyCode::SQRT}) {
             if (numos::ctxRoleFor(gb, math) != Role::Disabled) deadMaths = false;
@@ -188,8 +188,8 @@ int main(int argc, char** argv)
     }
 
     // An unlisted key in an unlisted context must not throw or light up.
-    require(numos::ctxRoleFor(Ctx::Splash, KeyCode::ENTER) == Role::Disabled,
-            "Splash: ENTER does nothing");
+    require(numos::ctxRoleFor(Ctx::Splash, KeyCode::EXE) == Role::Disabled,
+            "Splash: EXE does nothing");
 
     std::printf(failures == 0 ? "\nkey_context_test: PASS\n"
                               : "\nkey_context_test: %d FAILURE(S)\n",

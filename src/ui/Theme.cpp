@@ -27,7 +27,6 @@
 
 #include "../fonts/StixMathFont.h"
 #include "../fonts/CasioMathFont.h"
-#include "../fonts/CasioUiFont.h"
 #include "nav/InteractionModel.h"
 
 namespace ui {
@@ -53,6 +52,7 @@ const AppSurface kNUMOSSurfaces[] = {
         /* title        */ 0xFFFFFF,
         /* textOnFocus  */ 0xFFFFFF,
         /* accent       */ 0x1565C0,
+        /* iconInk      */ 0xFFFFFF,   // numos rows are dark: the mark stays white
         /* radiusRow    */ 4,
         /* radiusPane   */ 4,
         /* borderWidth  */ 0,
@@ -68,6 +68,7 @@ const AppSurface kNUMOSSurfaces[] = {
         /* title        */ 0xCCCCCC,
         /* textOnFocus  */ 0xFFFFFF,
         /* accent       */ 0x1565C0,
+        /* iconInk      */ 0xFFFFFF,   // numos rows are dark: the mark stays white
         /* radiusRow    */ 4,
         /* radiusPane   */ 6,          // the Ask box is rounder than a row
         /* borderWidth  */ 1,
@@ -83,6 +84,7 @@ const AppSurface kNUMOSSurfaces[] = {
         /* title        */ 0x000000,
         /* textOnFocus  */ 0xFFFFFF,
         /* accent       */ 0x4A90E2,
+        /* iconInk      */ 0xFFFFFF,   // numos rows are dark: the mark stays white
         /* radiusRow    */ 6,
         /* radiusPane   */ 6,
         /* borderWidth  */ 1,
@@ -115,6 +117,8 @@ const Theme kNUMOS = {
     /* result        */ 0xE05500,   // math final result      (unchanged)
     /* danger        */ 0xB71C1C,
     /* plot[4]       */ { 0x1565C0, 0xE05500, 0x2E7D32, 0x6A1B9A },
+    /* iconInk       */ 0xFFFFFF,   // the provider marks are a white glyph on
+                                   // numos' dark rows (unchanged pixels)
 
     /* cornerRadius  */ 6,          // modern rounded chrome (Settings rows use 6)
     /* borderWidth   */ 0,
@@ -142,16 +146,15 @@ const Theme kCASIO = {
     /* layout */     Layout::Casio,
     /* interaction */ &kCasioInteraction,
 
-    /* bg            */ 0xACB49F,   // operator hex #ACB49F (RGB565 0xADB3;
-                                   // on device it round-trips to rgb(168,180,152))
-    /* bgCanvas      */ 0xACB49F,
-    /* bgPane        */ 0xACB49F,
-    /* bgHeader      */ 0xACB49F,
-    /* bgToolbar     */ 0xACB49F,
-    /* text          */ 0x000000,   // black (operator: text stays black for now)
+    /* bg            */ 0x78864E,   // #78864E
+    /* bgCanvas      */ 0x78864E,
+    /* bgPane        */ 0x78864E,
+    /* bgHeader      */ 0x78864E,
+    /* bgToolbar     */ 0x78864E,
+    /* text          */ 0x000000,   // black for now
     /* textDim       */ 0x3E6B2F,
     /* textOnAccent  */ 0xFFFFFF,
-    /* accent        */ 0x0B3D91,   // deep blue
+    /* accent        */ 0x333A21,   // #333A21
     /* accentSecondary */ 0x1B5E20,
     /* border        */ 0x2E5016,   // visible dark hairline (crude look)
     /* focus         */ 0x1E88CA,
@@ -160,17 +163,18 @@ const Theme kCASIO = {
     /* result        */ 0x001405,
     /* danger        */ 0xB71C1C,
     /* plot[4]       */ { 0x0B3D91, 0xC62828, 0x2E7D32, 0x6A1B9A },
+    /* iconInk       */ 0x000000,   // black mark: the LCD rows are light
 
     /* cornerRadius  */ 0,          // crude per doc 02
     /* borderWidth   */ 1,
     /* shadows       */ false,
     /* graphLineWidth*/ 2,          // thicker: the fitted canvas is ~1/2 the OEM area
 
-    /* fontUi        */ &casio_ui_18,   // fontLcd   (CC BY 3.0)
-    /* fontUiSmall   */ &casio_ui_12,   // fontLcdSm (CC BY 3.0)
-    /* fontUiXSmall  */ &casio_ui_12,   // the face has no 10pt: xs collapses to 12
-    /* fontDisplay   */ &casio_ui_26,   // fontLcdLg (CC BY 3.0)
-    /* fontMono      */ &lv_font_unscii_8,   // terminal/code stays a real mono face
+    /* fontUi        */ &casio_math_18,  // one face everywhere (operator call 2026-10-05):
+    /* fontUiSmall   */ &casio_math_12,  // the CC-BY-SA math face replaces the retracted
+    /* fontUiXSmall  */ &casio_math_12,  // casio_ui_* UI face. Its space glyph (U+0020) is
+    /* fontDisplay   */ &casio_math_18,  // required for UI text; no 26pt rung exists, so
+    /* fontMono      */ &lv_font_unscii_8,// display collapses to 18 (mono stays unscii).
 
     /* mathFonts */ {
         &casio_math_18, &casio_math_12, &casio_math_8,
@@ -202,6 +206,7 @@ AppColours appSurface(int appId) {
             return AppColours{
                 s->bg, s->pane, s->row, s->rowFocus,
                 s->text, s->textDim, s->title, s->textOnFocus, s->accent,
+                s->iconInk,
                 s->radiusRow, s->radiusPane, s->borderWidth,
             };
         }
@@ -212,7 +217,7 @@ AppColours appSurface(int appId) {
     // business (`focusFill`), not the palette's.
     return AppColours{
         th.bg, th.bgPane, th.bgPane, th.bgPane,
-        th.text, th.textDim, th.text, th.accent, th.accent,
+        th.text, th.textDim, th.text, th.accent, th.accent, th.iconInk,
         th.cornerRadius, th.cornerRadius, th.borderWidth,
     };
 }

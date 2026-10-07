@@ -52,8 +52,25 @@
 
 namespace net {
 
+/**
+ * Where the portal is in its start-up. The AP is not raised until the pre-scan
+ * (and any auto-join) is done, so "not running" is no longer the same as "off".
+ */
+enum class PortalPhase : uint8_t {
+    Off,         ///< AP down, nothing pending
+    Preparing,   ///< scanning saved networks before deciding to raise the AP
+    Joining,     ///< trying a reachable saved network; AP only if it fails
+    Running,     ///< the provisioning AP is up and serving
+    Failed,      ///< start() was refused; lastError says why
+};
+
 struct PortalState {
     bool        running  = false;
+    PortalPhase phase    = PortalPhase::Off;
+    /// Human status while Preparing/Joining ("scanning", "joining HomeWiFi").
+    std::string activity;
+    /// Networks seen by the last scan (the pre-scan's found-count).
+    int         scannedNetworks = 0;
     std::string url;         ///< "http://192.168.4.1" while running
     std::string apSsid;      ///< per-unit AP name
     std::string apPass;      ///< per-unit WPA2 password (shown on screen)

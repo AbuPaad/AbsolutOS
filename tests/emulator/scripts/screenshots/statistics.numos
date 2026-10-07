@@ -1,0 +1,164 @@
+# statistics.numos — Screenshot script for Statistics app (StatisticsApp, APP 04)
+#
+# Three shots required by the website:
+# 1. /assets/img/apps/statistics-1.webp — Data tab: six rows filled in, one
+#    cell in the blue edit focus (the ">value_" edit cursor), hint bar at bottom.
+# 2. /assets/img/apps/statistics-2.webp — Stats tab: all seven readouts
+#    populated (mean, median, std dev, min, max, sum, count).
+# 3. /assets/img/apps/statistics-3.webp — Graph tab: histogram of the entered
+#    frequencies, Y axis auto-scaled to fit.
+#
+# App state machine (src/apps/StatisticsApp.cpp):
+#   * Opens on the Data tab (_activeTab=DATA), tableRow=0, tableCol=0,
+#     _numRows=1, not editing. The single data row's value cell is empty
+#     (value 0 on the last row -> no edit pre-fill) and its frequency is 1.
+#   * Data tab nav: a DIGIT starts an edit on the cell and appends the digit
+#     (handleKeyData default case -> startEdit() + re-process); ENTER commits
+#     (finishEdit) or opens an edit (startEdit) depending on _editing; RIGHT
+#     moves the column (on the Data tab LEFT/RIGHT are column nav — the
+#     tab-switch guard requires _activeTab != DATA); AC appends a fresh row;
+#     DOWN moves the focus. In edit mode: digits/DOT/SUB append, DEL is
+#     backspace, ENTER commits, AC cancels.
+#   * Frequency pre-fill gotcha: startEdit() pre-fills the edit buffer with the
+#     cell's current value when it is non-zero, so editing a frequency cell
+#     (default 1) starts from ">1_". To set a frequency, ENTER (pre-fill "1"),
+#     DEL (clear), type the digits, ENTER. The value cell of the LAST row is
+#     the only cell with an empty pre-fill (value 0 && row == _numRows-1), so
+#     digits typed straight in build the number cleanly — every value below is
+#     entered on a freshly appended last row.
+#   * Tab switching (only when not editing): GRAPH cycles Data->Stats->Graph
+#     and is the only key that leaves the Data tab; F1/F2 step prev/next.
+#     switchTab(STATS) runs recompute()+updateStatsDisplay();
+#     switchTab(GRAPH) runs recompute()+updateHistogram().
+#
+# Dataset typed here (value, freq): (10,2) (20,5) (30,8) (40,6) (50,3) (60,1)
+#   -> n=25, sum=810, mean=32.4, median=30, pop-std~12.42, min=10, max=60.
+#   -> histogram bars 2,5,8,6,3,1 with Y axis auto-scaled 0..(8*1.1+1)=9.
+#
+# Theme: default is NumOS (ThemeManager ctor, ThemeId::NumOS); the app has no
+# casio-specific code, so assert_theme numos holds with no toggle.
+#
+# NOTE: the script parser reads a whole token per command, so no inline '#'
+# comments are allowed after key/wait/screenshot/assert — every comment sits
+# on its own line.
+#
+# Run (from repo root):
+#   ./C:/.piobuild/numOS/emulator_pc/program --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/statistics.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "statistics: waiting for launcher"
+wait 200
+assert_app Menu
+assert_theme numos
+
+# Open Statistics directly (emulator launchApp id 4, same id as the launcher card).
+open_app Statistics
+wait 60
+assert_app Statistics
+assert_theme numos
+
+# ── Data entry: six rows ──────────────────────────────────────────────
+# Row 0: value 10, freq 2. Start at row 0, col 0, nav mode.
+key 1
+key 0
+key enter
+key right
+key enter
+key del
+key 2
+key enter
+
+# Row 1: value 20, freq 5.
+key ac
+key down
+key left
+key 2
+key 0
+key enter
+key right
+key enter
+key del
+key 5
+key enter
+
+# Row 2: value 30, freq 8.
+key ac
+key down
+key left
+key 3
+key 0
+key enter
+key right
+key enter
+key del
+key 8
+key enter
+
+# Row 3: value 40, freq 6.
+key ac
+key down
+key left
+key 4
+key 0
+key enter
+key right
+key enter
+key del
+key 6
+key enter
+
+# Row 4: value 50, freq 3.
+key ac
+key down
+key left
+key 5
+key 0
+key enter
+key right
+key enter
+key del
+key 3
+key enter
+
+# Row 5: value 60, freq 1 (freq stays at its default 1, never edited).
+key ac
+key down
+key left
+key 6
+key 0
+key enter
+
+# ── SHOT 1: Data table, six rows filled, one cell in edit focus ──────
+# Focus is already on row 5 / col 0 (value 60). Open the edit on it so the
+# cell shows the ">60_" edit cursor: the single cell in edit focus.
+key enter
+wait 10
+assert_app Statistics
+assert_theme numos
+screenshot out/shots-statistics-1.ppm
+log "statistics: shot 1 captured (data table, 6 rows, edit focus)"
+
+# ── SHOT 2: Stats tab, all seven readouts populated ─────────────────
+# Commit the edit (value 60 is unchanged), then cycle Data -> Stats.
+# switchTab(STATS) runs recompute() + updateStatsDisplay() over the rows.
+key enter
+key graph
+wait 120
+assert_app Statistics
+assert_theme numos
+screenshot out/shots-statistics-2.ppm
+log "statistics: shot 2 captured (stats tab, 7 readouts)"
+
+# ── SHOT 3: Graph tab, histogram auto-scaled ────────────────────────
+# Cycle Stats -> Graph. switchTab(GRAPH) runs recompute() + updateHistogram():
+# 6 bars (freqs 2,5,8,6,3,1), Y axis range 0..(maxFreq*1.1+1)=9.
+key graph
+wait 120
+assert_app Statistics
+assert_theme numos
+screenshot out/shots-statistics-3.ppm
+log "statistics: shot 3 captured (graph tab, histogram)"
+
+log "statistics: done"

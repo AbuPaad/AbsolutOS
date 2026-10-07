@@ -25,6 +25,7 @@
 #include <Arduino.h>
 #include <lvgl.h>
 #include <esp_heap_caps.h>
+#include <esp_log.h>
 #include "Config.h"
 
 // ── Global CAS settings ─────────────────────────────────────────────
@@ -49,6 +50,7 @@ uint8_t setting_theme = 0;              // ThemeId::NumOS
 #include "utils/MemProbe.h"
 #include "net/Wifi.h"          // system-owned Wi-Fi service (device-networking.md §1.1)
 #include "net/Portal.h"        // provisioning + file portal (Settings -> Wi-Fi)
+#include "net/OtaUpdater.h"    // GitHub Releases OTA (Settings -> System Update)
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 #include "hardware/ProductionSafeStartup.h"
@@ -165,6 +167,7 @@ void setup() {
     Serial.print(NUMOS_SERIAL_BACKEND_LABEL);
     Serial.println(")");
     Serial.println("=== NumOS Boot ===");
+
 #if NUMOS_PRODUCTION_DEMO_PROFILE
     {
         const auto& health = numos::demo::bootHealthRecord();
@@ -438,6 +441,11 @@ void loop() {
     // closes it after kIdleStopMs with no request, so a forgotten portal cannot
     // sit there holding the radio up.
     net::Portal::tick(millis());
+
+    // OTA: one automatic check per boot (a few seconds after Wi-Fi + NTP are
+    // ready) plus whatever the Settings screen asked for. The network work runs
+    // on its own task; this only pumps the timer and reclaims a finished worker.
+    net::OtaUpdater::tick(millis());
 
     // Heartbeat cada 5s (confirma que el loop corre y Serial TX funciona).
     // MT-01: the old internal-only "[HB] heap=" line is replaced by the full

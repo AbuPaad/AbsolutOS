@@ -1,0 +1,18 @@
+# ai_send_enter.numos — does the Ask screen SEND when the key arrives as enter?
+log "ai_send_enter: waiting for launcher"
+wait 200
+assert_app Menu
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+open_app ai
+wait 40
+assert_app AI
+key 1
+wait 20
+key enter
+wait 320
+assert_app AI
+screenshot out/casio/ai_send_enter.ppm
+log "ai_send_enter: captured"

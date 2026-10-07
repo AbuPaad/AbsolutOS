@@ -43,7 +43,6 @@
 #include "../math/cas/SymExprToAST.h"
 #include "../ui/MathTypography.h"
 #include "../ui/ThemeFonts.h"   // theme font ladder (no font face in app code)
-#include "../ui/generated/CasioArrowMasks.generated.h"   // history-hint bitmap
 #include "../utils/HwUxProbe.h"
 #ifdef NATIVE_SIM
   #include <cstdio>
@@ -78,11 +77,33 @@ static constexpr int CASIO_RES_Y   = 86;   // result band top
 static constexpr int CASIO_RES_H   = 58;   // 86..143
 
 // Casio strip right corner: "Math" + the history hint, both on the TOP edge (the
-// mockup puts them in the corner, not at the vertical middle), the hint being the
-// page-arrow asset rotated a quarter turn and scaled down.
+// mockup puts them in the corner, not at the vertical middle). The hint is the
+// theme face's own arrow glyph (U+2191/U+2193), so it sits on the strip's text
+// line exactly like the labels do — no per-glyph y offset, no bitmap.
 static constexpr int CASIO_STRIP_R_PAD    = 4;   // gap from the right screen edge
 static constexpr int CASIO_STRIP_GAP      = 5;   // gap between "Math" and the hint
-static constexpr int CASIO_STRIP_ARROW_DY = 4;   // hint's y within the strip
+
+// The input band is sized to its content. A stacked fraction is TALLER than a
+// text line — numerator (18), rule, denominator (18) plus the two bar gaps
+// measure 43 px, while CASIO_SPEC §3b's fixed 34 px band fits one text line — so
+// 9 px of every fraction used to be clipped (5 px off the numerator's top, 5 off
+// the denominator's bottom). The band grows about its own design centre, so a
+// plain expression does not move a pixel, bounded above by the strip's ink and
+// below by the fixed result band.
+static constexpr int CASIO_IN_CENTRE  = CASIO_IN_Y + CASIO_IN_H / 2;      // 47
+static constexpr int CASIO_IN_TOP_MIN = 24;                               // strip ink ends at 23
+// Both casio bands live above CASIO_RES_BOT. The input band grows first and, when
+// it needs more than the space above the result band's spec top, it takes it from
+// the result band (operator call 2026-10-06) — the result band keeps at least
+// CASIO_RES_MIN_H, enough for a stacked fraction of its own.
+static constexpr int CASIO_RES_BOT    = CASIO_RES_Y + CASIO_RES_H;        // 144
+static constexpr int CASIO_RES_MIN_H  = 45;                               // fraction + pad
+static constexpr int CASIO_IN_MAX_H   = CASIO_RES_BOT - CASIO_IN_TOP_MIN - CASIO_RES_MIN_H;  // 75
+// The renderer centres content as baseline = y1 + (H + ascent - descent) / 2, so a
+// band exactly as tall as the content puts the ink's last row one past the box
+// (the integer division truncates). One pixel of pad each side is the minimum
+// that guarantees clearance on both edges.
+static constexpr int CASIO_IN_PAD     = 2;
 
 // ════════════════════════════════════════════════════════════════════════════
 // Constructor / Destructor
@@ -274,20 +295,25 @@ void CalculationApp::buildCasioStrip() {
     lv_obj_set_style_text_font(_casioRightLabel, font, LV_PART_MAIN);
     lv_obj_set_style_text_color(_casioRightLabel, lv_color_hex(th.text), LV_PART_MAIN);
     lv_obj_set_style_text_opa(_casioRightLabel, LV_OPA_COVER, LV_PART_MAIN);
-    // TOP-right corner, leaving room to its right for the history hint (the mockup's
-    // "Math"(hint) sits on the strip, i.e. on the screen's top edge).
-    lv_obj_align(_casioRightLabel, LV_ALIGN_TOP_RIGHT,
-                 -(CASIO_STRIP_R_PAD + ui::kCasioArrowUpW + CASIO_STRIP_GAP), CASIO_STRIP_Y);
 
-    // The history hint is the operator's page-arrow asset - the SAME glyph as the
-    // launcher's page arrows, one quarter turn and scaled down - not a text arrow.
-    // Ink colour is the theme text token, via image_recolor: the mask has no colour.
-    _casioHistArrow = lv_image_create(_screen);
-    lv_image_set_src(_casioHistArrow, &ui::kCasioArrowUp);
-    lv_obj_set_style_image_recolor(_casioHistArrow, lv_color_hex(th.text), LV_PART_MAIN);
-    lv_obj_set_style_image_recolor_opa(_casioHistArrow, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_align(_casioHistArrow, LV_ALIGN_TOP_RIGHT, -CASIO_STRIP_R_PAD,
-                 CASIO_STRIP_Y + CASIO_STRIP_ARROW_DY);
+    // The history hint is the theme face's OWN arrow glyph (U+2191/U+2193) on the
+    // strip's text line, top-right corner — same ink and same line as "Math" beside
+    // it, one rung down: the 18 pt arrow is 15x15 and reads as a banner next to the
+    // strip's own labels, while the 12 pt rung is 10x10 (the smallest rung the font
+    // ladder exposes). The generated bitmap masks are no longer used anywhere.
+    _casioHistArrow = lv_label_create(_screen);
+    lv_obj_set_style_text_font(_casioHistArrow, ui::fontUiSmall(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_casioHistArrow, lv_color_hex(th.text), LV_PART_MAIN);
+    lv_obj_set_style_text_opa(_casioHistArrow, LV_OPA_COVER, LV_PART_MAIN);
+    lv_label_set_text(_casioHistArrow, "\xE2\x86\x91");   // ↑ (down state swaps it)
+    lv_obj_align(_casioHistArrow, LV_ALIGN_TOP_RIGHT, -CASIO_STRIP_R_PAD, CASIO_STRIP_Y);
+
+    // "Math" is placed to the LEFT of the hint by the glyph's own width (an arrow
+    // is a glyph now, not the 20 px mask), so the pair stays glued together.
+    lv_obj_update_layout(_casioHistArrow);
+    lv_obj_align(_casioRightLabel, LV_ALIGN_TOP_RIGHT,
+                 -(CASIO_STRIP_R_PAD + lv_obj_get_width(_casioHistArrow) + CASIO_STRIP_GAP),
+                 CASIO_STRIP_Y);
 
     updateCasioStrip();
 }
@@ -304,14 +330,14 @@ void CalculationApp::updateCasioStrip() {
     // History arrow: up when older entries exist above, down when paged back
     // into history, none when the history is empty. The arrow is a VIEW of
     // navigateHistory()/loadHistoryEntry() state — no second input path.
-    lv_label_set_text(_casioRightLabel, "Math");   // the hint is the bitmap, not glyphs
+    lv_label_set_text(_casioRightLabel, "Math");   // the hint is the arrow glyph, not glyphs in the text
     if (_history.empty()) {
         lv_obj_add_flag(_casioHistArrow, LV_OBJ_FLAG_HIDDEN);
     } else if (_historyIndex < 0) {
-        lv_image_set_src(_casioHistArrow, &ui::kCasioArrowUp);
+        lv_label_set_text(_casioHistArrow, "\xE2\x86\x91");   // ↑ older entries above
         lv_obj_remove_flag(_casioHistArrow, LV_OBJ_FLAG_HIDDEN);
     } else {
-        lv_image_set_src(_casioHistArrow, &ui::kCasioArrowDown);
+        lv_label_set_text(_casioHistArrow, "\xE2\x86\x93");   // ↓ paged back into history
         lv_obj_remove_flag(_casioHistArrow, LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -349,7 +375,44 @@ void CalculationApp::resetExpression() {
 void CalculationApp::refreshExpression() {
     if (!_rootRow) return;
     _rootRow->calculateLayout(_mathCanvas.normalMetrics());
+    applyCasioInputBand();
     _mathCanvas.invalidate();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// applyCasioInputBand() — the casio input band follows its own content height
+//
+// The renderer keeps a fraction's numerator/denominator at the parent face size
+// for TEXT style, so a stacked fraction measures 43 px against the spec's fixed
+// 34 px band and 9 px of it was clipped. The band grows about the design band's
+// own centre (a plain expression therefore keeps its exact spec position), and
+// is bounded by the strip's ink above and the fixed result band below.
+// No-op under Layout::numos: that layout sizes its two bands proportionally.
+// ════════════════════════════════════════════════════════════════════════════
+
+void CalculationApp::applyCasioInputBand() {
+    if (!_casioLayout || !_mathCanvas.obj() || !_rootRow) return;
+
+    const int16_t contentH = vpam::mathObjectHeightPx(
+        _rootRow->layout(), _mathCanvas.normalMetrics(), 0);
+
+    int16_t bandH = CASIO_IN_H;
+    if (contentH > bandH) {
+        const int16_t wanted = static_cast<int16_t>(contentH + CASIO_IN_PAD);
+        bandH = (wanted > CASIO_IN_MAX_H) ? static_cast<int16_t>(CASIO_IN_MAX_H)
+                                          : wanted;
+    }
+    int16_t bandY = static_cast<int16_t>(CASIO_IN_CENTRE - bandH / 2);
+    if (bandY < CASIO_IN_TOP_MIN) bandY = CASIO_IN_TOP_MIN;
+    // Never past the last row the result band can spare.
+    if (static_cast<int>(bandY) + bandH > CASIO_RES_BOT - CASIO_RES_MIN_H)
+        bandY = static_cast<int16_t>(CASIO_RES_BOT - CASIO_RES_MIN_H - bandH);
+
+    if (bandY == _casioInBandY && bandH == _casioInBandH) return;
+    _casioInBandY = bandY;
+    _casioInBandH = bandH;
+    lv_obj_set_pos(_mathCanvas.obj(), PAD, bandY);
+    lv_obj_set_size(_mathCanvas.obj(), CONTENT_W, bandH);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -665,7 +728,7 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
             break;
 
         // ── ENTER: evaluar el AST ──
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             evaluateExpression();
             changed = false;
             break;
@@ -863,6 +926,15 @@ void CalculationApp::applyResultLayout() {
     // numerator 86..109, rule 113..116, denominator 120..143 — not the
     // proportional content split. The input stays in its fixed band 30..63.
     if (_casioLayout) {
+        // The input band is sized to the expression FIRST: when a nested fraction
+        // needs more room than the space above the result band's spec top, the
+        // result band gives up the difference (its spec geometry is untouched
+        // whenever the input fits, which is the ordinary case).
+        applyCasioInputBand();
+        const int16_t bandBottom = static_cast<int16_t>(_casioInBandY + _casioInBandH);
+        const int16_t resY = bandBottom > CASIO_RES_Y ? bandBottom : CASIO_RES_Y;
+        const int16_t resH = static_cast<int16_t>(CASIO_RES_BOT - resY);
+
         const int16_t cw = _resultRow
             ? static_cast<int16_t>(_resultRow->layout().width)
             : CONTENT_W;
@@ -871,13 +943,8 @@ void CalculationApp::applyResultLayout() {
         const int16_t resX = static_cast<int16_t>(
             SCREEN_W - PAD - resW);
 
-        lv_obj_set_pos(_mathCanvas.obj(), PAD, CASIO_IN_Y);
-        lv_obj_set_size(_mathCanvas.obj(), CONTENT_W, CASIO_IN_H);
-
-        if (_resultSep) lv_obj_add_flag(_resultSep, LV_OBJ_FLAG_HIDDEN);
-
-        lv_obj_set_pos(_resultCanvas.obj(), resX, CASIO_RES_Y);
-        lv_obj_set_size(_resultCanvas.obj(), resW, CASIO_RES_H);
+        lv_obj_set_pos(_resultCanvas.obj(), resX, resY);
+        lv_obj_set_size(_resultCanvas.obj(), resW, resH);
         lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
 
         _mathCanvas.setTraceLabel("calc_input_result_compact");
@@ -1009,8 +1076,12 @@ void CalculationApp::showTextResult(const std::string& text) {
 
     if (!_resultTextLabel) {
         _resultTextLabel = lv_label_create(_screen);
-        // stix_math fonts have no space glyph — plain text must use the
-        // default (montserrat) font.
+        // Theme UI face, not the LVGL default. The numos STIX math set has no
+        // space glyph, so plain text used to fall back to the default
+        // (montserrat_14) here; but the casio face DOES carry U+0020 (regenerated
+        // 2026-10-05), and fontUi() is montserrat_14 under numos — so this is
+        // byte-identical on numos and renders the theme face under casio.
+        lv_obj_set_style_text_font(_resultTextLabel, ui::fontUi(), LV_PART_MAIN);
         lv_obj_set_style_text_color(_resultTextLabel, lv_color_hex(0x1A1A1A),
                                     LV_PART_MAIN);
         lv_label_set_long_mode(_resultTextLabel, LV_LABEL_LONG_WRAP);
@@ -1164,8 +1235,12 @@ void CalculationApp::clearResult() {
     // Restore expression canvas to full-area vertically-centered Edit Mode.
     // Re-set position too: applyResultLayout() moves the canvas, clearResult() must undo it.
     if (_casioLayout) {
-        lv_obj_set_pos(_mathCanvas.obj(), PAD, CASIO_IN_Y);
-        lv_obj_set_height(_mathCanvas.obj(), CASIO_IN_H);
+        applyCasioInputBand();   // content-sized band; falls back to the spec's own
+                                 // geometry when an expression has no cached band yet
+        if (_casioInBandY < 0) {
+            lv_obj_set_pos(_mathCanvas.obj(), PAD, CASIO_IN_Y);
+            lv_obj_set_height(_mathCanvas.obj(), CASIO_IN_H);
+        }
     } else {
         lv_obj_set_pos(_mathCanvas.obj(), PAD, CONTENT_TOP);
         lv_obj_set_height(_mathCanvas.obj(), CONTENT_FULL_H);

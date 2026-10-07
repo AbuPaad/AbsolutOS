@@ -23,6 +23,13 @@ namespace net {
 bool timeSynced();
 
 /**
+ * Start SNTP and return immediately. Safe to call from the main loop; call it
+ * once when the link comes up so the clock is moving before the first TLS
+ * request. syncTime() below is the blocking "start and wait" variant.
+ */
+void startTimeSync(const char* tz = "AEST-10", const char* server = "pool.ntp.org");
+
+/**
  * configTzTime + a bounded wait. The POSIX TZ string beats a GMT-offset integer
  * because it survives DST. Returns false (never blocks forever) when NTP is
  * unreachable — the caller must then say "clock not set" rather than surface a

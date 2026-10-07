@@ -718,7 +718,7 @@ void MatricesApp::handleKeyManager(const KeyEvent& ev) {
             if (_selectedItem < NUM_MATS - 1) { ++_selectedItem; updateManagerStyles(); }
             return;
         }
-        if (ev.code == KeyCode::ENTER) {
+        if (ev.code == KeyCode::EXE) {
             if (_selectedItem < NUM_MATS) {
                 if (_pendingOp == Op::DET || _pendingOp == Op::INV) {
                     // Single-operand: selected matrix is the operand
@@ -779,7 +779,7 @@ void MatricesApp::handleKeyManager(const KeyEvent& ev) {
                 updateManagerStyles();
             }
             break;
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             if (_selectedItem < NUM_MATS) {
                 // Open matrix editor
                 showEditor(_selectedItem);
@@ -861,7 +861,7 @@ void MatricesApp::handleKeyEditor(const KeyEvent& ev) {
             lv_table_set_cell_value(_editorTable, _editRow, _editCol, display);
             return;
         }
-        if (ev.code == KeyCode::ENTER) {
+        if (ev.code == KeyCode::EXE) {
             finishCellEdit();
             return;
         }
@@ -886,7 +886,7 @@ void MatricesApp::handleKeyEditor(const KeyEvent& ev) {
         case KeyCode::RIGHT:
             if (_editCol < mat.cols - 1) { ++_editCol; highlightEditorCell(); }
             break;
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             startCellEdit();
             break;
         case KeyCode::F1:
@@ -920,7 +920,7 @@ void MatricesApp::handleKeyEditor(const KeyEvent& ev) {
 // ════════════════════════════════════════════════════════════════════════════
 
 void MatricesApp::handleKeyResult(const KeyEvent& ev) {
-    if (ev.code == KeyCode::AC || ev.code == KeyCode::ENTER) {
+    if (ev.code == KeyCode::AC || ev.code == KeyCode::EXE) {
         showManager();
     }
 }

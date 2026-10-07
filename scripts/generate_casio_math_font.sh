@@ -103,7 +103,9 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ── Tier 1: Core Arithmetic & Algebra (MUST HAVE) ────────────────────────────
-TIER1_BASIC_LATIN="0x0021-0x007E"        # 94 glyphs: digits, letters, operators
+TIER1_BASIC_LATIN="0x0020-0x007E"        # 95 glyphs: SPACE + digits, letters, operators
+                                         # (0x20 included so the face can serve UI text too,
+                                         #  where missing SPACE renders as an invisible gap)
 TIER1_LATIN1_SUPP="0x00B0-0x00FF"        # °, ±, ², ³, ´, µ, ¶, ·, ¹, º, », ¼-¾, ×, ÷
 TIER1_GREEK="0x0391-0x03C9"              # ~70 glyphs: Greek upper/lower (Α–Ω, α–ω)
 TIER1_DOUBLESTRUCK="0x2102,0x2115,0x2119,0x211A,0x211D,0x2124"  # ℂ,ℕ,ℙ,ℚ,ℝ,ℤ

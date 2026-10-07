@@ -49,13 +49,45 @@ struct AiConfig {
     int         retentionMaxFiles = 200;
     long        retentionMaxBytes = 32L * 1024L * 1024L;
     int         maxTokens    = 1200;               ///< data, not compiled
+
+    // ── Wolfram|Alpha verification hop (architecture §7) ─────────────────────
+    // The AppID is BYO and resolved exactly like apiKey: NVS -> config.json ->
+    // (none). There is deliberately NO compiled default — a shipped AppID would
+    // put one non-commercial allowance behind the whole fleet, and it is a
+    // string recoverable with `strings` on a flash dump. Empty = the check is
+    // not offered at all.
+    std::string waHost      = "https://www.wolframalpha.com";
+    std::string waPath      = "/api/v1/llm-api";
+    std::string waAppId;                       ///< never a compiled default
+    int         waMaxChars  = 1200;            ///< WA's default 6800 is ~25 device pages
+    int         waTimeoutMs = 20000;
     /**
-     * Which transport to use. "replay" feeds a recorded SSE fixture and sends
-     * NOTHING anywhere — it is the bringup/emulator default so the app can be
-     * driven and screenshotted with no network. "emulator" = real HTTPS from
-     * the PC build (libcurl). "device" = real HTTPS on hardware (WiFi + TLS).
+     * WA's `units` / `location` / `languagecode`. These are CONFIG, not model
+     * output: the model never chooses them, or it could spend the user's monthly
+     * allowance on a request shape they did not ask for. Empty = WA's default.
+     * The picker lands later; the fields exist now so that is a config write
+     * rather than a request rebuild.
      */
-    std::string transport    = "replay";
+    std::string waUnits;
+    std::string waLocation;
+    std::string waLanguage;
+
+    /// Where the AppID came from, for display. "nvs" | "config" | "none".
+    std::string waKeySource() const { return _waKeySource; }
+    std::string _waKeySource = "none";
+    /**
+     * Which transport to use. NOT a user setting any more: on hardware it is
+     * fixed to "wifi" (the board's own radio + mbedTLS) by AiConfig::load(), and
+     * the field exists only because the transport seam keys off it. On the host
+     * and the emulator it stays "replay" (recorded fixture, no network) so the
+     * app can be driven headless; a dev config may set "emulator" for libcurl.
+     * "device" is kept as a legacy alias for "wifi".
+     */
+#if defined(ARDUINO)
+    std::string transport    = "wifi";     ///< hardware: Wi-Fi + mbedTLS
+#else
+    std::string transport    = "replay";   ///< host/emulator: recorded fixture
+#endif
 
     /// NVS -> config.json -> compiled defaults. Never throws, always usable.
     static AiConfig load(const std::string& path = "/ai/config.json");
@@ -141,6 +173,19 @@ public:
     const std::string& title() const  { return _title; }
     const std::string& answer() const { return _answer; }
 
+    /**
+     * The model's proposed verification hop (schema rev 1 — present in the
+     * schema from the first revision, unread until now). `toolQuery()` empty is
+     * the common case: no external check applies, so no affordance is offered.
+     * The model returns a QUERY STRING, never a URL — the device builds the
+     * request, and `toolServer()` says which tool the string is for.
+     */
+    const std::string& toolQuery() const   { return _toolQuery; }
+    const std::string& toolServer() const  { return _toolServer; }
+    /// What the model read off the photo. The user judges THIS, because
+    /// verification checks arithmetic, not transcription.
+    const std::string& transcribedQuestion() const { return _transcribed; }
+
     /// Pages counted so far (1 + the number of `---` breaks seen).
     int  pageCount() const { return _pages; }
     /// True once `[DONE]` was seen.
@@ -167,6 +212,13 @@ private:
     /// Stage 2: walk the structured payload (title / answer / ...).
     void walkJson(char c);
     void pushAnswerChar(char c);
+    /**
+     * Route one decoded VALUE character to whichever field the current key names.
+     * One place instead of four: the value branches are duplicated per branch of
+     * the escape machinery, and adding a field to only some of them is exactly
+     * how a field ends up silently dropped in one path.
+     */
+    void pushField(char c);
     void endString();
 
     // ── stage 1 state: the SSE envelope ─────────────────────────────────────
@@ -196,11 +248,15 @@ private:
     bool        _inStr = false;
     bool        _esc = false;         ///< a bare backslash is held until the next char
     char        _pendingEsc = 0;      ///< reserved (kept for ABI stability of the struct)
+    bool        _inUni = false;       ///< inside a \uXXXX escape, digits still to come
     int         _uniLen = 0;          ///< digits of a \uXXXX escape collected so far
     unsigned    _uniVal = 0;          ///< the \uXXXX value being assembled
     std::string _key;
     std::string _title;
     std::string _answer;
+    std::string _toolQuery;
+    std::string _toolServer;
+    std::string _transcribed;
     int         _depth = 0;
 
     // page-break / fence state over decoded answer text
@@ -299,6 +355,60 @@ bool        ensureDir(const std::string& path);
 
 /// FNV-1a over the body, 8 hex chars. The dedupe key in the %%ai:%% line.
 std::string contentHash32(const std::string& body);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The %%ai: metadata line, written and read back
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Encode/decode ONE value of the trailing `%%ai: key=value key=value%%` line.
+ *
+ * The line is space-separated `key=value` tokens, and two of the fields the
+ * check hop needs (`tool_query`, `transcribed`) are free English with spaces and
+ * possibly an `=` in them ("solve x=2"), so a value written raw would be read
+ * back as the wrong number of tokens. Anything outside `[A-Za-z0-9._:/-]` is
+ * written as %XX, uppercase. The values stay machine-only: the same information
+ * is already visible in the document body when a human should read it.
+ *
+ * `decodeMetaValue` returns false on a malformed escape rather than silently
+ * keeping the %XX text.
+ */
+std::string encodeMetaValue(const std::string& v);
+bool        decodeMetaValue(const std::string& v, std::string* out);
+
+/**
+ * The `%%ai: …%%` line of a saved answer, read back.
+ *
+ * This is what makes the Wolfram check reachable from a REOPENED answer: the
+ * live run has the scanner's fields in RAM, but a file opened from Recent
+ * answers has only what the document kept. `found` is false when the file has no
+ * such line at all (an answer saved before this hop existed); a `_Wolfram.md`
+ * check document parses like any other line — it just carries no `tool_query`,
+ * so it never offers a check of its own.
+ */
+struct AnswerMeta {
+    bool        found = false;
+    int         pages = 0;
+    std::string model;
+    std::string hash;
+    std::string image;
+    std::string toolQuery;
+    std::string toolServer;
+    std::string transcribed;
+};
+
+/// Parse the LAST `%%ai: …%%` line in `text`. Pure, so it is host-testable.
+AnswerMeta parseAnswerMeta(const std::string& text);
+/// Same, for a file. A missing file parses to `found == false`.
+AnswerMeta readAnswerMeta(const std::string& path);
+
+/**
+ * Filename slug for a title: lowercased, <=40 ASCII, filesystem-safe. Free
+ * rather than a member so the Wolfram check document can derive the SAME slug
+ * from the answer it belongs to — `<slug>_Wolfram.md` has to sit beside
+ * `<slug>.md` or the pairing is guesswork.
+ */
+std::string slugify(const std::string& title);
 
 /// Upper bound on a decoded answer body (architecture §4).
 constexpr size_t kMaxAnswerBytes = 8u * 1024u;

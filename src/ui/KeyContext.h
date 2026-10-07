@@ -85,6 +85,12 @@ inline Role defaultRole(KeyCode key)
 // The table
 // ═══════════════════════════════════════════════════════════════════════════
 
+// NOTE ON THE CONFIRM KEY: EXE is the canonical confirm/execute code (decision
+// 2026-10-05). ENTER still exists in input/KeyCodes.h and is still emitted by
+// the legacy keypad maps, the emulator's "enter" token and SerialBridge, but
+// SystemApp::handleKey folds it into EXE at the seam, so no app and no table
+// here ever sees it. Do not add ENTER rows to this table.
+
 /// Digits 0-9 and the arithmetic operators: shared by every entry screen.
 #define NUMOS_CTX_DIGITS()                                        \
     { KeyCode::NUM_7, Role::Secondary, "" },                      \
@@ -118,7 +124,7 @@ inline constexpr KeyRole kCtxMenu[] = {
     { KeyCode::RIGHT, Role::Primary, "Next" },
     { KeyCode::UP,    Role::Primary, "Up" },
     { KeyCode::DOWN,  Role::Primary, "Down" },
-    { KeyCode::ENTER, Role::Primary, "Open" },
+    { KeyCode::EXE, Role::Primary, "Open" },
 };
 
 // Calculator: everything is relevant, so almost nothing is Disabled. The win
@@ -128,7 +134,7 @@ inline constexpr KeyRole kCtxCalculation[] = {
     { KeyCode::ALPHA,     Role::Primary, "Alpha" },
     { KeyCode::AC,        Role::Primary, "Clear" },
     { KeyCode::DEL,       Role::Primary, "Del" },
-    { KeyCode::ENTER,     Role::Primary, "=" },
+    { KeyCode::EXE,     Role::Primary, "=" },
     NUMOS_CTX_DIGITS(),
     { KeyCode::SIN,       Role::Secondary, "" },
     { KeyCode::COS,       Role::Secondary, "" },
@@ -172,7 +178,7 @@ inline constexpr KeyRole kCtxGrapher[] = {
     { KeyCode::DEL,       Role::Secondary, "Del" },
     { KeyCode::SHIFT,     Role::Secondary, "" },
     { KeyCode::ALPHA,     Role::Secondary, "" },
-    { KeyCode::ENTER,     Role::Secondary, "" },
+    { KeyCode::EXE,     Role::Secondary, "" },
     NUMOS_CTX_DIGITS(),
 };
 
@@ -180,7 +186,7 @@ inline constexpr KeyRole kCtxGrapher[] = {
 inline constexpr KeyRole kCtxEquations[] = {
     { KeyCode::SOLVE,      Role::Primary, "Solve" },
     { KeyCode::SHOW_STEPS, Role::Primary, "Steps" },
-    { KeyCode::ENTER,      Role::Primary, "Run" },
+    { KeyCode::EXE,      Role::Primary, "Run" },
     { KeyCode::LEFT,       Role::Primary, "Left" },
     { KeyCode::RIGHT,      Role::Primary, "Right" },
     NUMOS_CTX_DIGITS(),
@@ -201,7 +207,7 @@ inline constexpr KeyRole kCtxEquations[] = {
 inline constexpr KeyRole kCtxCalculus[] = {
     { KeyCode::SHOW_STEPS, Role::Primary, "Steps" },
     { KeyCode::SOLVE,      Role::Primary, "Eval" },
-    { KeyCode::ENTER,      Role::Primary, "Run" },
+    { KeyCode::EXE,      Role::Primary, "Run" },
     { KeyCode::LEFT,       Role::Primary, "Left" },
     { KeyCode::RIGHT,      Role::Primary, "Right" },
     NUMOS_CTX_DIGITS(),
@@ -219,7 +225,7 @@ inline constexpr KeyRole kCtxCalculus[] = {
 inline constexpr KeyRole kCtxStatistics[] = {
     { KeyCode::UP,    Role::Primary, "Row -" },
     { KeyCode::DOWN,  Role::Primary, "Row +" },
-    { KeyCode::ENTER, Role::Primary, "Select" },
+    { KeyCode::EXE, Role::Primary, "Select" },
     { KeyCode::DEL,   Role::Primary, "Del" },
     { KeyCode::AC,    Role::Primary, "Clear" },
     NUMOS_CTX_DIGITS(),
@@ -236,7 +242,7 @@ inline constexpr KeyRole kCtxStatistics[] = {
 inline constexpr KeyRole kCtxProbability[] = {
     { KeyCode::UP,    Role::Primary, "Row -" },
     { KeyCode::DOWN,  Role::Primary, "Row +" },
-    { KeyCode::ENTER, Role::Primary, "Select" },
+    { KeyCode::EXE, Role::Primary, "Select" },
     { KeyCode::DEL,   Role::Primary, "Del" },
     { KeyCode::AC,    Role::Primary, "Clear" },
     NUMOS_CTX_DIGITS(),
@@ -253,7 +259,7 @@ inline constexpr KeyRole kCtxRegression[] = {
     { KeyCode::GRAPH, Role::Primary, "Fit" },
     { KeyCode::UP,    Role::Primary, "Row -" },
     { KeyCode::DOWN,  Role::Primary, "Row +" },
-    { KeyCode::ENTER, Role::Primary, "Select" },
+    { KeyCode::EXE, Role::Primary, "Select" },
     { KeyCode::DEL,   Role::Primary, "Del" },
     NUMOS_CTX_DIGITS(),
     { KeyCode::LEFT,  Role::Secondary, "Col -" },
@@ -268,7 +274,7 @@ inline constexpr KeyRole kCtxRegression[] = {
 inline constexpr KeyRole kCtxSequences[] = {
     { KeyCode::UP,    Role::Primary, "Term -" },
     { KeyCode::DOWN,  Role::Primary, "Term +" },
-    { KeyCode::ENTER, Role::Primary, "Select" },
+    { KeyCode::EXE, Role::Primary, "Select" },
     { KeyCode::DEL,   Role::Primary, "Del" },
     { KeyCode::AC,    Role::Primary, "Clear" },
     NUMOS_CTX_DIGITS(),
@@ -288,8 +294,11 @@ inline constexpr KeyRole kCtxGameBoy[] = {
     { KeyCode::RIGHT, Role::Primary, "Right" },
     { KeyCode::UP,    Role::Primary, "Up" },
     { KeyCode::DOWN,  Role::Primary, "Down" },
-    { KeyCode::ENTER, Role::Primary, "A" },
-    { KeyCode::EXE,   Role::Secondary, "B" },
+    { KeyCode::EXE,   Role::Primary, "A" },
+    // "B" was listed as EXE, which the handler never reads: GameBoyApp maps B to
+    // DEL (GameBoyApp.cpp case KeyCode::DEL -> GbButton::B). Kept truthful so the
+    // soft-key bar and the web pad label the key that actually works.
+    { KeyCode::DEL,   Role::Secondary, "B" },
     { KeyCode::F1,    Role::Secondary, "Start" },
     { KeyCode::F2,    Role::Secondary, "Select" },
     { KeyCode::SHIFT, Role::Secondary, "Run" },
@@ -303,7 +312,7 @@ inline constexpr KeyRole kCtxNotes[] = {
     { KeyCode::UP,    Role::Primary, "Line -" },
     { KeyCode::DOWN,  Role::Primary, "Line +" },
     { KeyCode::BACK,  Role::Primary, "Back" },
-    { KeyCode::ENTER, Role::Secondary, "" },
+    { KeyCode::EXE, Role::Secondary, "" },
     { KeyCode::AC,    Role::Secondary, "Clear" },
     { KeyCode::SHIFT, Role::Secondary, "" },
 };
@@ -313,7 +322,7 @@ inline constexpr KeyRole kCtxNotes[] = {
 inline constexpr KeyRole kCtxAi[] = {
     { KeyCode::UP,    Role::Primary, "Line -" },
     { KeyCode::DOWN,  Role::Primary, "Line +" },
-    { KeyCode::ENTER, Role::Primary, "OK" },
+    { KeyCode::EXE, Role::Primary, "OK" },
     { KeyCode::NUM_7, Role::Primary, "Verify" },
     { KeyCode::MODE,  Role::Primary, "Abort" },
     { KeyCode::LEFT,  Role::Secondary, "Pg -" },
@@ -327,7 +336,7 @@ inline constexpr KeyRole kCtxSettings[] = {
     { KeyCode::DOWN,  Role::Primary, "Down" },
     { KeyCode::LEFT,  Role::Primary, "Left" },
     { KeyCode::RIGHT, Role::Primary, "Right" },
-    { KeyCode::ENTER, Role::Primary, "Toggle" },
+    { KeyCode::EXE, Role::Primary, "Toggle" },
     { KeyCode::BACK,  Role::Secondary, "Back" },
 };
 
@@ -341,7 +350,7 @@ inline constexpr KeyRole kCtxShowcase[] = {
 };
 
 inline constexpr KeyRole kCtxNeoLanguage[] = {
-    { KeyCode::ENTER, Role::Primary, "Run" },
+    { KeyCode::EXE, Role::Primary, "Run" },
     { KeyCode::AC,    Role::Primary, "Clear" },
     { KeyCode::LEFT,  Role::Primary, "Left" },
     { KeyCode::RIGHT, Role::Primary, "Right" },

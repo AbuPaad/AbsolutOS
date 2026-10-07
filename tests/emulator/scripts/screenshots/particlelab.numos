@@ -1,0 +1,105 @@
+# particlelab.numos — ParticleLab (app id 15) captures for paadweb/public/apps/index.html
+#
+# The website lists 3 shots for this app (source of truth: DELIVERABLES.md):
+#   1. /assets/img/apps/particle-1.webp — molten pool + water: steam, stone, heat glow
+#   2. /assets/img/apps/particle-2.webp — heater/cooler/C4 wired in the sand
+#   3. /assets/img/apps/particle-3.webp — plant climbing to water, palette overlay open
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# BLOCKER: ParticleLab is a DEAD CARD in the emulator build this script runs on.
+# It cannot be launched, so no app frame can be asserted or captured. Evidence:
+#   * platformio.ini [env:emulator_pc] build_src_filter is a per-file whitelist
+#     (platformio.ini:412-560). It lists Calculation, Calculus, Equations,
+#     Settings, Statistics, Probability, Sequences, Regression, Grapher,
+#     GameBoy, Notes, AiApp ... but NOT apps/ParticleLabApp.cpp nor
+#     apps/ParticleEngine.cpp -> the app is not compiled into the binary.
+#     Confirmed against the build tree: C:/.piobuild/numOS/emulator_pc/src/apps/
+#     contains no ParticleLabApp.o and no ParticleEngine.o, and strings on
+#     NativeHal.o contain zero "particle" hits.
+#   * The emulator's own router src/hal/NativeHal.cpp:1338 launchApp() has no
+#     case 15 -> default prints "[APP] App 15 no implementada en simulador"
+#     (observed live by the probe run) and g_mode stays MENU. NativeHal has no
+#     AppMode for it at all (grep PARTICLE in NativeHal.cpp = 0 hits).
+#   * The script grammar cannot reach it either: open_app/assert_app resolve
+#     names through scriptAppNameToId()/canonicalAppName() (NativeHal.cpp:2192,
+#     2229) and neither has a particlelab entry -> `open_app particlelab` is a
+#     parse error (exit 2), so it cannot even be attempted.
+#   * The emulator's context model has no slot for it either: numos::Ctx /
+#     ctxName() / ctxSlug() in src/ui/AppContext.h:42-123 list 17 contexts and
+#     ParticleLab is not one of them, so no assert_app name could ever match an
+#     active ParticleLab frame.
+#   * Documented the same way in docs/specs/NUMOS_EMULATOR_APP_ENABLEMENT_
+#     PARITY_SPEC.md:128 ("ParticleLab (15) ... dead card ... defer") and
+#     NUMOS_EMULATOR_PER_APP_ENABLEMENT_MATRIX.md:498 (enablement "none").
+#
+# What this script DOES prove: the launcher reaches the ParticleLab card
+# (assert_menu_focus resolves against the real APPS[] table, id 15), the launch
+# is attempted with ENTER, and the launch is rejected (the same focus assert
+# still passes afterwards => we are still in Menu, mode never changed).
+#
+# No website shot is written. A frame of the launcher, the calculator or any
+# other screen is NOT particle-1/2/3.webp; a plausible-looking capture of the
+# wrong screen would ship to the site. The single PPM written below is a
+# DIAGNOSTIC of the launcher with the ParticleLab card focused. It is slug-
+# prefixed (particlelab-...) so it cannot collide with a parallel run, and it
+# deliberately does NOT use the `shots-particlelab-<n>.ppm` name the website
+# deliverables use, so nothing can pick it up as particle-1/2/3.webp.
+#
+# Theme: ParticleLab has no casio-specific code (docs/theme-manager-casio.md:106
+# "custom-draw engine / OFF") — it would render numos only, so assert_theme
+# numos is asserted before the diagnostic capture.
+#
+# Run (repo root):
+#   ./"C:/.piobuild/numOS/emulator_pc/program" --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/particlelab.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "particlelab: waiting for launcher"
+wait 200
+assert_app Menu
+
+# ParticleLab is index 15 of APPS[] and the numos launcher is a 3-column grid:
+#   row 0: Calculation, Grapher, Equations
+#   row 1: Calculus, Statistics, Probability
+#   row 2: Regression, Sequences, Python
+#   row 3: Matrices, Settings, Chemistry
+#   row 4: Bridge, Circuit, Fluid 2D
+#   row 5: ParticleLab, Neural Lab, OpticsLab
+# From Calculation (row 0, col 0): DOWN x5 lands on ParticleLab (row 5, col 0).
+key down
+wait 5
+key down
+wait 5
+key down
+wait 5
+key down
+wait 5
+key down
+wait 5
+
+# Proves the navigation by resolving the card name against the real APPS[]
+# table: focus is on id 15 "ParticleLab".
+assert_menu_focus ParticleLab
+assert_theme numos
+
+# Attempt the launch exactly the way the firmware does (ENTER -> CLICKED ->
+# launchApp(15)).
+key enter
+wait 60
+
+# If the app had launched, g_mode would have left MENU and this assert would
+# FAIL with "assert_menu_focus requiere el launcher (Menu) activo". It passes
+# => the launcher rejected the card: NativeHal printed "[APP] App 15 no
+# implementada en simulador". This is the blocker, asserted.
+assert_app Menu
+assert_menu_focus ParticleLab
+assert_theme numos
+
+# DIAGNOSTIC ONLY — launcher with the ParticleLab card focused (id 15). Not a
+# website shot: none of particle-1/2/3.webp is produced by this script, and
+# this path does not match the shots-particlelab-<n>.ppm deliverable names.
+screenshot out/particlelab-diag-blocked-launcher.ppm
+log "particlelab: launch attempt rejected by emulator (App 15 no implementada) - no website shot possible"
+log "particlelab: done"

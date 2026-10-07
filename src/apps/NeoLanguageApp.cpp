@@ -323,7 +323,7 @@ void NeoLanguageApp::handleTabBarKey(const KeyEvent& ev) {
         case KeyCode::RIGHT:
             if (_tabIdx < 1) { _tabIdx++; refreshTabBar(); }
             break;
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
         case KeyCode::DOWN:
             switchTab(static_cast<Tab>(_tabIdx));
             _focus = Focus::CONTENT;
@@ -366,7 +366,7 @@ void NeoLanguageApp::handleEditorKey(const KeyEvent& ev) {
         case KeyCode::DEL:
             if (_editor) lv_textarea_delete_char(_editor);
             break;
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             if (_editor) lv_textarea_add_char(_editor, '\n');
             break;
         // F1 = insert 4 spaces (tab-indent)

@@ -715,6 +715,18 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
     }
 #endif
 
+    // ── Canonical confirm key: EXE (decision 2026-10-05) ────────────────────
+    // ENTER is a legacy alias and is folded into EXE here, at the single seam
+    // every app sits behind. Reasons this is a rewrite and not a rename-only:
+    //  * the production target's KeySemanticResolver gives the execute key a
+    //    legacyCode of ENTER, so a build WITH the resolver and one WITHOUT it
+    //    would otherwise hand apps two different codes for one physical key;
+    //  * producers that cannot be renamed keep emitting ENTER — the legacy
+    //    TCA9555 map's ENTER position, the emulator's "enter" token, and
+    //    SerialBridge. All of them converge here.
+    // Consumers only ever see EXE from this point on.
+    if (ev.code == KeyCode::ENTER) ev.code = KeyCode::EXE;
+
     // Debug: log key events de teclado físico (row>=0) para detectar ghosts.
     // Eventos de SerialBridge (row=-1) ya se logean en SerialBridge.cpp.
     if (ev.row >= 0) {
@@ -1046,7 +1058,6 @@ void SystemApp::handleKeyMenu(const KeyEvent &ev) {
                 break;   // digits are a casio-launcher input only
             }
             break;
-        case KeyCode::ENTER:
         case KeyCode::EXE:
             // Casio MenuList: EXE launches the focused slot (N:LABEL → app id).
             // The card grid keeps its LVGL CLICKED path below.
@@ -1422,7 +1433,7 @@ void SystemApp::handleKeyApp(const KeyEvent &ev) {
 // handleKeySteps()
 // ═════════════════════════════════════════════════
 void SystemApp::handleKeySteps(const KeyEvent &ev) {
-    if (ev.code == KeyCode::AC || ev.code == KeyCode::ENTER || ev.code == KeyCode::MODE) {
+    if (ev.code == KeyCode::AC || ev.code == KeyCode::EXE || ev.code == KeyCode::MODE) {
         _mode = Mode::APP_CALCULATION;
         _redraw = false;
         g_lvglActive = true;

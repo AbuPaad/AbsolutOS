@@ -76,9 +76,9 @@ struct InteractionModel {
     bool           numberedSlots; // list rows carry their 1-based position as an
                                // "N:" prefix, as the casio launcher numbers its
                                // slots (MainMenu's "%d:%s"). numos: false.
-    bool           scrollChevron; // a scrollable list shows the corner arrow
-                               // (kCasioArrowUp/Down) that calc uses for history.
-                               // numos: false — it scrolls silently.
+    bool           scrollChevron; // a scrollable list shows the corner arrow hint
+                               // (the theme face's ↑/↓ glyph) that calc uses for
+                               // history. numos: false — it scrolls silently.
     bool           splitGraph; // the grapher presents a two-pane split (numbered
                                // function list / value table on the left, a live
                                // graph on the right) instead of the numos
@@ -87,6 +87,13 @@ struct InteractionModel {
                                // with no app change: shape from the profile, never
                                // a theme-id branch.
     BackPolicy     back;
+    bool           tallListRows; // this profile's list rows are the TALL variant:
+                               // 29 px pitch, 1 px vertical padding, a 1.25x row mark,
+                               // and the viewport shows exactly THREE whole rows so no
+                               // row is cut by the viewport edge. casio: true — its LCD
+                               // mark needs the size and its 26 px rows cut a row.
+                               // numos: false — the shared 26 px pitch, 2 px padding,
+                               // 1x marks, and the list fills the content box.
     // Future doc-12 fields extend here; changing this POD bumps every
     // initializer, mirroring the "struct is the spec" rule.
 };

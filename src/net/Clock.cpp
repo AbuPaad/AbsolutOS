@@ -29,6 +29,10 @@ bool timeSynced() {
     return (long)time(nullptr) > kPlausibleEpoch;
 }
 
+void startTimeSync(const char* tz, const char* server) {
+    configTzTime(tz ? tz : "AEST-10", server ? server : "pool.ntp.org");
+}
+
 bool syncTime(const char* tz, const char* server) {
     configTzTime(tz ? tz : "AEST-10", server ? server : "pool.ntp.org");
 
@@ -46,6 +50,7 @@ bool syncTime(const char* tz, const char* server) {
 
 namespace net {
 bool timeSynced() { return false; }
+void startTimeSync(const char*, const char*) {}
 bool syncTime(const char*, const char*) { return false; }
 }  // namespace net
 

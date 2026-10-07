@@ -444,7 +444,7 @@ void ProbabilityApp::handleKey(const KeyEvent& ev) {
             if (_paramValues[idx]) lv_label_set_text(_paramValues[idx], display);
             return;
         }
-        if (ev.code == KeyCode::ENTER) {
+        if (ev.code == KeyCode::EXE) {
             finishEdit();
             return;
         }
@@ -473,7 +473,7 @@ void ProbabilityApp::handleKey(const KeyEvent& ev) {
             }
             break;
         }
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             startEdit();
             break;
         case KeyCode::LEFT:

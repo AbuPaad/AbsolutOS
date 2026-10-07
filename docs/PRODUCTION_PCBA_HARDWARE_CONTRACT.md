@@ -174,22 +174,20 @@ USB-to-UART bridge and the normal upload path remains native USB.
 ## Flash and partition contract
 
 The production target uses the NumOS-owned table `boards/numos-16mb.csv`, not
-the framework's `default_16MB.csv`. It keeps a **single** application slot.
+the framework's `default_16MB.csv`. It carries **two** application banks so the
+firmware can update itself over the air.
 
 Two decisions drive it:
 
-- **NumOS has no OTA workflow.** Nothing in `src/` references `ArduinoOTA`,
-  `esp_ota` or `Update.h`, so the second 6,400 KiB `ota_1` slot that
-  `default_16MB.csv` reserves was 6.25 MB of dead flash.
+- **OTA is a first-class workflow** (owner call, 2026-10-05). The device checks
+  GitHub Releases (`net/OtaUpdater`), downloads a single app image and writes it
+  to the spare bank with `esp_ota`. That requires `app0` + `app1` + `otadata`.
 - **The SD card is DOA** (board decision, 2026-10-01). Every byte a user can
   write — Game Boy ROMs under `/roms`, AI prompts and answers under `/ai/*` —
   lives in internal flash, so the filesystem is the scarce resource.
 
-So the freed space goes to LittleFS: 3,375 KiB → 9,875 KiB (≈2.9×).
-
-`otadata` is retained even though there is no `app1`. That is the same shape as
-the framework's own `noota_ffat.csv` (`app0` = `ota_0`, `otadata` present, no
-`app1`), and it costs 8 KiB to keep a future OTA repartition open.
+The OTA tax is the filesystem: splitting the app into two 6.5 MiB banks leaves
+2.9375 MiB for LittleFS instead of the 7.9375 MiB a single 8 MiB slot allowed.
 
 | Region/payload | Offset | Size / upper bound | End |
 |---|---:|---:|---:|
@@ -197,22 +195,24 @@ the framework's own `noota_ffat.csv` (`app0` = `ota_0`, `otadata` present, no
 | partition table | `0x008000` | one 4 KiB sector | `0x009000` |
 | NVS | `0x009000` | `0x005000` | `0x00E000` |
 | OTA selector / `boot_app0.bin` | `0x00E000` | `0x002000` | `0x010000` |
-| `app0` / firmware | `0x010000` | `0x600000` (6,291,456 bytes) | `0x610000` |
-| LittleFS (`spiffs` partition subtype) | `0x610000` | `0x9E0000` (9,875 KiB) | `0xFF0000` |
-| coredump | `0xFF0000` | `0x010000` | `0x1000000` |
+| `app0` / firmware (ota_0) | `0x010000` | `0x680000` (6.5 MiB) | `0x690000` |
+| `app1` / firmware (ota_1) | `0x690000` | `0x680000` (6.5 MiB) | `0xD10000` |
+| LittleFS (`spiffs` partition subtype) | `0xD10000` | `0x2F0000` (2.9375 MiB) | `0x1000000` |
 
 The table ends exactly at 16 MB with no overlap; `scripts/check-production-target.py`
 validates the offsets, the sizes and that final boundary.
 
-**Application headroom is thin.** The firmware measured 5,783,729 bytes against
-the old 6,400 KiB slot (88.3%) and is ≈92% of this 6,144 KiB one — about 500 KiB
-spare. `docs/specs/NUMOS_MEMORY_RISK_REGISTER.md` MEMX-14 already flags
+**Application headroom is comfortable but finite.** The firmware measured
+5,793,581 bytes against the old 6 MiB slot (94.4%); a 6.5 MiB bank is ≈85% with
+~977 KiB spare. `docs/specs/NUMOS_MEMORY_RISK_REGISTER.md` MEMX-14 tracks
 application growth. When the build stops fitting, move space **from `spiffs`
-into `app0`**; do not shrink `spiffs` silently and do not drop features to stay
-under the bound.
+into the banks** (see the swap points in `boards/numos-16mb.csv`); do not shrink
+`spiffs` silently and do not drop features to stay under the bound.
 
 Changing the table repartitions flash on upload and **wipes LittleFS**, so any
-ROMs and saved answers on a unit go with it.
+ROMs and saved answers on a unit go with it. Flashing this OTA-capable table onto
+an existing unit over USB is the one-time step that makes future over-the-air
+updates possible.
 
 The `spiffs` subtype is the Arduino partition-table identifier; the board
 filesystem and firmware API are LittleFS. No repository `data/` payload is

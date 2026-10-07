@@ -1040,8 +1040,7 @@ void GrapherApp::handleCasioKey(const KeyEvent& ev) {
 
     // ── Editing a row: characters go to the VPAM editor ──
     if (_casioEdit >= 0) {
-        if (ev.code == KeyCode::ENTER || ev.code == KeyCode::EXE ||
-            ev.code == KeyCode::AC) {
+        if (ev.code == KeyCode::EXE || ev.code == KeyCode::AC) {
             stopEditing();
             _casioEdit = -1;
             _focus = Focus::CONTENT;
@@ -1067,7 +1066,6 @@ void GrapherApp::handleCasioKey(const KeyEvent& ev) {
     }
 
     switch (ev.code) {
-    case KeyCode::ENTER:
     case KeyCode::EXE: {
         // Commit whatever is on screen and redraw.
         for (int i = 0; i < _numFuncs; ++i) {
@@ -2049,7 +2047,7 @@ void GrapherApp::handleTemplates(const KeyEvent& ev) {
             lv_obj_set_style_bg_opa(_tplRows[_tplIdx], LV_OPA_COVER, LV_PART_MAIN);
         }
         break;
-    case KeyCode::ENTER: {
+    case KeyCode::EXE: {
         // Insert template: build AST from template text into the slot
         int idx = _exprIdx;
         if (idx >= 0 && idx < _numFuncs && _tplIdx >= 0 && _tplIdx < _tplCount) {
@@ -3380,7 +3378,7 @@ void GrapherApp::handleTabBar(const KeyEvent& ev) {
         if (_tabIdx < 2) { _tabIdx++; switchTab((Tab)_tabIdx); }
         break;
     case KeyCode::DOWN:
-    case KeyCode::ENTER:
+    case KeyCode::EXE:
         // Move focus into content (or toolbar for graph tab)
         if (_tab == Tab::GRAPH) {
             _focus = Focus::TOOLBAR;
@@ -3434,7 +3432,7 @@ void GrapherApp::handleExprList(const KeyEvent& ev) {
             if (_panelGraph) replot();
         }
         break;
-    case KeyCode::ENTER:
+    case KeyCode::EXE:
         if (_exprIdx < _numFuncs) {
             startEditing(_exprIdx);
         } else if (_exprIdx == _numFuncs) {
@@ -3471,7 +3469,7 @@ void GrapherApp::handleExprEdit(const KeyEvent& ev) {
 
     auto& cur = _exprCursor[idx];
 
-    if (ev.code == KeyCode::ENTER) {
+    if (ev.code == KeyCode::EXE) {
         stopEditing();
         return;
     }
@@ -3647,7 +3645,7 @@ void GrapherApp::handleToolbar(const KeyEvent& ev) {
         refreshToolbar();
         break;
     case KeyCode::DOWN:
-    case KeyCode::ENTER:
+    case KeyCode::EXE:
         // Activate selected tool
         switch ((int)_toolIdx) {
         case 0: // Auto
@@ -3729,7 +3727,7 @@ void GrapherApp::handleGraphNav(const KeyEvent& ev) {
         _plotDirty = true;
         break;
     }
-    case KeyCode::ENTER: {
+    case KeyCode::EXE: {
         // Enter Trace on any traceable curve — explicit y=f(x), explicit x=f(y),
         // or a general implicit equation. Only an inequality-only graph has no
         // traceable curve; there, stay in Pan and say so.
@@ -3866,7 +3864,7 @@ void GrapherApp::handleGraphTrace(const KeyEvent& ev) {
         lv_refr_now(NULL);
         return;
     }
-    case KeyCode::ENTER:
+    case KeyCode::EXE:
         // Calculate menu opens on every traceable curve. openCalcMenu greys the
         // options that don't apply to the current kind (e.g. Root/Integral on an
         // implicit contour), so non-y=f(x) curves get Intersection + Tangent.
@@ -4166,7 +4164,7 @@ void GrapherApp::handleCalcMenu(const KeyEvent& ev) {
         restyleCalcMenu();
         break;
     }
-    case KeyCode::ENTER:
+    case KeyCode::EXE:
         if (_calcMenuIdx >= 0 && _calcMenuIdx < CALC_MENU_ITEMS && _calcMenuEnabled[_calcMenuIdx])
             executeCalcOption(_calcMenuIdx);
         closeCalcMenu();

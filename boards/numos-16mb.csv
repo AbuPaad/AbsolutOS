@@ -1,76 +1,52 @@
-# NumOS 16 MB flash layout — single application slot, filesystem-heavy, NO OTA.
+# NumOS 16 MB flash layout — dual application slots (OTA-capable), 2.9375 MiB LittleFS.
 #
-# Why not the framework's default_16MB.csv:
-#
-#   1. The SD card is DOA (board decision, 2026-10-01). Every byte a user can
-#      write — Game Boy ROMs in /roms, AI prompts and answers in /ai/* — lives
-#      in internal flash, so the filesystem is the scarce resource, not the app.
-#   2. NumOS ships no OTA workflow. Nothing in src/ references ArduinoOTA,
-#      esp_ota or Update.h, and docs/PRODUCTION_PCBA_HARDWARE_CONTRACT.md says
-#      so explicitly. The whole second 6,400 KiB ota_1 slot was dead flash.
-#   3. OTA is now dropped OUTRIGHT (owner call, 2026-10-01): the `otadata`
-#      partition is gone too, so the table has no `data/ota` partition at all.
-#      That is deliberate and it is also what silences the framework's OTA
-#      bookkeeping — see the notes below.
+# OTA is now a first-class workflow (owner call, 2026-10-05): the device checks
+# GitHub Releases, downloads a single app image, writes it to the spare slot and
+# reboots. That RELIES on a dual-bank table — esp_ota cannot rewrite the running
+# partition — so this table reintroduces app1 + otadata and splits the app budget.
 #
 # Layout (every byte of the 16 MiB accounted for):
 #
 #   0x000000  32 KiB  bootloader        (written by esptool, not a partition)
 #   0x008000   4 KiB  partition table   (written by esptool, not a partition)
-#   nvs        0x9000    28 KiB  (was 20 KiB; absorbed the old 8 KiB otadata)
-#   app0       0x10000 8,192 KiB  firmware slot (single, 8 MiB)
-#   spiffs     0x810000 8,128 KiB  LittleFS — mounted by its "spiffs" label
+#   nvs        0x9000    20 KiB  (shrunk back from 28 KiB to make room for otadata)
+#   otadata    0xE000     8 KiB  OTA slot selector
+#   app0       0x10000  6.5 MiB  firmware slot A (subtype ota_0)
+#   app1       0x690000 6.5 MiB  firmware slot B (subtype ota_1)
+#   spiffs     0xD10000 2.9375 MiB  LittleFS — mounted by its "spiffs" label
 #
-#   28 + 8192 + 8128 = 16,348 KiB, plus the 32 KiB bootloader and the 4 KiB
-#   partition table = 16,384 KiB = 16 MiB. Nothing is unallocated.
+#   20 + 8 + 6656 + 6656 + 3008 KiB = 16,348 KiB, plus the 32 KiB bootloader and
+#   the 4 KiB partition table = 16,384 KiB = 16 MiB. Nothing is unallocated.
 #
-# WHY THE APP SLOT IS 8 MiB AND NOT THE WHOLE 16 MiB:
+# WHY 6.5 MiB PER SLOT:
 #
 #   * app0 MUST start at 0x10000. PlatformIO's esptool uploader hardcodes the
-#     app offset (`ESP32_APP_OFFSET = board.get("upload.offset_address",
-#     "0x10000")`, builder/main.py), and ESP-IDF requires an app partition to be
-#     64 KiB aligned for MMU mapping. So the 8 KiB below app0 is padding no
-#     filesystem can use — hence folding it into nvs.
-#   * The bootloader, partition table and NVS live below app0, so app0 can never
-#     be 16 MiB. Above that, the slot size is purely a split decision: bytes the
-#     app does not take are bytes LittleFS cannot have.
-#   * app0 was 6,144 KiB (0x600000) from 2026-10-01; raised to 8,192 KiB
-#     (0x800000) on 2026-10-03 because the firmware measured 5,793,581 bytes
-#     (94.4 % of the old slot, ~470 KiB headroom) and new apps kept landing —
-#     there was no room left to spend without a repartition. At 8 MiB the same
-#     image is 69.1 %, i.e. ~2.47 MiB of headroom, and LittleFS keeps 7.9375 MiB
-#     (≈7 ROMs of 1 MiB, or 1 GBC 8 MiB ROM plus AI prompts and answers).
+#     app offset, and ESP-IDF requires an app partition to be 64 KiB aligned for
+#     MMU mapping.
+#   * The firmware measured 5,793,581 bytes on 2026-10-03 under the old 6 MiB
+#     slot (94.4 %, ~470 KiB headroom). 6.5 MiB (0x680000) gives the same image
+#     ~85 % occupancy (~977 KiB headroom) while keeping two full banks, which is
+#     what OTA costs.
+#   * Trading the old single 8 MiB slot + 7.94 MiB filesystem for 2x6.5 MiB
+#     banks + 2.9375 MiB filesystem is the OTA tax. The SD card remains DOA, so
+#     LittleFS is still the only user-writable store; pick the swap below if that
+#     proves too tight.
 #
-# HOW THE APP LIMIT IS DERIVED (answers "who capped this?" — nobody upstream):
+# SWAP POINTS (do NOT drop a feature to make it fit):
 #
-#   PlatformIO reads THIS file and sets `upload.maximum_size` from the app
-#   partition with subtype factory/ota_0 (builder/main.py _update_max_upload_size).
-#   The board json's own "maximum_size" is therefore overridden and the "size
-#   guard" in the PlatformIO/VSCode UI is a straight read of `app0` = 0x800000.
-#   Upstream is not involved.
+#   2 x 6.5 MiB / spiffs 2.9375 MiB: app0 0x10000, 0x680000; app1 0x690000, 0x680000; spiffs 0xD10000, 0x2F0000
+#   2 x 7.0 MiB / spiffs 1.9375 MiB: app0 0x10000, 0x700000; app1 0x710000, 0x700000; spiffs 0xE10000, 0x1F0000
 #
-# OTA-RELATED FLASH WRITES ARE GONE WITH otadata:
-#
-#   The framework only flashes an empty OTA selector image when the table has a
-#   `data,ota` partition (`if ota_partition_params["size"] and
-#   ota_partition_params["offset"]`, frameworks/espidf.py). No otadata => no
-#   write at 0xe000 => no stray 8 KiB landing inside nvs on every upload.
-#   `app0` keeps subtype `ota_0` because that is the framework's own no-OTA
-#   convention (noota_ffat.csv does exactly this) and the bootloader boots it
-#   directly when no OTA data partition exists.
-#
-# WHEN THE BUILD STOPS FITTING AGAIN — the swap points (do NOT drop a feature):
-#
-#   app0 9 MiB / spiffs 6.9375 MiB:  app0 0x10000, 0x900000; spiffs 0x910000, 0x6F0000
-#   app0 10 MiB / spiffs 5.9375 MiB: app0 0x10000, 0xA00000; spiffs 0xA10000, 0x5F0000
-#
-# Every size here must also be mirrored in boards/*.json (`upload.maximum_size`),
-# scripts/production_factory_image.py and scripts/check-production-target.py.
+# Every size here is mirrored in boards/*.json (`upload.maximum_size`),
+# scripts/check-production-target.py and scripts/production_factory_image.py.
 # Flashing a table change repartitions flash and WIPES LittleFS, so any user
 # ROMs and saved answers go with it. Treat this as a one-way move on a unit
-# already in the field. (`pio run -t uploadfs` is needed once after this change
-# for the new size to be visible.)
-# Name,   Type, SubType, Offset,  Size, Flags
-nvs,      data, nvs,     0x9000,  0x7000,
-app0,     app,  ota_0,   0x10000, 0x800000,
-spiffs,   data, spiffs,  0x810000,0x7F0000,
+# already in the field; a USB reflash of this table is the ONE-TIME step that
+# makes future over-the-air updates possible. (`pio run -t uploadfs` is needed
+# once after this change for the new filesystem size to be visible.)
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xE000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x680000,
+app1,     app,  ota_1,   0x690000, 0x680000,
+spiffs,   data, spiffs,  0xD10000, 0x2F0000,

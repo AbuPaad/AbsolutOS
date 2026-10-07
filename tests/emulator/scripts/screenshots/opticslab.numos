@@ -1,0 +1,613 @@
+# opticslab.numos — Screenshot script for OpticsLab (app id 17)
+#
+# Three shots required by the website:
+# 1. /assets/img/apps/opticslab-1.webp — default bench: object arrow, two thick
+#    biconvex lenses, 7-ray fan crossing the gap to the screen, EFL/BFL/M readout.
+# 2. /assets/img/apps/opticslab-2.webp — steep high-index lens, outer rays past the
+#    critical angle, marked as total internal reflection (red + X glyph).
+# 3. /assets/img/apps/opticslab-3.webp — afocal pair (diverging then converging), rays
+#    leaving parallel, readout reporting EFL:N/A.
+#
+# CONTEXT — why these captures cannot show OpticsLab:
+#   OpticsLabApp.cpp is absent from build_src_filter in platformio.ini
+#   ([env:emulator_pc] and [env:emulator_pc_neo_smoke]), so it is not compiled
+#   into the emulator binary. NativeHal.cpp launchApp() has no case 17 (it prints
+#   'App 17 no implementada en simulador'), and neither canonicalAppName() nor
+#   scriptAppNameToId() knows 'opticslab' (open_app / assert_app are parse errors).
+#   The launcher still SHOWS the OpticsLab card (MainMenu APPS[] is compiled in),
+#   but ENTER on it never starts the app. This mirrors Chemistry (id 11).
+#
+# The per-shot key sequences below are the correct controls, traced from
+#   OpticsLabApp::handleKey (UP/DOWN select; +/- R1; x/n; F1 toggles R2/d mode;
+#   LEFT/RIGHT move 0.5 mm/step). They would produce the shots if the app were
+#   present. The captures that follow are of the Menu and are deleted after the
+#   run; all three shots are reported COULD NOT CAPTURE.
+#
+# Run:
+#   ./"C:/.piobuild/numOS/emulator_pc/program" --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/opticslab.numos \
+#       --fs-root tests/emulator/fs --frames 1600 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "opticslab: waiting for launcher"
+wait 200
+assert_app Menu
+assert_theme numos
+
+# Navigate the 3-column launcher grid to OpticsLab (id 17 = row 5, col 2).
+# Start at Calculation (0,0): DOWN x5 -> row 5, RIGHT x2 -> col 2, then ENTER.
+log "opticslab: navigating to OpticsLab card (id 17 = row5 col2)"
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+key right
+wait 10
+key right
+wait 10
+key enter
+wait 150
+# ENTER -> launchApp(17) -> default case -> 'App 17 no implementada en simulador'.
+# The launcher stays on the Menu; OpticsLab never starts.
+
+# ── SHOT 1: default bench ───────────────────────────────────────────────────────
+# The default scene already matches the shot (object arrow, two thick biconvex
+# lenses at x=80/160, 7-ray fan, screen at x=210, EFL/BFL/M readout). No keys.
+screenshot out/shots-opticslab-1.ppm
+log "opticslab: shot 1 captured (default bench)"
+
+# ── SHOT 2: total internal reflection ─────────────────────────────────────────
+# Select Lens 1 (DOWN), steepen R1 40->15 ('-' x25, default mode adjusts R1),
+# raise n 1.5->2.4 ('*' x90, default mode adjusts n). Outer rays (h=±14, ±9.33)
+# then exceed the critical angle at the rear surface and are marked TIR.
+log "opticslab: shot 2 — steep high-index lens, outer-ray TIR"
+key down
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+key *
+wait 30
+screenshot out/shots-opticslab-2.ppm
+log "opticslab: shot 2 captured (TIR)"
+
+# ── SHOT 3: afocal pair ───────────────────────────────────────────────────────
+# Diverging Lens 1 (R1 -100, R2 +40) then converging Lens 2 (R1 +78, R2 -71),
+# front surfaces 21 mm apart -> composite C = 0 exactly (afocal), rays leave
+# parallel, readout shows EFL:N/A. Selection ends on Lens 2 so the label prints
+# 'Sel:Lens 2 ... | EFL:N/A'.
+log "opticslab: shot 3 — afocal pair (diverging + converging), EFL:N/A"
+key down
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key f1
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key f1
+key down
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key +
+key f1
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key -
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+key left
+wait 30
+screenshot out/shots-opticslab-3.ppm
+log "opticslab: shot 3 captured (afocal pair)"
+
+log "opticslab: done"

@@ -69,15 +69,17 @@ def validate_partitions(path: Path) -> None:
             size = parse_size(row[4])
             regions.append((label, offset, size))
 
-    # NumOS ships no OTA workflow, so the second 6,400 KiB slot in the
-    # framework's default_16MB.csv was dead flash. boards/numos-16mb.csv drops
-    # app1 and otadata and gives the space to LittleFS, which matters because
-    # the SD card is DOA and every user-writable byte — GB ROMs, AI prompts and
-    # answers — lives in internal flash.
+    # OTA is now a first-class workflow (2026-10-05): the table carries two app
+    # banks plus otadata so esp_ota can write the spare slot. The 6.5 MiB banks
+    # fit the measured ~5.8 MB image with headroom; the tax is the filesystem,
+    # which dropped from 7.94 MiB to 2.9375 MiB. The SD card is DOA, so every
+    # user-writable byte — GB ROMs, AI prompts and answers — lives in LittleFS.
     expected = {
-        "nvs": (0x009000, 0x007000),
-        "app0": (0x010000, 0x800000),
-        "spiffs": (0x810000, 0x7F0000),
+        "nvs": (0x009000, 0x005000),
+        "otadata": (0x00E000, 0x002000),
+        "app0": (0x010000, 0x680000),
+        "app1": (0x690000, 0x680000),
+        "spiffs": (0xD10000, 0x2F0000),
     }
     require({label for label, _, _ in regions} == set(expected),
             "unexpected N16R8 partition set")
@@ -123,8 +125,8 @@ def main() -> int:
             "pinned Arduino QIO boot/runtime contract changed")
     require(build["f_flash"] == "80000000L", "flash frequency must be 80 MHz")
     require(upload["flash_size"] == "16MB", "manifest must report 16 MB flash")
-    require(upload["maximum_size"] == 0x800000,
-            "maximum firmware size must equal app0 size")
+    require(upload["maximum_size"] == 0x680000,
+            "maximum firmware size must equal the 6.5 MiB app0 bank")
     require(hardware["module"] == "ESP32-S3-WROOM-1U-N16R8",
             "exact production module identity missing")
     require(hardware["external_flash_bytes"] == FLASH_BYTES,

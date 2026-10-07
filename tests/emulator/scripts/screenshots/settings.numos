@@ -1,0 +1,111 @@
+# settings.numos — the three website screenshots for the Settings app (APP 10).
+#
+# Source of truth: /assets/img/apps/settings-1..3.webp (DELIVERABLES.md).
+#
+# App: src/apps/SettingsApp.cpp. NOT theme-migrated: the screen is styled with
+# its own COL_* literals under BOTH themes; the only casio-aware code is the
+# Theme row, which calls ThemeManager::activate() (the "single activate
+# funnel"). So every capture of this app is fundamentally a numos-look capture;
+# what the theme assert proves is the ACTIVE THEME ID and the row's value.
+#
+# Row layout on native (no Brightness row — NUMOS_BOARD_PROD_WROOM1U_N16R8 is
+# undefined): 0 Angle mode · 1 Complex numbers · 2 Decimal precision ·
+# 3 Step-by-step mode · 4 Theme (THEME_ROW) · 5 Wi-Fi (WIFI_ROW).
+#
+# The three shots:
+#   1. out/shots-settings-1.ppm — the settings list, first row focused, the
+#      current-value field ("Radians" — the native default is RAD), and the
+#      hint strip pinned along the bottom. Captured in the numos theme (the
+#      boot default; also the look the unstyled screen really renders).
+#   2. out/shots-settings-2.ppm — the Wi-Fi sub-screen with the setup portal
+#      RUNNING (AP name, URL, station count). COULD NOT CAPTURE: the emulator
+#      links the non-Arduino named stubs of net/Portal.cpp and net/Wifi.cpp, so
+#      Portal::start() always returns false and no AP/URL/stations can ever
+#      exist (the Wi-Fi hint strip prints "the web portal is firmware-only
+#      (it needs the Wi-Fi AP and the filesystem)"; net/Wifi::networkCount()
+#      returns 0 -> row 1 reads "no networks saved"). The script still reaches
+#      the Wi-Fi sub-screen and presses the portal toggle once, so the run log
+#      shows the stub's refusal; it then deliberately writes NO frame for #2 —
+#      a plausible-looking "portal running" capture of that screen would lie.
+#   3. out/shots-settings-3.ppm — the Theme row switched to the Casio skin.
+#      Switch via the app's own row (DOWN to THEME_ROW, EXE -> ThemeManager::
+#      activate -> Casio), leave to the launcher and re-open Settings so the
+#      list is redrawn from scratch under the casio font tokens, then focus the
+#      Theme row again (whose value now reads "Casio"). Note honestly: the
+#      palette stays the hard-coded numos one (app not migrated).
+#
+# Run (from repo root):
+#   ./"C:/.piobuild/numOS/emulator_pc/program" --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/settings.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok · 2 parse error · 3 screenshot write error · 4 assertion failure.
+
+log "settings: waiting for launcher"
+wait 200
+assert_app Menu
+
+# ───────────────────── SHOT 1: the settings list (numos) ─────────────────────
+open_app Settings
+wait 60
+assert_app Settings
+assert_theme numos
+screenshot out/shots-settings-1.ppm
+log "settings: shot 1 captured (list, row 0 focused, numos theme)"
+
+# ─────────────────── SHOT 3: Theme row switched to Casio ────────────────────
+# The app's own theme picker: DOWN to THEME_ROW (row 4), EXE activates the
+# next theme through the single ThemeManager::activate() funnel.
+key down
+key down
+key down
+key down
+wait 10
+key exe
+wait 20
+assert_app Settings
+assert_theme casio
+
+# Leave to the launcher and reopen Settings: the deferred teardown frees the
+# numos-built screen, so the next load() rebuilds the whole list under the
+# casio theme tokens (its font ladder at least; the palette is hard-coded).
+key back
+wait 60
+assert_app Menu
+open_app Settings
+wait 60
+assert_app Settings
+assert_theme casio
+
+# Back to the Theme row (no EXE this time — it would toggle BACK to numos).
+key down
+key down
+key down
+key down
+wait 10
+assert_app Settings
+assert_theme casio
+screenshot out/shots-settings-3.ppm
+log "settings: shot 3 captured (Theme row shows Casio, theme id asserted casio)"
+
+# ───── SHOT 2 (COULD NOT CAPTURE): reach the Wi-Fi screen, prove the stub ─────
+key down
+wait 10
+key exe
+wait 30
+assert_app Settings
+log "settings: on the Wi-Fi sub-screen (row 0 = Web portal toggle, row 1 = 'no networks saved')"
+# Press the portal toggle. This is EXACTLY the call a running portal needs
+# (net::Portal::start()); the non-Arduino stub refuses every time, so the hint
+# strip stays on the "firmware-only" note and no AP name / URL / station count
+# is ever produced. No screenshot is taken for shot 2.
+key exe
+wait 20
+log "settings: portal toggle pressed - emulator stub refused (web portal is firmware-only)"
+
+# AC closes the Wi-Fi sub-screen back to the settings list (closeWifiView).
+key ac
+wait 30
+assert_app Settings
+log "settings: back on the settings list"
+
+log "settings: done"

@@ -1,0 +1,52 @@
+# ai_check_live.numos — the check hop against the REAL Wolfram|Alpha endpoint.
+#
+# This one talks to the network. It uses the vendor's own published demo AppID
+# (keyless, in the throwaway fs root), so the point is NOT a good answer — it is
+# that the request is built, sent, and the RESPONSE CLASSIFIED correctly by a
+# device-side error path nobody can provoke offline:
+#
+#   python3 tests/emulator/tools/make_check_fs.py prepare emulator
+#   C:/.piobuild/numOS/emulator_pc/program --headless --deterministic \
+#       --script tests/emulator/scripts/ai_check_live.numos \
+#       --fs-root tests/emulator/fs-check --frames 1200 --quiet
+#
+# Expected: `Invalid appid`, because the demo AppID never gets past auth. The
+# published error table claims 403 for a bad AppID; the wire says 401, and this is
+# the run that keeps the classifier honest. A real AppID (make_live_fs.py's
+# key-file pattern, never printed) is what produces a result page.
+#
+# Exit codes: 0 ok · 2 script/parse error · 4 assertion failure.
+
+log "ai_check_live: waiting for launcher"
+wait 200
+open_app ai
+wait 40
+assert_app AI
+
+key down
+wait 10
+key down
+wait 10
+key exe
+wait 20
+key exe
+wait 30
+assert_ai_page_contains "Derivative of x^3"
+
+key 7
+wait 20
+assert_ai_check_contains "offered=1"
+key exe
+
+# Frames are wall-clock (16 ms): 600 is ~10 s, which is DNS + TLS + one WA GET.
+# A short wait here asserts against the PREVIOUS page, because while the request
+# is in flight the pager still holds what it was showing.
+wait 600
+assert_app AI
+screenshot out/ai_check_live_result.ppm
+
+# The named failure, on screen — not a blank page and not a generic "failed".
+assert_ai_page_contains "Wolfram|Alpha check failed"
+assert_ai_page_contains "Invalid appid"
+assert_ai_page_contains "(HTTP 401)"
+log "ai_check_live: the wire answered, and the classifier named it"

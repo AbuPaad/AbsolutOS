@@ -1,0 +1,97 @@
+# circuit.numos — Circuit (APP 13 · CircuitCoreApp) capture script for paadweb.
+#
+# The three shots this file owns (tests/emulator/scripts/screenshots/README.md):
+#   1. /assets/img/apps/circuit-1.webp — edit mode, mid-build (supply→resistor→
+#      transistor, coin cell→AND→7-segment, programmable block at the bottom)
+#   2. /assets/img/apps/circuit-2.webp — simulation running (heatmap, dual-trace
+#      scope, current arrows, multimeter reading)
+#   3. /assets/img/apps/circuit-3.webp — the programmable block's editor open
+#
+# ════════════════════════════════════════════════════════════════════════════
+# STATUS: 0 of the 3 shots are capturable on this build. CircuitCoreApp is NOT
+# compiled into the emulator, so there is no Circuit screen to reach, to assert
+# on, or to capture. Evidence (all from this repo / this exact binary):
+#   * platformio.ini [env:emulator_pc] build_src_filter is a per-file whitelist;
+#     it lists apps one by one and has NO +<apps/CircuitCoreApp.cpp>, and
+#     C:/.piobuild/numOS/emulator_pc/src/apps/ has no CircuitCoreApp.o.
+#   * src/hal/NativeHal.cpp:1338 launchApp() has no case 13 — it prints
+#     "[APP] App 13 no implementada en simulador" and leaves the mode alone.
+#   * NativeHal.cpp:2229 scriptAppNameToId() has no "circuit" slug, so a script
+#     containing `open_app circuit` fails to LOAD (reproduced on this binary,
+#     exit 2):
+#       [SCRIPT] <file>:3: open_app: app no lanzable
+#         (Calculation|Grapher|Statistics|Probability|Sequences|Regression|
+#          Settings|MathShowcase|MathVisual|GameBoy|Notes|AI)
+#   * NativeHal.cpp:2189 canonicalAppName() has no "Circuit", so `assert_app
+#     Circuit` would likewise fail to load with exit 2.
+#   * The binary itself carries no CircuitCoreApp string at all (no "Resistor",
+#     "Multimeter", "7-Segment", ... — only the launcher card label "Circuit").
+#
+# The launcher CARD does exist (MainMenu.cpp:126, {13, "Circuit", ...}), so this
+# script does what IS provable: focus that card, activate it, and assert that
+# the emulator keeps the launcher — i.e. machine-check the dead card. It writes
+# no screenshot: a launcher frame must never land on circuit-1/2/3.webp.
+#
+# ════════════════════════════════════════════════════════════════════════════
+# INTENDED CAPTURE WALK — UNVERIFIED, NOT EXECUTED (kept for the rebuild once
+# app 13 is added to the emulator whitelist + NativeHal routing). Traced from
+# src/apps/CircuitCoreApp.cpp only; no line of it has ever run, and three
+# source-level hazards are known (see the report's NOTES):
+#   SHOT 1 (edit mode): begin() starts focus=GRID, cursor=(100,80), tool=RES
+#     (CircuitCoreApp.cpp:156-163). AC → toolbar, arrows walk the 3x10 toolbar
+#     (page 0 RES..DIO, page 1 LDR..7SG, page 2 AND..RUN; handleKeyToolbar
+#     :578), ENTER selects and returns focus to GRID, ENTER in GRID places
+#     (handleKeyGrid:497 → placeComponent:633). Plan: MCU at (100,80) bottom
+#     row; row y=20: VCC(40) w w RES(100) w w NPN(160); row y=40: 3V(40) w w
+#     AND(100) w w 7SG(160); wires via the WIRE tool (page0 idx5).
+#     assert_app Circuit · assert_theme numos
+#     # screenshot out/shots-circuit-1.ppm   (NOT RUN — app unreachable)
+#   SHOT 2 (simulation): RUN (page2 idx9, ENTER toggles startSimulation:775 and
+#     leaves focus on the toolbar → DOWN back to GRID); F2 toggles the voltage
+#     heatmap only while running (:548); ENTER on a component arms scope Ch1,
+#     ENTER on a second component arms Ch2 (:497-522, drawScope:1032);
+#     AC → MTR (page2 idx8) → ENTER probes the multimeter (probeMultimeter:1294);
+#     drawCurrentArrows/drawMultimeter/drawVoltageHeatmap all gate on
+#     _simRunning (onDraw:964-1008). Note: in SIM the cursor only moves with
+#     LEFT/RIGHT — UP/DOWN are pot/sensor/timebase (handleKeyGrid:465-487).
+#     assert_app Circuit · assert_theme numos
+#     # screenshot out/shots-circuit-2.ppm   (NOT RUN — app unreachable)
+#   SHOT 3 (MCU editor): stop the sim (RUN again), EDIT mode, cursor on the MCU,
+#     ENTER → openIDE() (:527-528, :1934). The overlay prefills the textarea
+#     with "void setup(){\n}\nvoid loop(){\n}" (:1966) — that is a C skeleton,
+#     NOT Lua, and handleKeyIDE (:2022) accepts only digits, ENTER, F4 and AC,
+#     so no Lua line can be typed from a .numos script.
+#     assert_app Circuit · assert_theme numos
+#     # screenshot out/shots-circuit-3.ppm   (NOT RUN — app unreachable)
+#
+# Run:
+#   program --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/circuit.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot error · 4 assertion failure.
+
+log "circuit: waiting for splash -> launcher"
+wait 200
+assert_app Menu
+assert_theme numos
+
+# The launcher grid is 3 columns wide (menu_nav_parity.numos), so card id 13
+# (Circuit) is row 4, column 1. Four DOWNs keep the column, one RIGHT lands on it.
+key down
+key down
+key down
+key down
+key right
+assert_menu_focus Circuit
+
+# Activate the card. launchApp(13) is unimplemented in the emulator, so the
+# launcher must stay active — this assert is the machine check that app 13 is a
+# dead card on THIS build. (If it ever FAILS, routing was added: then rebuild
+# the walk above, add `open_app circuit` + `assert_app Circuit`, and capture.)
+key enter
+wait 60
+assert_app Menu
+assert_theme numos
+
+log "circuit: card id 13 focused and activated; emulator kept the launcher"
+log "circuit: 0 of 3 shots captured — CircuitCoreApp is not in the emulator build"

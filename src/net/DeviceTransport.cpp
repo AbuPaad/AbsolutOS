@@ -37,6 +37,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 
 #include "ai/AiClient.h"
@@ -53,7 +54,23 @@ constexpr uint32_t    kTaskStackBytes = 8192;
 constexpr UBaseType_t kTaskPriority   = 1;             ///< at/below the loop task
 constexpr BaseType_t  kTaskCore       = 1;             ///< Wi-Fi is pinned to core 0
 constexpr size_t      kTailBytes      = 240;           ///< bounded error-body tail
-constexpr size_t      kMinInternalRam = 40u * 1024u;   ///< TLS needs internal SRAM
+
+// The TLS memory floor is NOT checked here. There is exactly one gate, in
+// net/HttpStream.cpp, and it runs while the single TLS session slot is held
+// (net/TlsSession.h). A second, lower "pre-check" used to live here (20 KB free
+// / 12 KB largest) under a comment claiming it had *lowered* the floor — but it
+// then called _stream.open(), which enforced the higher 40 KB/16 KB anyway, so
+// it was dead code that only made the real threshold harder to find. The
+// thresholds, the reason mbedTLS needs them, and the serialisation all live in
+// net/TlsSession.h now.
+
+/// Verbose on purpose. The device's own screen is far too small to read a
+/// failure this deep, and an unnamed connect error has already cost days here —
+/// so every named failure also goes to the serial console. The Authorization
+/// header is never logged; the URL never carries a key for any endpoint used here.
+void logFail(const char* where, const std::string& why) {
+    Serial.printf("[NET] %s: %s\n", where, why.c_str());
+}
 
 class DeviceTransport final : public ai::AiTransport {
 public:
@@ -64,12 +81,17 @@ public:
 
         // Every prerequisite failure is NAMED. An unsynced clock otherwise shows
         // up as an opaque mbedTLS "certificate expired" at handshake time.
-        if (!Wifi::state().connected) { _err = "Wi-Fi not connected"; return false; }
-        if (!timeSynced()) {
-            _err = "clock not set (no NTP) - TLS cannot validate certificates";
+        if (!Wifi::state().connected) {
+            _err = "Wi-Fi not connected";
+            logFail("ai open", _err);
             return false;
         }
-        if (cfg.apiKey.empty()) { _err = "no API key"; return false; }
+        if (!timeSynced()) {
+            _err = "clock not set (no NTP) - TLS cannot validate certificates";
+            logFail("ai open", _err);
+            return false;
+        }
+        if (cfg.apiKey.empty()) { _err = "no API key"; logFail("ai open", _err); return false; }
 
         std::string url = cfg.baseUrl;
         while (!url.empty() && url.back() == '/') url.pop_back();
@@ -82,19 +104,40 @@ public:
         _req.userAgent = "NumOS/1.0";
         _req.timeoutMs = cfg.timeoutMs;
 
-        // Failing with "low memory" here beats an mbedTLS error code no user can
-        // act on.
-        if (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) < kMinInternalRam) {
-            _err = "low internal RAM for a TLS session";
-            return false;
-        }
+        // No memory pre-check here: _stream.open() is the single canonical TLS
+        // gate (net/TlsSession.h) and it runs while holding the one TLS session
+        // slot, so it sees the heap this request will actually get — which a
+        // check made here, before that slot is taken, could not.
 
         _ring = static_cast<char*>(heap_caps_malloc(kRingBytes, MALLOC_CAP_SPIRAM));
-        if (!_ring) { _err = "ring buffer allocation failed (PSRAM)"; return false; }
+        if (!_ring) {
+            _err = "ring buffer allocation failed (PSRAM)";
+            logFail("ai open", _err);
+            return false;
+        }
         _wr.store(0, std::memory_order_relaxed);
         _rd.store(0, std::memory_order_relaxed);
 
-        if (!_stream.open(_req)) { _err = _stream.error(); return false; }
+        // Modem sleep adds hundreds of ms of DTIM latency to a streamed
+        // response; keep it off for the duration of the request (restored in
+        // close()). This is the one place the AI path touches the radio policy.
+        Wifi::setPowerSave(true);
+
+        if (!_stream.open(_req)) {
+            // Attach the live heap figures: a TLS handshake that runs out of
+            // internal SRAM reports here as a bare connect failure.
+            const size_t freeIn    = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+            const size_t largestIn = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+            char why[192];
+            std::snprintf(why, sizeof(why), "%s (heap %uK free, %uK largest)",
+                          _stream.error().c_str(),
+                          static_cast<unsigned>(freeIn / 1024u),
+                          static_cast<unsigned>(largestIn / 1024u));
+            _err = why;
+            logFail("ai open", _err);
+            return false;
+        }
+        Serial.printf("[NET] ai open ok: http %u\n", (unsigned)_stream.status());
         _http = (uint32_t)_stream.status();
 
         _cancel.store(false);
@@ -110,6 +153,7 @@ public:
                                     kTaskCore) != pdPASS) {
             _task = nullptr;
             _err  = "worker task create failed";
+            logFail("ai open", _err);
             close();
             return false;
         }
@@ -170,6 +214,9 @@ public:
 
         _req.bearer.clear();     // the key's own copy goes with it
         _req.body = nullptr;
+
+        // Back to the power-saving default now that no socket is streaming.
+        Wifi::setPowerSave(false);
 
         _finished.store(true);
     }
@@ -263,14 +310,22 @@ private:
     }
 
     void diagnose() {
-        if (!_err.empty()) return;
-        if (_stall) { _err = "stream stalled (no bytes for 60 s)"; return; }
+        if (!_err.empty()) return;   // already named and logged where it failed
+
+        // One line that turns "the AI app does not work" into a number.
+        Serial.printf("[NET] ai done: http %u, %u bytes, connect %ums, headers %ums%s\n",
+                      (unsigned)_http, (unsigned)_bytes,
+                      (unsigned)_stream.connectMs(), (unsigned)_stream.headerMs(),
+                      _aborted ? ", aborted" : "");
+
+        if (_stall) { _err = "stream stalled (no bytes for 60 s)"; logFail("ai stream", _err); return; }
         if (_http >= 400) {
             _err = "HTTP " + std::to_string(_http);
             if (!_tail.empty()) _err += ": " + _tail;
+            logFail("ai http", _err);
             return;
         }
-        if (_aborted) { _err = "request aborted"; return; }
+        if (_aborted) { _err = "request aborted"; logFail("ai stream", _err); return; }
     }
 
     HttpStream          _stream;

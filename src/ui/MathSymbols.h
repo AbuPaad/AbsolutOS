@@ -56,21 +56,25 @@ struct SymbolMapEntry {
 
 // Token map for VPAM/MathRenderer text normalization.
 inline constexpr SymbolMapEntry kVpamSymbolMap[] = {
+    // GLYPH-AVAILABILITY AUDIT (2026-10-05, font = Casio Small MS/ES Sans).
+    // The display face has 292 subsetted glyphs. Any token whose glyph it does
+    // NOT carry was REMOVED here rather than left in: an alias that resolves to
+    // an absent codepoint draws NOTHING, and silent nothing is worse than the
+    // literal token, which at least stays visible and copyable. Removed:
+    // \subset \subseteq \mathbbR \mathbbC and the "+-" -> U+00B1 alias —
+    // that last one mattered most, because "+-" is the ASCII fallback the AI
+    // system prompt tells the model to write, and this table was turning it
+    // into a missing glyph.
     {"\\int", SYMB_INT},
     {"\\sum", SYMB_SUM},
     {"\\sqrt", SYMB_SQRT},
     {"\\infty", SYMB_INFINITY},
-    {"\\mathbbR", SYMB_REAL},
-    {"\\mathbbC", SYMB_COMPLEX},
     {"\\alpha", SYMB_ALPHA},
     {"\\beta", SYMB_BETA},
     {"\\gamma", SYMB_GAMMA},
-    {"\\subset", SYMB_SUBSET},
-    {"\\subseteq", SYMB_SUBSETEQ},
     {"<=", SYMB_LEQ},
     {">=", SYMB_GEQ},
     {"!=", SYMB_NEQ},
-    {"+-", SYMB_PLUS_MINUS}
 };
 
 } // namespace numos::mathsym

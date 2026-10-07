@@ -1,0 +1,144 @@
+# calculus.numos — Calculus app screenshots for paadweb/public/apps/index.html
+#
+# App: Calculus (APP 03, src/apps/CalculusApp.cpp), NumOS theme (no casio skin).
+# The website lists 3 shots:
+#   1. /assets/img/apps/calculus-1.webp  Derivative of sin(x)/x — original on top,
+#      quotient-rule result below with a real fraction bar.
+#   2. /assets/img/apps/calculus-2.webp  Indefinite integral of x^2*sin(x) — sum
+#      of terms with +C appended.
+#   3. /assets/img/apps/calculus-3.webp  Unevaluated integral (sin(sin(x))) —
+#      shown honestly as the unevaluated integral.
+#
+# Run (from repo root):
+#   ./"C:/.piobuild/numOS/emulator_pc/program" --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/calculus.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "calculus: waiting for launcher"
+wait 200
+assert_app Menu
+
+# Open Calculus (defaults to Derivative mode, NumOS theme)
+open_app Calculus
+wait 60
+assert_app Calculus
+assert_theme numos
+
+# SHOT 1 — Derivative of sin(x)/x (quotient rule)
+# Enter sin(x)/x, press ENTER, capture RESULT screen.
+log "calculus: shot 1 — entering sin(x)/x for derivative"
+
+# sin(x)
+key sin
+key x
+key right
+
+# / (fraction) — makes sin(x) the numerator, opens denominator
+key frac
+key x
+key right
+
+key enter
+wait 180
+
+# Assert the result state before capturing
+assert_app Calculus
+assert_theme numos
+assert_calculus_engine giac
+assert_calculus_operation differentiate
+assert_calculus_status ok
+assert_calculus_result_kind structured
+assert_calculus_result_exact diff(sin(x)/x, x)
+assert_calculus_tutor_status unavailable
+
+screenshot out/shots-calculus-1.ppm
+log "calculus: shot 1 captured (derivative of sin(x)/x)"
+
+# Return to input, clear it, switch to Integral mode
+key ac
+wait 30
+assert_app Calculus
+assert_theme numos
+
+key ac
+wait 20
+assert_app Calculus
+assert_theme numos
+
+key graph
+wait 20
+assert_app Calculus
+assert_theme numos
+
+# SHOT 2 — Indefinite integral of x^2*sin(x) (integration by parts)
+# Enter x^2*sin(x), press ENTER, capture RESULT screen.
+log "calculus: shot 2 — entering x^2*sin(x) for integral"
+
+# x^2
+key x
+key pow
+key 2
+key right
+
+# * sin(x)
+key mul
+key sin
+key x
+key right
+
+key enter
+wait 200
+
+# Assert the result state before capturing
+assert_app Calculus
+assert_theme numos
+assert_calculus_engine giac
+assert_calculus_operation integrate_indefinite
+assert_calculus_status ok
+assert_calculus_result_kind structured
+assert_calculus_result_exact 2*x*sin(x)+(-x^2+2)*cos(x)
+assert_calculus_tutor_status unavailable
+
+screenshot out/shots-calculus-2.ppm
+log "calculus: shot 2 captured (integral of x^2*sin(x))"
+
+# Return to input (already in Integral mode), clear it
+key ac
+wait 30
+assert_app Calculus
+assert_theme numos
+
+key ac
+wait 20
+assert_app Calculus
+assert_theme numos
+
+# SHOT 3 — Unevaluated integral of sin(sin(x))
+# Enter sin(sin(x)), press ENTER, capture RESULT screen.
+log "calculus: shot 3 — entering sin(sin(x)) for unevaluated integral"
+
+# sin(sin(x))
+key sin
+key sin
+key x
+key right
+key right
+
+key enter
+wait 200
+
+# Assert the result state before capturing
+assert_app Calculus
+assert_theme numos
+assert_calculus_engine giac
+assert_calculus_operation integrate_indefinite
+assert_calculus_status ok
+assert_calculus_result_kind structured
+assert_calculus_result_exact integrate(sin(sin(x)),x)
+assert_calculus_tutor_status unavailable
+
+screenshot out/shots-calculus-3.ppm
+log "calculus: shot 3 captured (unevaluated integral of sin(sin(x)))"
+
+log "calculus: all 3 shots captured"

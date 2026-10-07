@@ -491,7 +491,7 @@ void IntegralApp::handleKeyInput(const KeyEvent& ev) {
             break;
 
         // ── ENTER → integrate ──
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             computeIntegral();
             break;
 

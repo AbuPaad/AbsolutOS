@@ -1,0 +1,135 @@
+# probability.numos — real captures for the website's Probability plate
+# (/assets/img/apps/probability-1..3.webp).
+#
+# App: Probability (APP 05, src/apps/ProbabilityApp.cpp). LVGL-native,
+# pure <cmath> ProbEngine (no Giac/CAS, no LittleFS/Preferences, no
+# PSRAM, no sensors/WiFi — see probability_smoke.numos). It carries zero
+# casio code paths (hardcoded COL_ literals), so it renders the numos
+# look under either theme: every capture here is a numos capture and
+# assert_theme numos holds with no toggle.
+#
+# App state machine (ProbabilityApp.cpp):
+#   * load() resets to defaults mu=0, sigma=1, x=0 and focus=MU, then
+#     recompute() draws the N(0,1) bell curve (lv_chart, two series:
+#     the bell on top, the shade underneath) and prints PDF / P(X<x)
+#     at "%.6f" (full precision) in the result panel.
+#   * Navigation (not editing): UP/DOWN move the field focus
+#     (MU -> SIGMA -> X_VAL, no wrap); ENTER opens the editor on the
+#     focused field; LEFT/RIGHT quick-decrement/increment the focused
+#     parameter by 0.5 and recompute(); a bare DIGIT opens the editor
+#     and appends itself.
+#   * Editor: startEdit() pre-fills the buffer with the current value
+#     ("%.4g"), shown as ">value_". DIGITS/DOT append, SUB appends '-'
+#     (only on an empty buffer), DEL is backspace (a no-op when the
+#     buffer is empty), ENTER commits (finishEdit -> atof), AC cancels.
+#   * The shade series is set to the PDF value at every chart point
+#     with x <= xVal and 0 elsewhere, so the filled area under the
+#     curve is exactly the region up to the boundary x.
+#
+# The three shots:
+#   1. Standard normal N(0,1) with the boundary set at x=-1: the area
+#      up to the boundary (the left tail, P(X<x)=0.158655) is shaded,
+#      and PDF=0.241971 / P(X<x)=0.158655 print in full precision.
+#      Reached from the defaults by focusing x and quick-stepping it
+#      down twice (LEFT steps x by -0.5): 0 -> -0.5 -> -1.
+#   2. N(50,15) with the boundary at x=65 (mean + one spread): a wide
+#      real-world distribution. mu, sigma and x are typed through the
+#      editor (ENTER -> DEL the pre-fill -> digits -> ENTER).
+#   3. Edit mode open on the x field: the field shows the ">65_" edit
+#      cursor, the editing row is highlighted and the mu/sigma rows
+#      keep the dimmed (grey) style.
+#
+# Timing (deterministic, step-ms 16):
+#   * 200 frames -> splash (~frame 125) done, in the launcher.
+#   * 60 frames  -> Probability screen load + fade settles after open_app.
+#   * 120 frames -> recompute + bell-curve redraw settles after an edit.
+#
+# NOTE: the script parser reads a whole token per command, so no inline
+# '#' comments are allowed after key/wait/screenshot/assert — every
+# comment sits on its own line.
+#
+# Run (from repo root):
+#   ./"C:/.piobuild/numOS/emulator_pc/program" --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/probability.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "probability: waiting for launcher"
+wait 200
+assert_app Menu
+assert_theme numos
+
+# Open Probability directly (emulator launchApp id 5, same id as the
+# launcher's Probability card). load() builds the default N(0,1) screen.
+open_app Probability
+wait 60
+assert_app Probability
+assert_theme numos
+
+# ── SHOT 1: standard normal, shaded tail up to boundary x=-1 ──────
+# Defaults are mu=0, sigma=1 (the standard normal) and x=0. Move the
+# focus down to the x field and quick-decrement it twice (LEFT steps x
+# by -0.5): 0 -> -0.5 -> -1. recompute() then shades every chart point
+# with x <= -1 (the left tail) and prints PDF / P(X<x) at %.6f.
+key down
+key down
+key left
+key left
+wait 120
+assert_app Probability
+assert_theme numos
+screenshot out/shots-probability-1.ppm
+log "probability: shot 1 captured (N(0,1), shaded tail to x=-1)"
+
+# ── SHOT 2: N(50,15), boundary at x=65 ────────────────────────────
+# Walk the focus back up to mu, then type each parameter through the
+# editor. startEdit() pre-fills the buffer with the field's current
+# value ("%.4g"): "0" for mu, "1" for sigma, "-1" for x (x was set to
+# -1 in shot 1). DEL is backspace and a no-op on an empty buffer, so
+# the extra DEL per field is a harmless guard that guarantees the
+# pre-fill is fully cleared before the new digits are typed. ENTER
+# commits via finishEdit() -> atof() and recompute() redraws the curve.
+key up
+key up
+# mu = 50
+key enter
+key del
+key del
+key 5
+key 0
+key enter
+key down
+# sigma = 15
+key enter
+key del
+key del
+key 1
+key 5
+key enter
+key down
+# x = 65
+key enter
+key del
+key del
+key del
+key 6
+key 5
+key enter
+wait 120
+assert_app Probability
+assert_theme numos
+screenshot out/shots-probability-2.ppm
+log "probability: shot 2 captured (N(50,15), boundary x=65)"
+
+# ── SHOT 3: edit mode, cursor visible, other rows dimmed ──────────
+# Focus is on x (65) after shot 2. ENTER opens the editor on it: the
+# field shows the ">65_" edit cursor, the editing row takes the edit
+# highlight and the mu/sigma rows keep the dimmed grey style.
+key enter
+wait 20
+assert_app Probability
+assert_theme numos
+screenshot out/shots-probability-3.ppm
+log "probability: shot 3 captured (edit mode, cursor in field)"
+
+log "probability: done"

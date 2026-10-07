@@ -556,7 +556,7 @@ void GameBoyApp::handleKey(const KeyEvent& ev) {
                     refreshSelectionUi();
                 }
                 return;
-            case KeyCode::ENTER:
+            case KeyCode::EXE:
                 loadSelectedRom();
                 return;
             case KeyCode::AC:
@@ -571,7 +571,7 @@ void GameBoyApp::handleKey(const KeyEvent& ev) {
         // A refused/broken ROM must not trap the user: AC leaves, ENTER rescans.
         if (ev.action != KeyAction::PRESS) return;
         if (ev.code == KeyCode::AC)     _exitRequested = true;
-        if (ev.code == KeyCode::ENTER)  { _state = State::Picker; rescanRoms();
+        if (ev.code == KeyCode::EXE)  { _state = State::Picker; rescanRoms();
                                           buildPicker(); lv_screen_load(_screen); }
         return;
     }
@@ -590,7 +590,7 @@ void GameBoyApp::handleKey(const KeyEvent& ev) {
         case KeyCode::RIGHT: button = GbButton::Right;  break;
         case KeyCode::UP:    button = GbButton::Up;     break;
         case KeyCode::DOWN:  button = GbButton::Down;   break;
-        case KeyCode::ENTER: button = GbButton::A;      break;
+        case KeyCode::EXE: button = GbButton::A;      break;
         case KeyCode::DEL:   button = GbButton::B;      break;
         case KeyCode::SHIFT: button = GbButton::Start;  break;
         case KeyCode::ALPHA: button = GbButton::Select; break;

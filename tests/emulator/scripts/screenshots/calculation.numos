@@ -1,0 +1,175 @@
+# calculation.numos — real captures for the website's Calculation plate
+# (/assets/img/apps/calculation-1..6.webp).
+#
+# App: Calculation (APP 00, src/apps/CalculationApp.cpp), casio-migrated.
+# The site's demo boots the Casio ClassWiz skin, so these captures are taken
+# under the casio theme (alpha+AC hotkey on the launcher).
+#
+# The six shots:
+#   1. 1/3 + 1/6 evaluated -> exact stacked fraction 1/2 (symbolic result).
+#   2. The same result after the S->D key, cycled to the Extended (200-digit)
+#      decimal state.
+#   3. sqrt(8) -> the exact symbolic 2*sqrt(2) (radical simplification).
+#   4. (1/2) / (1 - 1/3) -> 3/4, a fraction whose numerator and denominator are
+#      both fractions (two levels of typeset stacking).
+#   5. 2^100 -> the exact 31-digit integer 1267650600228229401496703205376
+#      (exact big-integer arithmetic, not a float in scientific notation).
+#   6. The F2 step viewer for 2 + 3 x 4 (requires "Step-by-step mode", toggled
+#      at runtime in Settings; native emulator has no persistence, so the
+#      in-memory toggle never touches tests/emulator/fs).
+#
+# Every shot is gated on assert_calc_exact with the value the CAS actually
+# returns, so a frame can never ship for a state the engine did not produce.
+#
+# Run (from repo root — screenshots land relative to the process cwd):
+#   ./"C:/.piobuild/numOS/emulator_pc/program" --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/calculation.numos \
+#       --fs-root <a COPY of tests/emulator/fs> --frames 3000 --quiet
+# Exit codes: 0 ok · 2 parse error · 3 screenshot write error · 4 assertion failure.
+
+log "calculation: waiting for launcher"
+wait 200
+assert_app Menu
+
+# Casio theme (the demo's default look; Calculation is casio-migrated).
+keydown alpha
+key ac
+keyup alpha
+wait 20
+assert_theme casio
+assert_app Menu
+
+# Enable "Step-by-step mode" (Settings row 3 on native) for the F2 viewer.
+# Native ("emulator_pc") never compiles savePersistentState/loadPersistentState,
+# so this toggle is in-memory only and writes nothing under tests/emulator/fs.
+open_app Settings
+wait 60
+assert_app Settings
+key down
+key down
+key down
+key enter
+wait 20
+key back
+wait 60
+assert_app Menu
+
+# ───────────────────── SHOT 1: 1/3 + 1/6 -> stacked 1/2 ─────────────────────
+open_app Calculation
+wait 60
+assert_app Calculation
+assert_theme casio
+key 1
+key frac
+key 3
+key right
+key add
+key 1
+key frac
+key 6
+key right
+key enter
+wait 120
+assert_app Calculation
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_calc_exact 1/2
+assert_result 1/2
+screenshot out/shots-calculation-1.ppm
+log "calculation: shot 1 captured (1/3+1/6 = exact 1/2)"
+
+# ───────────────── SHOT 2: S->D cycled to Extended decimal ─────────────────
+# toggleSD() cycles Symbolic -> Periodic -> Extended; two presses reach the
+# 200-digit-capable extended decimal state.
+key sd
+wait 20
+key sd
+wait 60
+assert_app Calculation
+assert_calc_status ok
+assert_calc_exact 1/2
+screenshot out/shots-calculation-2.ppm
+log "calculation: shot 2 captured (S<=>D extended state)"
+
+# ─────────────────────── SHOT 3: sqrt(8) -> 2*sqrt(2) ───────────────────────
+key ac
+wait 20
+key sqrt
+key 8
+key right
+key enter
+wait 120
+assert_app Calculation
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_calc_exact 2*sqrt(2)
+screenshot out/shots-calculation-3.ppm
+log "calculation: shot 3 captured (sqrt(8) = exact 2*sqrt(2))"
+
+# ─────────────── SHOT 4: (1/2) / (1 - 1/3) -> 3/4, nested stack ────────────
+key ac
+wait 20
+key lparen
+key 1
+key frac
+key 2
+key right
+key rparen
+key frac
+key lparen
+key 1
+key sub
+key 1
+key frac
+key 3
+key right
+key rparen
+key enter
+wait 120
+assert_app Calculation
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_calc_exact 3/4
+screenshot out/shots-calculation-4.ppm
+log "calculation: shot 4 captured ((1/2)/(1-1/3) = exact 3/4)"
+
+# ────────────── SHOT 5: 2^100 -> the exact 31-digit integer ────────────────
+key ac
+wait 20
+key 2
+key pow
+key 1
+key 0
+key 0
+key right
+key enter
+wait 120
+assert_app Calculation
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_calc_exact 1267650600228229401496703205376
+screenshot out/shots-calculation-5.ppm
+log "calculation: shot 5 captured (2^100 = exact big integer)"
+
+# ───────────────── SHOT 6: F2 step viewer for 2 + 3 x 4 ────────────────────
+key ac
+wait 20
+key 2
+key add
+key 3
+key mul
+key 4
+key enter
+wait 120
+assert_app Calculation
+assert_calc_status ok
+assert_calc_result_kind structured
+assert_calc_exact 14
+assert_result 14
+key f2
+wait 120
+assert_app Calculation
+screenshot out/shots-calculation-6.ppm
+log "calculation: shot 6 captured (F2 step viewer)"
+
+log "calculation: done"

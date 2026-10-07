@@ -1,0 +1,124 @@
+# fluid2d.numos — Fluid 2D (APP 14) screenshot script for the marketing site.
+#
+# Website deliverables (source of truth: paadweb/public/apps/index.html,
+# transcribed in DELIVERABLES.md and tests/emulator/scripts/screenshots/README.md):
+#   1. /assets/img/apps/fluid-1.webp  ->  out/shots-fluid2d-1.ppm
+#      SHOW: wind tunnel preset, VELOCITY palette, flow entering from the
+#      left and wrapping around the obstacle in a coloured wake.
+#      CAPTION: Flow around an obstacle, coloured by speed and direction.
+#   2. /assets/img/apps/fluid-2.webp  ->  out/shots-fluid2d-2.ppm
+#      SHOW: convection preset, THERMAL palette, plumes rising from the
+#      heated floor, curling over and sinking down the sides.
+#      CAPTION: Heat driven convection, with nobody touching the controls.
+#   3. /assets/img/apps/fluid-3.webp  ->  out/shots-fluid2d-3.ppm
+#      SHOW: two dyes in one velocity field — red from the left, blue from
+#      the right — meeting in the middle and mixing into a band of purple.
+#      CAPTION: Two dyes, one flow, mixing where they collide.
+#
+# ── BLOCKER: Fluid 2D cannot run in the PC emulator ──────────────────
+# Proven three independent ways:
+#   1. ROUTING. The emulator runs its own dispatch in src/hal/NativeHal.cpp
+#      (not src/SystemApp.cpp). Its launchApp() has cases 0-7, 10, 18
+#      (opt-in), 20, 21, 22, 23 and APPID_MATH_SHOWCASE — but NO case 14.
+#      ENTER on the Fluid 2D card prints "[APP] App 14 no implementada en
+#      simulador" and the context stays MENU (verified by running this
+#      script: the post-launch assert_app Menu below PASSES).
+#   2. IDENTITY. The emulator's AppMode enum (NativeHal.cpp:272) and the
+#      shared numos::Ctx enum (src/ui/AppContext.h — the public @ctx
+#      contract, "append only") have no fluid entry. canonicalAppName() /
+#      scriptAppNameToId() do not know "fluid2d", so `open_app fluid2d`
+#      and `assert_app Fluid2D` are parse errors (exit 2). Only
+#      assert_menu_focus resolves the card (it reads the real APPS[] table).
+#   3. BINARY. The prebuilt emulator (C:/.piobuild/numOS/emulator_pc/program,
+#      newer than every source file) contains zero Fluid2DApp symbols
+#      (nm) and none of Fluid2DApp.cpp's distinctive strings ("Re:%.0f",
+#      "F2D0"): Fluid2DApp.cpp is firmware-only (ESP32 target) and is not
+#      compiled into the PC build. The app's state machines can never run
+#      here, so no honest fluid frame can exist.
+#
+# Because of that, this script deliberately contains NO screenshot lines:
+# a frame of the launcher written to out/shots-fluid2d-N.ppm would be a
+# picture of the wrong screen shipped to the website. All three shots are
+# reported as COULD NOT CAPTURE.
+#
+# ── Per-shot state machines (traced from Fluid2DApp::handleKey, ──────
+#    src/apps/Fluid2DApp.cpp:277 — ready to enable if the emulator ever
+#    gains a launchApp case 14 with Fluid2DApp in the PC build) ────────
+#    SHOT 1: key f5        # FlowPreset NONE -> WIND_TUNNEL (fields reset;
+#                          # obstacle block at x 19..23, y 21..27 via
+#                          # setupWindTunnel(); every 30 Hz tick
+#                          # applyFlowPresetForces() adds vx=+80 and
+#                          # dens+=10 at column 1: flow from the left)
+#            key f2        # Palette CLASSIC -> THERMAL
+#            key f2        # Palette THERMAL -> VELOCITY (velocityToColor:
+#                          # hue = flow direction, value = speed)
+#            wait 300      # sim ticks at ~30 Hz (33 ms lv_timer); the
+#                          # wake behind the obstacle needs time to form
+#    SHOT 2: key f5        # WIND_TUNNEL -> CONVECTION_CELL (fields reset,
+#                          # no obstacles; floor heating: temp+=200 at
+#                          # bottom centre, temp-=50 at top, dens+=20;
+#                          # applyBuoyancy() drives the plumes upward)
+#            key f2 x3     # VELOCITY -> MIXED -> CLASSIC -> THERMAL
+#                          # (inferno LUT for the temperature field)
+#            wait 600      # plumes need time to rise, curl over and sink
+#    SHOT 3: key f5        # CONVECTION_CELL -> NONE (fields reset)
+#            key f2 x2     # THERMAL -> VELOCITY -> MIXED (mixedColor():
+#                          # densA -> red, densB -> blue, overlap -> purple)
+#            key left x22  # cursor from centre (32,24) to (10,24)
+#            key exe x3    # RED_INK brush: radial high-pressure burst —
+#                          # red dye + momentum, expands rightward
+#            key right x44 # cursor to (54,24)
+#            key f1        # brush RED_INK -> BLUE_INK
+#            key exe x3    # blue burst from the right, expands leftward;
+#                          # the two fronts collide and mix mid-field
+#            wait 200
+#
+# Run (repo root):
+#   ./"C:/.piobuild/numOS/emulator_pc/program" --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/fluid2d.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "fluid2d: waiting for launcher"
+wait 200
+assert_app Menu
+assert_theme numos
+
+# Navigate the numos 3-column launcher grid to the Fluid 2D card.
+# Grid layout (menu_nav_parity.numos): row 4 = Bridge(12), Circuit(13),
+# Fluid 2D(14). Focus starts on Calculation (row 0, col 0):
+# DOWN x4 -> row 4 col 0 (Bridge), RIGHT x2 -> row 4 col 2 (Fluid 2D).
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+key right
+wait 10
+key right
+wait 10
+
+# Strongest true claim the emulator can make about this app: the Fluid 2D
+# launcher card exists at id 14 and is focused. (assert_app Fluid2D is not
+# even parseable — canonicalAppName() has no "fluid2d" entry.)
+assert_menu_focus fluid2d
+
+# Attempt the launch the way a user would: ENTER on the focused card.
+key enter
+wait 150
+
+# launchApp(14) is unimplemented in the emulator, so the context is still
+# MENU: Fluid2DApp never became active, no solver tick ever ran, and none
+# of the fluid state above (presets, palettes, dyes) can exist. Asserting
+# Menu here is the proof that the capture is impossible, not an oversight.
+assert_app Menu
+assert_theme numos
+
+# No screenshot lines on purpose — see BLOCKER above. The three website
+# shots are COULD NOT CAPTURE: the app is not wired into the PC emulator.
+
+log "fluid2d: done — Fluid 2D (app 14) is not launchable in the PC emulator (launchApp has no case 14); no honest capture exists"

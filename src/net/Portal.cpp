@@ -58,7 +58,9 @@
 #include <string>
 #include <vector>
 
-#include "ai/AiClient.h"
+#include "ai/AiClient.h"        // AiConfig (wa_appid)
+#include "ai/WolframClient.h"   // buildWolframUrl, classifyWolfram, parseWolframBody
+#include "net/HttpStream.h"   // the AppID test: one real GET, same seam as the app
 #include "net/Wifi.h"
 
 namespace net {
@@ -66,7 +68,7 @@ namespace {
 
 // ── tuning ──────────────────────────────────────────────────────────────────
 constexpr uint16_t kPort          = 80;
-constexpr size_t   kTaskStack     = 8192;
+constexpr size_t   kTaskStack     = 10240;
 constexpr UBaseType_t kTaskPrio   = 1;
 constexpr BaseType_t  kTaskCore   = 0;      ///< the Wi-Fi stack's core
 constexpr size_t   kMaxTextBytes  = 192u * 1024u;   ///< one file, in the editor
@@ -74,13 +76,25 @@ constexpr size_t   kMaxUploadBytes = 8u * 1024u * 1024u;
 constexpr size_t   kMaxPathChars  = 128;
 constexpr uint32_t kQuitWaitMs    = 3000;
 
+// Pre-scan / auto-join, run BEFORE the AP is raised. Both are bounded so a
+// portal press never feels like a hang: the Wi-Fi screen shows the activity and
+// the user can cancel by pressing the toggle again.
+constexpr uint32_t kPreScanMs   = 4000;   ///< cap on "which saved nets are here?"
+constexpr uint32_t kJoinMs      = 10000;  ///< budget per saved network before the next
+constexpr int      kMinJoinRssi = -85;    ///< ignore sightings weaker than this
+
 // The AP + web server need internal (DMA-capable) DRAM, but the Wi-Fi driver
 // allocates it in several smaller blocks, so the meaningful guard is TOTAL free
-// internal heap — not the single largest contiguous free block. The 40 KB
-// largest-block value copied from DeviceTransport (where mbedTLS genuinely needs
-// one big contiguous internal buffer) was far too strict here and refused the
-// portal outright on a board whose Wi-Fi path was fine.
-constexpr size_t   kMinInternalFree = 24u * 1024u;
+// internal heap — not the single largest contiguous free block.
+//
+// The floor is deliberately LOW. An ASSOCIATED STA already holds its lwIP/TLS
+// buffers, so a unit that has joined a network has materially less internal DRAM
+// free than a blank one — and a 24 KB floor REFUSED the portal in exactly that
+// state ("it will not open once you are on a network"). softAP() reports a real
+// failure, so this is only a courtesy guard against starting on a hopeless heap;
+// it must not be the thing that blocks a board whose Wi-Fi path is otherwise
+// fine.
+constexpr size_t   kMinInternalFree = 10u * 1024u;
 
 // ── state ───────────────────────────────────────────────────────────────────
 WebServer  g_server(kPort);
@@ -95,8 +109,20 @@ bool       g_running     = false;
 char       g_apSsid[33]  = {0};
 char       g_apPass[17]  = {0};
 std::string g_lastError;
+
+// ── pre-scan / auto-join state (main loop task only) ────────────────────────
+PortalPhase g_phase       = PortalPhase::Off;
+uint32_t    g_phaseStartMs = 0;
+std::string g_activity;        ///< "scanning", "joining <ssid>"
+int         g_scanned      = 0;///< SSIDs the pre-scan saw
+
+/// Saved networks that the pre-scan actually saw, strongest first.
+struct JoinCandidate { std::string ssid; std::string pass; int rssi; };
+std::vector<JoinCandidate> g_candidates;
+size_t      g_candidateIndex = 0;
 std::string g_uploadPath;      ///< target of the in-flight multipart upload
 std::string g_uploadError;     ///< named reason a multipart upload failed
+File        g_uploadFile;      ///< kept OPEN for the whole upload (see handleUploadWrite)
 size_t     g_uploadBytes = 0;
 
 // ── small helpers ───────────────────────────────────────────────────────────
@@ -301,42 +327,73 @@ void sendError(int code, const std::string& msg) {
 // paragraphs, lists, bold/italic, inline + fenced code, quotes, and a line of
 // exactly "---" which this project uses as an explicit page break.
 
-const char kPage[] PROGMEM = R"PAGE(<!doctype html><html lang="en"><head>
+const char kPage[] PROGMEM = R"PAGE(<!doctype html><html lang="en" data-theme="dark"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>NumOS</title><style>
-*{box-sizing:border-box}body{margin:0;background:#111417;color:#e7ecef;
-font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-header{position:sticky;top:0;background:#181d21;border-bottom:1px solid #2b3238;padding:8px 10px}
+:root{--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+--bg:#0f1110;--bg-alt:#161917;--card:#1c201d;--text:#e3e8e1;--muted:#949e91;
+--brass:#d8b15d;--brass-bg:#292213;--brass-bd:#4a3b1c;--border:#262d27;--border-l:#353d36;
+--green:#42b857;--err:#c0392b}
+[data-theme=light]{--bg:#c7d3c0;--bg-alt:#b9c7b2;--card:#d1dccb;--text:#121413;--muted:#3b423a;
+--brass:#96742a;--brass-bg:#f3e8d2;--brass-bd:#d1b679;--border:#121413;--border-l:#3b423a;
+--green:#1b6e2d;--err:#8f2718}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:15px;line-height:1.55;
+-webkit-text-size-adjust:100%}
+a{color:inherit}
+header{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--border)}
 .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-h1{font-size:16px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-button,a.btn{background:#232a30;color:#e7ecef;border:1px solid #39424a;border-radius:6px;
-padding:7px 10px;font:inherit;cursor:pointer;text-decoration:none}
-button.p{background:#1e6f5c;border-color:#2b9b80}button.d{background:#6f2a2a;border-color:#a04040}
-main{padding:10px;max-width:980px;margin:0 auto}
-nav{margin-top:8px;display:flex;gap:8px}
-.row{display:flex;gap:8px;align-items:center;padding:9px 8px;border-bottom:1px solid #232a30}
-.row .n{flex:1;word-break:break-all}.row .s{color:#8b979f;font-size:12px;white-space:nowrap}
-.dir{color:#79c0ff}.md{color:#e7ecef}input,textarea,select{width:100%;background:#181d21;color:#e7ecef;
-border:1px solid #39424a;border-radius:6px;padding:9px;font:inherit}
-label{display:block;margin:12px 0 4px;color:#9fb0ba;font-size:13px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-#prev{background:#181d21;border:1px solid #2b3238;border-radius:6px;padding:10px;overflow:auto;
-max-height:70vh}
-#prev h1,#prev h2,#prev h3{margin:.6em 0 .3em}#prev pre,#prev code{background:#0d1114;border-radius:4px}
-#prev pre{padding:8px;overflow:auto}#prev code{padding:1px 4px}#prev blockquote{margin:.5em 0;
-padding-left:10px;border-left:3px solid #39424a;color:#b9c6cd}
-#prev hr{border:0;border-top:2px dashed #58636b;margin:1.2em 0}
-.pagebreak{color:#8b979f;font-size:12px;margin:.8em 0;text-align:center}
-.msg{margin:8px 0;padding:8px;border-radius:6px;background:#232a30}.err{background:#4a1f1f}
-.hint{color:#8b979f;font-size:12px;margin-top:6px}
+header .bar{max-width:980px;margin:0 auto;padding:11px 16px}
+header nav.bar{padding-top:0}
+.brand{display:flex;align-items:center;gap:9px;flex:1;min-width:0}
+.wordmark{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px;font-weight:700;
+letter-spacing:.02em}
+.tag{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--brass);
+background:var(--brass-bg);border:1px solid var(--brass-bd);padding:2px 6px;flex:none}
+a.tab{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+text-decoration:none;padding:7px 10px;border:1px solid transparent;cursor:pointer}
+a.tab:hover{color:var(--text);border-color:var(--border-l)}
+#net{font-size:11px;color:var(--muted);margin-left:auto}
+main{padding:16px;max-width:980px;margin:0 auto}
+button,a.btn{font:inherit;font-size:12px;background:var(--bg-alt);color:var(--text);
+border:1px solid var(--border-l);padding:7px 11px;cursor:pointer;text-decoration:none;white-space:nowrap}
+button:hover,a.btn:hover{border-color:var(--brass)}
+button.p{border-color:var(--brass);color:var(--brass);background:var(--brass-bg)}
+button.d:hover{border-color:var(--err);color:var(--err)}
+.row{display:flex;gap:10px;align-items:center;padding:9px 2px;border-bottom:1px solid var(--border)}
+.row .n{flex:1;word-break:break-all;cursor:pointer}
+.row .s{color:var(--muted);font-size:12px;white-space:nowrap}
+.n.dir{color:var(--brass)}
+input,textarea,select{width:100%;background:var(--bg-alt);color:var(--text);
+border:1px solid var(--border-l);padding:9px;font:inherit;font-size:16px}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brass)}
+label{display:block;margin:16px 0 5px;color:var(--muted);font-size:11px;letter-spacing:.14em;
+text-transform:uppercase}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+#prev{background:var(--card);border:1px solid var(--border);padding:14px;overflow:auto;max-height:70vh}
+#prev h1,#prev h2,#prev h3{margin:.6em 0 .3em;line-height:1.25}
+#prev pre,#prev code{background:var(--bg-alt);font-family:var(--mono)}
+#prev pre{padding:10px;overflow:auto;border:1px solid var(--border)}
+#prev code{padding:1px 4px}
+#prev blockquote{margin:.6em 0;padding-left:12px;border-left:2px solid var(--brass);color:var(--muted)}
+#prev hr{border:0;border-top:1px dashed var(--border-l);margin:1.2em 0}
+.pagebreak{color:var(--muted);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+margin:1em 0;text-align:center}
+#toast:empty{display:none}
+#toast .msg{margin:0}
+.msg{margin:10px 0;padding:10px;border:1px solid var(--border-l);background:var(--card)}
+.msg.err{border-color:var(--err);color:var(--err)}
+.hint{color:var(--muted);font-size:12px;margin-top:6px}
 @media(max-width:760px){.grid{grid-template-columns:1fr}}
 </style></head><body>
 <header>
-  <div class="bar"><h1 id="title">NumOS portal</h1>
-    <button onclick="goBack()">&#8592; Back</button></div>
-  <nav class="bar"><a class="btn" href="#/">Files</a><a class="btn" href="#/config">Config</a>
-    <a class="btn" href="#/help">Help</a><span id="net" class="hint"></span></nav>
-  <div id="toast"></div>
+  <div class="bar"><div class="brand"><b class="wordmark" id="title">NumOS</b>
+    <span class="tag">portal</span></div>
+    <button onclick="goBack()">Back</button>
+    <button onclick="flipTheme()">Contrast</button></div>
+  <nav class="bar"><a class="tab" href="#/">Files</a><a class="tab" href="#/config">Config</a>
+    <a class="tab" href="#/help">Help</a><span id="net"></span></nav>
+  <div id="toast" class="bar"></div>
 </header>
 <main id="app">loading…</main>
 <script>
@@ -449,9 +506,15 @@ function viewConfig(){
     '<div class="hint">Stored in NVS on the device, never written to a file and never shown again.</div>'+
     '<label>Model</label><input id="model" value="'+esc(j.model)+'">'+
     '<label>Base URL</label><input id="base_url" value="'+esc(j.base_url)+'">'+
-    '<label>Transport</label><select id="transport">'+
-      ['device','emulator','replay'].map(function(t){return '<option'+(t==j.transport?' selected':'')+'>'+t+'</option>'}).join('')+
-    '</select><div class="hint">device = Wi-Fi + TLS (the real path). replay = offline fixture.</div>'+
+    '<hr><label>Wolfram|Alpha AppID ('+(j.wa_appid_set?'currently set - from '+esc(j.wa_appid_source):'not set - no check offered')+')</label>'+
+    '<input id="wa" type="password" autocomplete="off" placeholder="'+
+      (j.wa_appid_set?'leave blank to keep':'paste your Wolfram|Alpha AppID')+'">'+
+    '<div class="hint">Your own AppID, stored in NVS exactly like the API key: never written '+
+    'to a file, never shown again. Get one at developer.wolframalpha.com - the free tier is '+
+    'non-commercial and capped per month, and it is YOUR allowance because the device calls '+
+    'Wolfram|Alpha directly. Leave this empty and the calculator never offers a check.</div>'+
+    '<div class="bar" style="margin-top:10px"><button onclick="testWa()">Test AppID</button>'+
+    (j.wa_appid_set?'<button class="d" onclick="clearWa()">Forget AppID</button>':'')+'</div>'+
     '<div class="bar" style="margin-top:14px"><button class="p" onclick="saveCfg()">Save settings</button>'+
     '<button onclick="clearKey()">Forget key</button></div>'+
     '<hr><label>Wi-Fi</label>'+
@@ -482,10 +545,22 @@ function forgetOne(ssid){if(!confirm('forget '+ssid+'?'))return;
   api('/api/wifi-forget',{method:'POST',body:JSON.stringify({ssid:ssid})})
     .then(function(){toast('forgotten');loadSaved()}).catch(function(e){toast(e.message,1)})}
 function saveCfg(){
-  var b={model:$('model').value,base_url:$('base_url').value,transport:$('transport').value};
+  var b={model:$('model').value,base_url:$('base_url').value};
   if($('key').value)b.api_key=$('key').value;
+  if($('wa').value)b.wa_appid=$('wa').value;
   api('/api/config',{method:'POST',body:JSON.stringify(b)})
-    .then(function(){toast('settings saved');$('key').value=''}).catch(function(e){toast(e.message,1)})}
+    .then(function(){toast('settings saved');$('key').value='';$('wa').value=''})
+    .catch(function(e){toast(e.message,1)})}
+function testWa(){
+  var a=$('wa').value;
+  if(!a){toast('type the AppID first',1);return}
+  toast('asking Wolfram|Alpha…');
+  api('/api/wa-test',{method:'POST',body:JSON.stringify({appid:a})})
+    .then(function(j){toast('AppID works - '+j.interpretation)})
+    .catch(function(e){toast(e.message,1)})}
+function clearWa(){if(!confirm('remove the stored Wolfram|Alpha AppID?'))return;
+  api('/api/config',{method:'POST',body:JSON.stringify({clear_wa:true})})
+    .then(function(){toast('AppID removed');viewConfig()}).catch(function(e){toast(e.message,1)})}
 function clearKey(){if(!confirm('remove the stored API key?'))return;
   api('/api/config',{method:'POST',body:JSON.stringify({clear_key:true})})
     .then(function(){toast('key removed');viewConfig()}).catch(function(e){toast(e.message,1)})}
@@ -528,6 +603,12 @@ function render(){
   if(v=='#/help')return viewHelp();
   return viewFiles({});
 }
+function flipTheme(){var d=document.documentElement;
+  var t=d.getAttribute('data-theme')==='light'?'dark':'light';
+  d.setAttribute('data-theme',t);
+  try{localStorage.setItem('numos-theme',t)}catch(e){}}
+try{var _nt=localStorage.getItem('numos-theme');
+  if(_nt)document.documentElement.setAttribute('data-theme',_nt)}catch(e){}
 window.addEventListener('hashchange',render);render();
 </script></body></html>)PAGE";
 
@@ -686,20 +767,16 @@ void handleRename() {
 
 // ── config handlers ─────────────────────────────────────────────────────────
 
-/** Host, model, transport: /ai/config.json. The key never travels this path. */
-void writeAiConfig(const std::string& baseUrl, const std::string& model,
-                   const std::string& transport) {
+/** Host + model: /ai/config.json. The key never travels this path, and the
+ *  transport is not a setting any more — the board is wifi-only. */
+void writeAiConfig(const std::string& baseUrl, const std::string& model) {
     const char* kPath = "/ai/config.json";
     if (!LittleFS.exists("/ai")) LittleFS.mkdir("/ai");
     if (!LittleFS.exists(kPath)) {
-        // First run: write the bring-up shape, including transport="device".
-        // Without this the compiled default ("replay") answers from a fixture
-        // and the network is never touched — a silent, confusing failure.
         writeTextAtomic(kPath,
                         "{\n"
                         "  \"base_url\": \"https://openrouter.ai/api/v1\",\n"
                         "  \"model\": \"google/gemini-2.5-flash-lite\",\n"
-                        "  \"transport\": \"device\",\n"
                         "  \"prompts_dir\": \"/ai/prompts\",\n"
                         "  \"results_dir\": \"/ai/results\",\n"
                         "  \"retention_max_files\": 200,\n"
@@ -708,7 +785,6 @@ void writeAiConfig(const std::string& baseUrl, const std::string& model,
     }
     if (!baseUrl.empty())  upsertJsonString(kPath, "base_url", baseUrl);
     if (!model.empty())    upsertJsonString(kPath, "model", model);
-    if (!transport.empty()) upsertJsonString(kPath, "transport", transport);
 }
 
 void handleConfigGet() {
@@ -718,8 +794,10 @@ void handleConfigGet() {
 
     std::string body = "{\"ok\":true,\"model\":\"" + jsonEscape(cfg.model) +
                        "\",\"base_url\":\"" + jsonEscape(cfg.baseUrl) +
-                       "\",\"transport\":\"" + jsonEscape(cfg.transport) +
                        "\",\"key_set\":" + (cfg.apiKey.empty() ? "false" : "true") +
+                       // The AppID's PRESENCE and where it came from; never the value.
+                       ",\"wa_appid_set\":" + (cfg.waAppId.empty() ? "false" : "true") +
+                       ",\"wa_appid_source\":\"" + jsonEscape(cfg.waKeySource()) +
                        ",\"wifi_ssid\":\"" + jsonEscape(ssid) +
                        "\",\"wifi_set\":" + (wifiSet ? "true" : "false") + "}";
     sendJson(200, body);
@@ -752,16 +830,42 @@ void handleConfigPost() {
         }
     }
 
-    std::string baseUrl, model, transport;
+    // ── the Wolfram|Alpha AppID: NVS only, exactly like the API key ─────────
+    // BYO is the whole point: a shipped AppID would put one non-commercial
+    // allowance behind the entire fleet (voiding it), and a compiled string is
+    // recoverable from a flash dump. Same namespace and key name AiConfig::load()
+    // reads, so the app picks it up with no extra plumbing.
+    bool waChanged = false;
+    if (body.find("\"clear_wa\":true") != std::string::npos) {
+        Preferences p;
+        if (p.begin("numos-ai", false)) { p.remove("wa_appid"); p.end(); }
+        waChanged = true;
+        Serial.println("[PORTAL] Wolfram AppID cleared from NVS");
+    } else if (jsonFindString(body, "wa_appid", v) && !v.empty()) {
+        Preferences p;
+        if (p.begin("numos-ai", false)) {
+            p.putString("wa_appid", v.c_str());
+            p.end();
+            waChanged = true;
+            // Never the value, only that one was stored and how long it is.
+            Serial.printf("[PORTAL] Wolfram AppID stored in NVS (%u chars)\n",
+                          static_cast<unsigned>(v.size()));
+        } else {
+            sendError(500, "NVS open failed");
+            return;
+        }
+    }
+
+    std::string baseUrl, model;
     jsonFindString(body, "base_url", baseUrl);
     jsonFindString(body, "model", model);
-    jsonFindString(body, "transport", transport);
     {
         FsLock lock;
-        writeAiConfig(baseUrl, model, transport);
+        writeAiConfig(baseUrl, model);
     }
     sendJson(200, std::string("{\"ok\":true,\"key_set\":") +
-                      (keyChanged ? "true" : "false") + "}");
+                      (keyChanged ? "true" : "false") +
+                      ",\"wa_set\":" + (waChanged ? "true" : "false") + "}");
 }
 
 void handleWifiTest() {
@@ -778,6 +882,77 @@ void handleWifiTest() {
     const net::WifiState w = net::Wifi::state();
     sendJson(200, std::string("{\"ok\":true,\"ssid\":\"") + jsonEscape(w.ssid) +
                       "\",\"ip\":\"" + jsonEscape(w.ip) + "\"}");
+}
+
+/**
+ * Test an AppID BEFORE it is saved: one real GET to the LLM API with `input=1+1`.
+ *
+ * Built with ai::buildWolframUrl() rather than a hand-written URL, so what the
+ * user validates here is the exact request shape the app will send — the same
+ * host, path, `maxchars` and parameter order. The AppID rides in the
+ * Authorization header only, is never logged, never echoed, and never stored by
+ * this handler: a test is a test.
+ *
+ * A wrong AppID is the one failure this screen exists to catch, and the vendor's
+ * published table gets it wrong (it claims 403; the wire answers 400 for a
+ * missing AppID and 401 for a bad one), so the verdict comes from
+ * classifyWolfram() reading the body.
+ */
+void handleWaTest() {
+    const std::string body = g_server.arg("plain").c_str();
+    std::string appid;
+    if (!jsonFindString(body, "appid", appid) || appid.empty()) {
+        sendError(400, "appid required");
+        return;
+    }
+
+    ai::AiConfig cfg = ai::AiConfig::load("/ai/config.json");
+    cfg.waAppId    = appid;
+    cfg.waMaxChars = 64;                      // a test does not need a long answer
+
+    net::HttpReq req{};
+    req.url             = ai::buildWolframUrl(cfg, "1+1");
+    req.method          = "GET";
+    req.body            = nullptr;
+    req.contentType.clear();
+    req.accept          = "text/plain";
+    req.bearer          = appid;              // the only copy of it in here
+    req.userAgent       = "NumOS/1.0";
+    req.timeoutMs       = cfg.waTimeoutMs;
+    req.headerBufSize   = 2048;
+    req.followRedirects = false;
+
+    net::HttpStream stream;
+    if (!stream.open(req)) {
+        sendError(400, "could not reach Wolfram|Alpha: " + stream.error());
+        return;
+    }
+
+    std::string raw;
+    char buf[512];
+    for (;;) {
+        const int n = stream.read(buf, sizeof(buf));
+        if (n <= 0) break;
+        if (raw.size() < 4096) raw.append(buf, static_cast<size_t>(n));
+    }
+    const int http = stream.status();
+    stream.close();
+
+    std::string detail;
+    const ai::WaStatus st = ai::classifyWolfram(http, raw, &detail);
+    if (st != ai::WaStatus::Ok) {
+        std::string msg = ai::waStatusText(st);
+        if (http) msg += " (HTTP " + std::to_string(http) + ")";
+        if (!detail.empty()) msg += ": " + detail;
+        sendError(400, msg);
+        return;
+    }
+
+    const ai::WolframResult r = ai::parseWolframBody(raw);
+    const std::string said = r.interpretation.empty() ? std::string("1+1 = 2")
+                                                      : r.interpretation;
+    Serial.println("[PORTAL] Wolfram AppID accepted");
+    sendJson(200, "{\"ok\":true,\"interpretation\":\"" + jsonEscape(said) + "\"}");
 }
 
 void handleWifiSave() {
@@ -880,28 +1055,30 @@ void handleUploadWrite() {
         g_uploadError.clear();
         g_uploadPath.clear();
         g_uploadBytes = 0;
+        if (g_uploadFile) g_uploadFile.close();
         if (name.empty()) { g_uploadError = "upload: no filename"; return; }
         if (!LittleFS.exists(dir.c_str())) ensureDir(dir);
         g_uploadPath = (dir == "/" ? std::string() : dir) + "/" + name;
-        File f = LittleFS.open((g_uploadPath + ".part").c_str(), "w");
-        if (!f) {
+        // Open ONCE and keep it open for the whole transfer. Reopening the file
+        // per multipart chunk (the previous shape) cost a LittleFS open/close —
+        // and a flash directory walk — for every 1-2 KB the browser sent, which
+        // is what made uploads crawl.
+        g_uploadFile = LittleFS.open((g_uploadPath + ".part").c_str(), "w");
+        if (!g_uploadFile) {
             g_uploadError = "upload: cannot create " + g_uploadPath;
             g_uploadPath.clear();
             return;
         }
-        f.close();
     } else if (up.status == UPLOAD_FILE_WRITE) {
-        if (g_uploadPath.empty() || !g_uploadError.empty()) return;
+        if (g_uploadPath.empty() || !g_uploadError.empty() || !g_uploadFile) return;
         if (g_uploadBytes + up.currentSize > kMaxUploadBytes) {
             g_uploadError = "upload: file too large";
             return;
         }
-        File f = LittleFS.open((g_uploadPath + ".part").c_str(), "a");
-        if (!f) { g_uploadError = "upload: append failed (flash full?)"; return; }
-        f.write(up.buf, up.currentSize);
-        f.close();
+        g_uploadFile.write(up.buf, up.currentSize);
         g_uploadBytes += up.currentSize;
     } else if (up.status == UPLOAD_FILE_END) {
+        if (g_uploadFile) g_uploadFile.close();
         if (g_uploadPath.empty() || !g_uploadError.empty()) return;
         const std::string part = g_uploadPath + ".part";
         LittleFS.remove(g_uploadPath.c_str());
@@ -913,6 +1090,7 @@ void handleUploadWrite() {
             g_uploadError = "upload: rename failed";
         }
     } else if (up.status == UPLOAD_FILE_ABORTED) {
+        if (g_uploadFile) g_uploadFile.close();
         if (!g_uploadPath.empty()) LittleFS.remove((g_uploadPath + ".part").c_str());
         g_uploadError = "upload aborted by the client";
     }
@@ -970,6 +1148,7 @@ void registerRoutes() {
     g_server.on("/api/rename", HTTP_POST, handleRename);
     g_server.on("/api/config", HTTP_GET, handleConfigGet);
     g_server.on("/api/config", HTTP_POST, handleConfigPost);
+    g_server.on("/api/wa-test", HTTP_POST, handleWaTest);
     g_server.on("/api/wifi-test", HTTP_POST, handleWifiTest);
     g_server.on("/api/wifi-save", HTTP_POST, handleWifiSave);
     g_server.on("/api/wifi-scan", HTTP_GET, handleWifiScan);
@@ -983,21 +1162,14 @@ void registerRoutes() {
     g_server.collectHeaders(kCollected, 1);
 }
 
-}  // namespace
-
-// ── public API ──────────────────────────────────────────────────────────────
-
-bool Portal::start() {
-    if (g_running) return true;
-    g_lastError.clear();
-
-    // Total free internal DRAM, plus the largest single block for the message —
-    // the Wi-Fi driver needs several smaller internal allocations, so the total
-    // is what decides, not one contiguous run.
-    const size_t internalFree =
-        heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-    const size_t internalLargest =
-        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+/**
+ * Raise the AP + captive server + DNS (the pre-existing Portal::start() body).
+ * Split out so the pre-scan path can call it LATER, from tick(), once it has
+ * failed to find a reachable saved network. Sets g_phase on both outcomes.
+ */
+bool raiseAp() {
+    const size_t internalFree    = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    const size_t internalLargest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
     if (internalFree < kMinInternalFree) {
         char why[96];
         std::snprintf(why, sizeof(why),
@@ -1005,6 +1177,7 @@ bool Portal::start() {
                       static_cast<unsigned>(internalFree / 1024u),
                       static_cast<unsigned>(internalLargest / 1024u));
         g_lastError = why;
+        g_phase     = PortalPhase::Failed;
         return false;
     }
 
@@ -1016,6 +1189,7 @@ bool Portal::start() {
                       static_cast<unsigned>(internalFree / 1024u),
                       static_cast<unsigned>(internalLargest / 1024u));
         g_lastError = why;
+        g_phase     = PortalPhase::Failed;
         return false;
     }
 
@@ -1023,6 +1197,7 @@ bool Portal::start() {
     if (!g_fsMutex) {
         net::Wifi::stopProvisioningAp();
         g_lastError = "mutex allocation failed";
+        g_phase     = PortalPhase::Failed;
         return false;
     }
 
@@ -1036,17 +1211,10 @@ bool Portal::start() {
     g_taskDone  = false;
     g_requests  = 0;
     g_lastReqMs = millis();
-
-    // WebServer::begin() returns void in this core: the listen socket is created
-    // and any failure surfaces as handleClient() never serving. There is nothing
-    // to test here, so start() reports success once the task is up and the page
-    // answers — which is exactly what the on-screen state then shows.
     g_server.begin();
 
     g_dns.setErrorReplyCode(DNSReplyCode::NoError);
     if (!g_dns.start(53, "*", WiFi.softAPIP())) {
-        // Not fatal: the page still works at the literal IP, only the automatic
-        // "sign in" sheet is lost.
         Serial.println("[PORTAL] captive DNS failed; reach it at http://192.168.4.1");
     }
 
@@ -1057,19 +1225,107 @@ bool Portal::start() {
         net::Wifi::stopProvisioningAp();
         g_taskDone = true;
         g_lastError = "portal task create failed";
+        g_phase     = PortalPhase::Failed;
         return false;
     }
 
     g_running = true;
+    g_phase   = PortalPhase::Running;
+    g_activity.clear();
     Serial.printf("[PORTAL] up  ap=%s  pass=%s  url=http://%s\n", g_apSsid, g_apPass,
                   WiFi.softAPIP().toString().c_str());
     return true;
 }
 
+/**
+ * Turn the just-finished scan into an ordered candidate list: only saved
+ * networks the scan actually saw, strongest first. signalFor() returns the
+ * cached sighting RSSI (negative) or 0 when the SSID was not seen.
+ */
+void buildCandidates() {
+    g_candidates.clear();
+    const size_t n = net::Wifi::networkCount();
+    for (size_t i = 0; i < n; ++i) {
+        net::WifiNetwork net;
+        if (!net::Wifi::networkAt(i, net)) continue;
+        const int rssi = net::Wifi::signalFor(net.ssid);
+        if (rssi < 0 && rssi >= kMinJoinRssi) {
+            g_candidates.push_back(JoinCandidate{net.ssid, net.pass, rssi});
+        }
+    }
+    for (size_t i = 1; i < g_candidates.size(); ++i) {   // insertion sort, desc
+        JoinCandidate key = g_candidates[i];
+        size_t j = i;
+        while (j > 0 && g_candidates[j - 1].rssi < key.rssi) {
+            g_candidates[j] = g_candidates[j - 1];
+            --j;
+        }
+        g_candidates[j] = key;
+    }
+}
+
+/** Kick off a non-blocking join to the current candidate. */
+void startJoin() {
+    const JoinCandidate& c = g_candidates[g_candidateIndex];
+    net::Wifi::connectAsync(c.ssid, c.pass);
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "joining %s", c.ssid.c_str());
+    g_activity    = buf;   // the found-count rides along via PortalState
+    g_phaseStartMs = millis();
+    Serial.printf("[PORTAL] pre-join '%s' (%d dBm, %u found)\n", c.ssid.c_str(), c.rssi,
+                  static_cast<unsigned>(g_scanned));
+}
+
+}  // namespace
+
+// ── public API ──────────────────────────────────────────────────────────────
+
+bool Portal::start() {
+    if (g_running) return true;
+    if (g_phase == PortalPhase::Preparing || g_phase == PortalPhase::Joining) return true;
+    g_lastError.clear();
+
+    // Pre-scan path: with anything saved, look for a reachable network BEFORE
+    // raising the AP. If one joins, no hotspot is needed at all — and, just as
+    // important, the channel-hopping scan/associate never happens under a live
+    // AP. The AP is raised later from tick() only if every candidate fails.
+    const net::WifiState ws = net::Wifi::state();
+    const bool wantsJoin    = !ws.connected && net::Wifi::networkCount() > 0;
+    const bool scanInFlight = net::Wifi::scanRunning();
+    if (!ws.connected && (wantsJoin || scanInFlight)) {
+        g_phase        = PortalPhase::Preparing;
+        g_phaseStartMs = millis();
+        g_scanned      = 0;
+        g_candidateIndex = 0;
+        g_candidates.clear();
+        g_activity     = "scanning";
+        if (!scanInFlight) net::Wifi::startScan();
+        Serial.println("[PORTAL] pre-scan: looking for a saved network first");
+        return true;
+    }
+
+    // Nothing to try (no saved networks, or already associated): raise it now.
+    return raiseAp();
+}
+
 void Portal::stop() {
+    // Cancel a pre-scan / pre-join that has not raised the AP yet. The STA is
+    // left to its normal walk (begin() is idempotent), so cancelling costs
+    // nothing and does not strand the radio.
+    if (g_phase == PortalPhase::Preparing || g_phase == PortalPhase::Joining) {
+        g_phase = PortalPhase::Off;
+        g_activity.clear();
+        g_candidates.clear();
+        g_candidateIndex = 0;
+        net::Wifi::begin();
+        Serial.println("[PORTAL] start cancelled");
+        return;
+    }
+
     if (!g_running && g_taskDone) {
         // Still honour intent: a host that never started the portal must not
         // block a later STA join.
+        g_phase = PortalPhase::Off;
         return;
     }
     g_quit = true;
@@ -1080,6 +1336,8 @@ void Portal::stop() {
         g_task = nullptr;
     }
     g_running = false;
+    g_phase   = PortalPhase::Off;
+    g_activity.clear();
 
     net::Wifi::stopProvisioningAp();
     // The AP is gone: if credentials are stored, that is the moment the STA
@@ -1093,6 +1351,9 @@ bool Portal::running() { return g_running; }
 PortalState Portal::state() {
     PortalState s;
     s.running  = g_running;
+    s.phase    = g_phase;
+    s.activity = g_activity;
+    s.scannedNetworks = g_scanned;
     s.apSsid   = g_apSsid;
     s.apPass   = g_apPass;
     s.requests = g_requests;
@@ -1109,6 +1370,55 @@ PortalState Portal::state() {
 }
 
 void Portal::tick(uint32_t nowMs) {
+    // ── Pre-scan: wait for the scan, then pick what to try ──────────────────
+    if (g_phase == PortalPhase::Preparing) {
+        if (net::Wifi::state().connected) {           // a retry beat us to it
+            g_phase = PortalPhase::Off;
+            g_activity.clear();
+            Serial.println("[PORTAL] already associated - no AP needed");
+            return;
+        }
+        const bool scanning = net::Wifi::scanRunning();
+        if (scanning && (nowMs - g_phaseStartMs) < kPreScanMs) return;
+
+        g_scanned = static_cast<int>(net::Wifi::scanCount());
+        buildCandidates();
+        Serial.printf("[PORTAL] pre-scan done: %d found, %u reachable saved\n",
+                      g_scanned, static_cast<unsigned>(g_candidates.size()));
+        if (g_candidates.empty()) {
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "%d found, raising AP", g_scanned);
+            g_activity = buf;
+            raiseAp();
+            return;
+        }
+        g_candidateIndex = 0;
+        startJoin();
+        return;
+    }
+
+    // ── Pre-join: one saved network at a time, then the AP as the fallback ──
+    if (g_phase == PortalPhase::Joining) {
+        if (net::Wifi::state().connected) {
+            g_phase = PortalPhase::Off;
+            g_activity.clear();
+            Serial.println("[PORTAL] pre-join succeeded - no AP needed");
+            return;
+        }
+        if ((nowMs - g_phaseStartMs) < kJoinMs) return;
+        ++g_candidateIndex;
+        if (g_candidateIndex >= g_candidates.size()) {
+            Serial.println("[PORTAL] no saved network joined; raising the AP");
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "%d found, raising AP", g_scanned);
+            g_activity = buf;
+            raiseAp();
+            return;
+        }
+        startJoin();
+        return;
+    }
+
     if (!g_running) return;
     if ((uint32_t)(nowMs - g_lastReqMs) > kIdleStopMs) {
         Serial.println("[PORTAL] idle limit reached; stopping");

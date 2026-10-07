@@ -127,6 +127,7 @@ struct AppSurface {
     uint32_t title;       ///< chrome title ink
     uint32_t textOnFocus; ///< ink on a focused row
     uint32_t accent;      ///< borders / accents / focus edge
+    uint32_t iconInk;     ///< monochrome provider-mark ink (bundled icons)
     uint8_t  radiusRow;   ///< row corner radius (0 = crude)
     uint8_t  radiusPane;  ///< panel corner radius
     uint8_t  borderWidth; ///< panel border width
@@ -134,7 +135,8 @@ struct AppSurface {
 
 /** A resolved surface: an override if the theme has one, else its own tokens. */
 struct AppColours {
-    uint32_t bg, pane, row, rowFocus, text, textDim, title, textOnFocus, accent;
+    uint32_t bg, pane, row, rowFocus, text, textDim, title, textOnFocus, accent,
+             iconInk;
     uint8_t  radiusRow, radiusPane, borderWidth;
 };
 
@@ -181,6 +183,8 @@ struct Theme {
     uint32_t result;         // math final result       (was 0xE05500)
     uint32_t danger;         // errors / warnings
     uint32_t plot[4];        // graph series ramp
+    uint32_t iconInk;        // monochrome provider-mark ink (bundled AI icons):
+                             // 0xFFFFFF on numos' dark rows, black on the casio LCD
 
     // ── chrome dials ──
     uint8_t  cornerRadius;   // 0 = crude, >0 = modern
@@ -195,11 +199,12 @@ struct Theme {
     // no call site keeps a literal face. The rungs exist because the sources use
     // exactly four text sizes (10/12/14/20 + unscii-8 mono): collapsing them onto
     // one size would repaint the numos screens, which must stay byte-identical.
-    // Casio's face ships at 12/18/26, so its xs and sm both map to 12.
+    // Casio uses the math face for every rung (one face everywhere, 2026-10-05):
+    // 18/12/12/18 — there is no 26pt math rung, so display collapses to 18.
     const lv_font_t* fontUi;       // body: labels, menus, buttons      (numos 14 / casio 18)
     const lv_font_t* fontUiSmall;  // secondary: hints, status bar      (numos 12 / casio 12)
     const lv_font_t* fontUiXSmall; // tertiary: smallest heading        (numos 10 / casio 12)
-    const lv_font_t* fontDisplay;  // headline: splash logo, headings   (numos 20 / casio 26)
+    const lv_font_t* fontDisplay;  // headline: splash logo, headings   (numos 20 / casio 18)
     const lv_font_t* fontMono;     // editor / code                     (unscii-8)
 
     // ── math font set (doc 13) ──

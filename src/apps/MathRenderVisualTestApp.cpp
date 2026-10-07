@@ -711,7 +711,6 @@ void MathRenderVisualTestApp::handleKey(const KeyEvent& ev) {
             updateLabels();
             printSerialReport();
             break;
-        case KeyCode::ENTER:
         case KeyCode::EXE:
             if (_cursorMode == CursorMode::Off) {
                 _cursorMode = CursorMode::Start;

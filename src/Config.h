@@ -55,6 +55,13 @@
 #define NUMOS_BUILD_ENVIRONMENT "unknown"
 #endif
 
+// Semantic version injected by scripts/build_metadata.py (VERSION file + CI run
+// number). Host/native builds that skip that script get an honest placeholder
+// rather than a compile error.
+#ifndef NUMOS_VERSION
+#define NUMOS_VERSION "0.0.0-dev"
+#endif
+
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 
 #include "hardware/BoardProfile.h"
@@ -167,7 +174,10 @@ static const int PIN_TFT_DC   =   4;
 static const int PIN_TFT_RST  =   5;
 static const int PIN_TFT_BL   =  -1;   // backlight en rail fijo, sin GPIO
 
-// Tamaño lógico después de la rotación 1 (landscape: 320 w × 156 h). MEDIDO con
+// Tamaño lógico del FIRMWARE después de la rotación 1 (landscape: 320 w × 156 h).
+// (Los runtimes host — emulador PC y WASM — NO usan este bloque: ver la rama
+//  #if defined(NATIVE_SIM) más abajo, que renderiza el panel completo 320x240.)
+// MEDIDO con
 // el rig de encaje (2026-10-02): el shell fx-82 solo expone 156 de las 240 filas
 // del panel y la ventana NO está centrada — el borde superior mide 54 px y el
 // inferior 30 px.  LVGL se crea a 320×156 y el flush se desplaza SCREEN_OFFSET_Y
@@ -177,9 +187,30 @@ static const int PIN_TFT_BL   =  -1;   // backlight en rail fijo, sin GPIO
 // display/ProductionDisplayProfile.h, kProductionBoard.display.logical* en
 // hardware/BoardProfile.h y SCREEN_W/H en hal/NativeHal.cpp (el static_assert de
 // DisplayDriver.cpp falla la compilación si se separan).
+#if defined(NATIVE_SIM)
+// Host runtimes (`env:emulator_pc` and the WASM/web build). Default is a DEVICE
+// PROXY: the host canvas is the SAME as the firmware's logical canvas
+// (320x156 @ +54), so an emulator capture is directly comparable to what the
+// fx-82 shell shows and the height-derived layout constants (CONTENT_H, list row
+// counts, vertical centring) match the device instead of the taller glass.
+// Define NUMOS_HOST_FULL_PANEL to render the whole 320x240 panel (offset 0)
+// instead. The WASM/web build does that — it is not behind the shell and its
+// suite/manifest assert 320x240; `env:emulator_pc` carries the flag commented
+// out in platformio.ini.
+#if defined(NUMOS_HOST_FULL_PANEL)
+inline constexpr uint16_t SCREEN_WIDTH    = 320;
+inline constexpr uint16_t SCREEN_HEIGHT   = 240;
+inline constexpr uint16_t SCREEN_OFFSET_Y = 0;    // sin recorte del shell en host
+#else
 inline constexpr uint16_t SCREEN_WIDTH    = 320;
 inline constexpr uint16_t SCREEN_HEIGHT   = 156;
 inline constexpr uint16_t SCREEN_OFFSET_Y = 54;   // medido por el rig (NO es (240-156)/2 = 42)
+#endif
+#else
+inline constexpr uint16_t SCREEN_WIDTH    = 320;
+inline constexpr uint16_t SCREEN_HEIGHT   = 156;
+inline constexpr uint16_t SCREEN_OFFSET_Y = 54;   // medido por el rig (NO es (240-156)/2 = 42)
+#endif
 static const uint8_t  SCREEN_ROTATION = 1;
 
 // ── Teclado físico 5×10 — hardware actual (PCB en progreso) ────────────────

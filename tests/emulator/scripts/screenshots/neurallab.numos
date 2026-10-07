@@ -1,0 +1,108 @@
+# neurallab.numos — Neural Lab screenshots for paadweb/public/apps/index.html
+#
+# 3 shots (source of truth: the marketing site, via DELIVERABLES.md):
+#   1. out/shots-neurallab-1.ppm — XOR problem solved: clean diagonal boundary
+#      splitting the two point classes, network graph pulsing along weights,
+#      accuracy gauge green.
+#   2. out/shots-neurallab-2.ppm — Two interleaved spirals separated by the
+#      trained boundary, log-scale loss curve falling away in the corner.
+#   3. out/shots-neurallab-3.ppm — Network mid-training with a neuron just
+#      added to a hidden layer, loss visibly kinking upward before resuming fall.
+#
+# Neural Lab (app ID 16) is not wired for open_app/assert_app in the script
+# parser, so we launch it by navigating the numos 3-column grid menu:
+#   row 0: Calculation, Grapher, Equations
+#   row 1: Calculus, Statistics, Probability
+#   row 2: Regression, Sequences, Python
+#   row 3: Matrices, Settings, Chemistry
+#   row 4: Bridge, Circuit, Fluid 2D
+#   row 5: ParticleLab, Neural Lab, OpticsLab
+#   row 6: NeoLang, Fractals, Game Boy
+#   row 7: AI
+# Neural Lab sits at row 5, column 1. From Calculation (row 0, col 0):
+#   DOWN x5 -> ParticleLab, RIGHT -> Neural Lab, ENTER -> launch.
+#
+# Theme: Neural Lab has no casio-specific code; it renders only under the
+# numos skin. We assert_theme numos before each capture.
+#
+# Run (repo root):
+#   ./"C:/.piobuild/numOS/emulator_pc/program" --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/neurallab.numos \
+#       --fs-root tests/emulator/fs --frames 2000 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "neurallab: waiting for launcher"
+wait 200
+assert_app Menu
+
+# Navigate 3-col grid to Neural Lab (row 5, col 1 from start at row 0, col 0)
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+key right
+wait 10
+
+# Launch Neural Lab
+key enter
+wait 120
+assert_theme numos
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SHOT 1 — XOR solved: diagonal boundary, pulsing network graph, green accuracy
+# Default scenario is XOR (topology [2,4,1], sigmoid, LR=0.5, momentum=0.9).
+# F2 toggles training ON. Auto-stop triggers at loss < 0.001.
+# ─────────────────────────────────────────────────────────────────────────────
+key f2
+wait 200
+assert_theme numos
+screenshot out/shots-neurallab-1.ppm
+log "neurallab: shot 1 captured (XOR solved)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SHOT 2 — Spirals trained: interleaved spirals separated by boundary,
+# log-scale loss curve falling in corner.
+# F4 cycles scenarios: XOR -> Classifier -> Sine -> Circular -> Spiral.
+# ─────────────────────────────────────────────────────────────────────────────
+key f4
+wait 30
+key f4
+wait 30
+key f4
+wait 30
+key f4
+wait 30
+# Now on Spiral scenario (topology [2,8,8,1], ReLU, LR=0.05)
+key f2
+wait 600
+assert_theme numos
+screenshot out/shots-neurallab-2.ppm
+log "neurallab: shot 2 captured (Spirals trained)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SHOT 3 — Mid-training neuron addition: loss kinks up then resumes falling.
+# Return to XOR (F4 cycles: Spiral -> XOR), start training, add neuron via F1.
+# F1 adds a neuron to the selected hidden layer (default layer 1), which
+# resets epoch count and loss to 1.0, creating a visible kink in the loss chart.
+# ─────────────────────────────────────────────────────────────────────────────
+key f4
+wait 30
+# Back to XOR scenario
+key f2
+wait 60
+# Training underway, loss dropping
+key f1
+wait 40
+# Neuron added, loss kinked to 1.0 and now falling — capture the kink
+assert_theme numos
+screenshot out/shots-neurallab-3.ppm
+log "neurallab: shot 3 captured (mid-training neuron add kink)"
+
+log "neurallab: all 3 shots captured"

@@ -137,7 +137,11 @@ private:
     bool               _casioLayout   = false;
     lv_obj_t*          _casioModeLabel = nullptr;
     lv_obj_t*          _casioRightLabel = nullptr;   ///< "Math" (input/output mode)
-    lv_obj_t*          _casioHistArrow  = nullptr;   ///< history hint bitmap (top-right)
+    lv_obj_t*          _casioHistArrow  = nullptr;   ///< history hint glyph (top-right)
+    // Last input-band geometry applied, so a keystroke that does not change it
+    // issues no LVGL calls (the band is content-sized, see applyCasioInputBand).
+    int16_t            _casioInBandY = -1;
+    int16_t            _casioInBandH = -1;
 
     // ── Motor VPAM ───────────────────────────────────────────────────────
     vpam::NodePtr              _rootNode;    ///< Nodo raíz del AST (owned)
@@ -216,6 +220,11 @@ private:
     /// call sites are avoided by calling only the state-changing points).
     void buildCasioStrip();
     void updateCasioStrip();
+
+    /// Sizes the casio input band to its content (a stacked fraction is 43 px,
+    /// the spec's fixed band only 34) and keeps it clear of the strip and the
+    /// fixed result band. No-op under Layout::numos.
+    void applyCasioInputBand();
 
     /// Dynamically repositions the separator and result canvas after
     /// trimming the expression canvas to its actual content height.

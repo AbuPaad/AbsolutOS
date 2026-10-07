@@ -698,7 +698,7 @@ void CalculusApp::handleKeyInput(const KeyEvent& ev) {
             break;
 
         // ── ENTER or = → compute ──
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
         case KeyCode::FREE_EQ:
             computeResult();
             break;

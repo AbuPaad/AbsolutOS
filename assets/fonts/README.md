@@ -104,8 +104,12 @@ the font-recon notes in the theme-system plan doc `13-math-font.md`); it does no
 include the extensible-delimiter assembly glyphs, the double-struck sets (ℂℕℚℝℤ),
 `∪ ∩`, `∇`, or ceiling/floor fences.
 
-Generated LVGL subsets (to be produced) are CC BY-SA-derived and must carry this
-attribution in their provenance header.
+Generated LVGL subsets: `src/fonts/casio_math_{8,12,18}.c`, declared by
+`src/fonts/CasioMathFont.h`; regenerate with `bash scripts/generate_casio_math_font.sh`.
+They are CC BY-SA-derived and carry this attribution in their provenance header.
+Regenerated 2026-10-05 with `0x0020` added to the range so the face also serves **UI
+text** (it needs the space glyph); the same subsets now feed both the math renderer and
+the theme's UI font ladder.
 
 ## CASIO FX-9860GII UI Face
 
@@ -128,9 +132,10 @@ uses for menus, labels and the calculator strip (sizes 12/18/26). Unlike the mat
 face it is **attribution-only** (no ShareAlike), so generated LVGL subsets of this
 face carry a CC BY provenance header, never CC BY-SA.
 
-Generated LVGL subsets: `src/fonts/casio_ui_{12,18,26}.c`, declared by
-`src/fonts/CasioUiFont.h`. Regenerate with
-`bash scripts/generate_casio_ui_font.sh`.
+**Subsets retired (2026-10-05).** The `casio_ui_{12,18,26}.c` LVGL subsets,
+`src/fonts/CasioUiFont.h` and `scripts/generate_casio_ui_font.sh` were removed when the
+operator chose **one face everywhere**: the math face above now serves the UI ladder too.
+This source `.ttf` stays vendored for provenance only — it generates no shipped asset.
 
 ## Licensing of generated data
 
@@ -149,3 +154,38 @@ non-creative facts, but the audit does not rely on that conclusion: applying
 both sets of obligations conservatively yields
 `GPL-3.0-or-later AND OFL-1.1`. The expression does not dual-license the font,
 the scaffolding, or unrelated NumOS code.
+
+
+---
+
+## Casio Small MS/ES Sans — the current Casio face (2026-10-05)
+
+`casio-small-ms-es-sans.otf` (37 KB) replaces `casio-calculator-font.otf` as the
+source for the three subsetted LVGL faces `src/fonts/casio_math_{8,12,18}.c`.
+
+- Author: Enzo Bicudo Pepi (MetrikEnzyme), FontStruct fontstruction 2554004,
+  created 2024-10-12, last edited 2025-05-25.
+- Licence: **SIL Open Font License 1.1**, © 2024-2026 Enzo Bicudo Pepi. The full
+  text ships alongside as `casio-small-ms-es-sans-LICENSE.txt` and MUST travel
+  with the font (OFL condition 2). Commercial use, modification/subsetting and
+  embedding in sold software are all permitted; the font itself may not be sold
+  alone. No Reserved Font Name is declared.
+- Source face: 394 codepoints / 395 glyphs, CFF, upem 2000, single Regular.
+- Generated subsets: ~292 glyphs each, from
+  `CASIO_SIZE=all bash scripts/generate_casio_math_font.sh assets/fonts/casio-small-ms-es-sans.otf`.
+
+### Glyphs this face does NOT carry (verified, not assumed)
+
+`±` (U+00B1), `∓`, `≈`, `∂`, `∇`, `⊕`, `⊗`, `≡`, `∼`, `≅`, `∝`, `⊂`, `⊆`, `∈`,
+`∉`, `≪`, `≫`, `∪`, `∩`, `∖`, `∅`, `∀`, `∃`, `¬`, `∧`, `∨`, `⇔`, `∴`, `∵`, `↔`,
+`⌊ ⌋ ⌈ ⌉`, `∬ ∭ ∮`, the blackboard-bold sets `ℕ ℤ ℚ ℝ ℂ ℍ`, and the U+2212 minus
+sign. This is accepted, not fixed: the AI system prompt is restricted to the
+glyphs that do render and names ASCII substitutions for the rest, and mdrender's
+two token tables were pruned so no alias can resolve to an absent codepoint.
+
+Note on the subset range lists in `scripts/generate_casio_math_font.sh`: they are
+inherited from the older, much wider face and still name whole blocks (Math
+Operators, Math Alphanumerics, supplemental arrows) this face only partly covers.
+The script's filter step drops ranges that resolve to zero characters, so the
+lists are aspirational rather than accurate — tighten them only if you want the
+generator output to be self-documenting.

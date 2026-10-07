@@ -25,7 +25,7 @@
  *   4. MODE (Home/m) vuelve al launcher
  *
  * Responsabilidades:
- *   · Crear ventana SDL2 de 320×156 (escalada ×2)
+ *   · Crear ventana SDL2 de 320×240 (escalada ×2)
  *   · Inicializar LVGL con flush callback a SDL texture
  *   · Mapear el teclado del PC a KeyCode de la calculadora
  *   · Gestionar el ciclo de vida: Splash → Menú → App → Menú
@@ -72,7 +72,7 @@
  *
  * Notas Phase 3A (solo emulador, sin impacto en firmware):
  *   · SDL_KEYDOWN → PRESS/REPEAT, SDL_KEYUP → RELEASE (antes solo KEYDOWN).
- *   · Coordenadas logicas 320×156 + integer scale (ventana ×N nitida).
+ *   · Coordenadas logicas 320×240 + integer scale (ventana ×N nitida).
  *   · Auto-salida CLI: --frames N | --run-for-ms N | --headless | --scale N.
  *
  * Notas Phase 4A (solo emulador, sin impacto en firmware):
@@ -188,26 +188,36 @@ void DisplayDriver::lvglFlushCb(lv_display_t*, const lv_area_t*, uint8_t*) {}
 // ════════════════════════════════════════════════════════════════════════════
 // Constantes
 //
-// SCREEN_W/H son la resolucion LOGICA del dispositivo (canvas ILI9341 320x156:
-// el shell fx-82 solo expone 156 de las 240 filas del panel, medido por el rig;
-// el letterbox se aplica como offset de flush en el firmware, no aqui). NUNCA
-// cambian: la textura LVGL y el "logical size" del renderer se fijan a este
-// tamaño para que
-// el emulador presente exactamente el mismo sistema de coordenadas que el
-// firmware. El escalado a la ventana del PC lo gestiona SDL (logical size +
-// integer scale), NO el codigo de dibujo de formulas.
-// Ambas constantes se derivan de Config.h / ProductionDisplayProfile.h y los
-// static_assert de abajo hacen fallar la compilacion si alguna se separa.
+// SCREEN_W/H son la resolucion del runtime HOST. Por defecto es el MISMO canvas
+// logico que el firmware (320x156 @ +54): un PROXY DEL DISPOSITIVO, para que una
+// captura del emulador sea comparable con lo que muestra el shell fx-82 y las
+// constantes de layout (CONTENT_H, filas de lista, centrado) coincidan con el
+// hardware. Con NUMOS_HOST_FULL_PANEL el host renderiza el cristal completo
+// 320x240 (lo hace el build WASM, que no esta tras el shell y cuyos
+// tests/manifest asumen 240). El escalado a la ventana del PC lo gestiona SDL
+// (logical size + integer scale), NO el codigo de dibujo de formulas.
 // ════════════════════════════════════════════════════════════════════════════
 static constexpr int SCREEN_W             = SCREEN_WIDTH;
 static constexpr int SCREEN_H             = SCREEN_HEIGHT;
 
+// La geometria del host se ata a la del firmware por defecto (canvas logico
+// 156), y a la del PANEL cuando se pide la vista completa (240). El
+// static_assert de igualdad contra el canvas logico del firmware vive ademas en
+// DisplayDriver.cpp, que NO se compila en este target (build_src_filter excluye
+// display/*).
+#if defined(NUMOS_HOST_FULL_PANEL)
+static_assert(SCREEN_W == numos::display::kPanelWidth,
+              "full-panel host canvas width must match the physical panel");
+static_assert(SCREEN_H == numos::display::kPanelHeight,
+              "full-panel host canvas height must match the physical panel");
+#else
 static_assert(SCREEN_W == numos::display::kLogicalDisplayWidth,
-              "emulator canvas width must match the display profile");
+              "device-proxy host canvas width must match the logical canvas");
 static_assert(SCREEN_H == numos::display::kLogicalDisplayHeight,
-              "emulator canvas height must match the display profile");
+              "device-proxy host canvas height must match the logical canvas");
+#endif
 #ifdef __EMSCRIPTEN__
-static constexpr int DEFAULT_WINDOW_SCALE = 1;    // canvas backing store 320x156
+static constexpr int DEFAULT_WINDOW_SCALE = 1;    // canvas backing store = host canvas
 #else
 static constexpr int DEFAULT_WINDOW_SCALE = 2;    // factor por defecto (×2)
 #endif
@@ -395,7 +405,7 @@ static vpam::NodePtr     g_showcaseRoot;            // AST de la expresión acti
 static int               g_showcaseIndex   = 0;
 
 // Buffer de LVGL (pantalla completa, RGB565)
-// 320×156 × 2 bytes = 99 840 bytes → trivial en PC
+// 320×240 × 2 bytes = 153 600 bytes → trivial en PC
 static uint8_t g_lvBuf[SCREEN_W * SCREEN_H * sizeof(uint16_t)];
 
 // Forward declarations
@@ -738,6 +748,13 @@ static KeyCode scriptNameToKeyCode(const std::string& raw)
 // ════════════════════════════════════════════════════════════════════════════
 static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
 {
+    // Canonical confirm key — MUST mirror SystemApp::handleKey's seam. This is a
+    // second, parallel entry point: live SDL input and .numos script replay both
+    // land here and it calls each app's handleKey directly, so the firmware seam
+    // never sees these events. Without the same rewrite a script's `key ENTER`
+    // reaches an app that only listens for EXE and is silently dropped.
+    if (kc == KeyCode::ENTER) kc = KeyCode::EXE;
+
     // Emulator parity for the demo recovery contract: BACK first unwinds the
     // app's topmost modal/state, then returns one level to the launcher.
     if (isDown && kc == KeyCode::BACK &&
@@ -1789,7 +1806,7 @@ static void printUsage(const char* prog)
         "  --quiet          silencia el log por-tecla/por-iteracion\n"
         "  --deterministic  tick sintetico de paso fijo (reproducible); usar con --frames\n"
         "  --step-ms N      ms virtuales por frame en --deterministic 1..1000 (def. %d)\n"
-        "  --screenshot P   vuelca el frame final 320x156 a un PPM (P6) en la ruta P\n"
+        "  --screenshot P   vuelca el frame final a un PPM (P6) en la ruta P\n"
         "  --dump-frame P   alias de --screenshot\n"
         "  --record DIR     vuelca TODOS los frames a DIR/frame_NNNNNN.ppm (video)\n"
         "  --record-every N con --record: uno de cada N frames (def. 1)\n"
@@ -1969,9 +1986,9 @@ static void cleanupFsSandbox(int exitCode)
 //   saveScreenshotPPM — vuelca el framebuffer logico (g_lvBuf) a PPM (P6)
 //
 // Fuente: g_lvBuf, el buffer CPU de pantalla completa que LVGL compone en modo
-// LV_DISPLAY_RENDER_MODE_FULL (siempre contiene el frame 320x180 actual). NO se
+// LV_DISPLAY_RENDER_MODE_FULL (siempre contiene el frame actual del host). NO se
 // lee la textura ni el renderer, por lo que funciona identico en --headless y
-// con cualquier --scale (la captura es SIEMPRE la geometria logica 320x156, no
+// con cualquier --scale (la captura es SIEMPRE la geometria del canvas host, no
 // la ventana escalada). Formato PPM P6: sin dependencias (cabecera ASCII + RGB
 // crudo). Conversion RGB565 (little-endian host) -> RGB888 por pixel.
 // ════════════════════════════════════════════════════════════════════════════
@@ -2082,6 +2099,11 @@ enum class ScriptCmdType : uint8_t {
     AssertTheme,           // assert_theme numos|casio|0|1  (ThemeManager::id)
     AssertLauncherPage,    // assert_launcher_page N       (casio list page, 1-based)
     AssertHistoryArrow,    // assert_history_arrow up|down|none (calc strip)
+    // Website capture: un frame del Result de la IA es la MISMA app en hasta 20
+    // páginas distintas, así que assert_app AI no justifica la captura. Compara
+    // una subcadena contra el texto de la página cargada (AiApp::debugPageText).
+    AssertAiPageContains,  // assert_ai_page_contains TEXT (subcadena)
+    AssertAiCheckContains, // assert_ai_check_contains TEXT (subcadena del Check de la IA)
     // Phase 10 GR-14 (append-only): aserciones semanticas del Grapher. Leen los
     // accesores debug* de GrapherApp (NATIVE_SIM-only); fuera del Grapher son
     // FAIL (exit 4), nunca no-op. Tokens de kind congelados por el contrato del
@@ -2367,6 +2389,36 @@ static bool loadScript(const char* path)
             if (rest.empty()) return scriptErr(path, lineNo, "assert_result requiere el texto esperado");
             sc.type   = (lc == "assert_result") ? ScriptCmdType::AssertResult
                                                 : ScriptCmdType::AssertResultContains;
+            sc.strArg = rest;
+        }
+        else if (lc == "assert_ai_page_contains") {
+            // Website capture: TEXT es una subcadena del texto de la pagina
+            // cargada en el Result de la IA (AiApp::debugPageText).
+            std::string rest;
+            std::getline(iss, rest);
+            size_t b = rest.find_first_not_of(" \t");
+            rest = (b == std::string::npos) ? std::string() : rest.substr(b);
+            size_t e = rest.find_last_not_of(" \t");
+            if (e != std::string::npos) rest = rest.substr(0, e + 1);
+            if (rest.size() >= 2 && rest.front() == '"' && rest.back() == '"')
+                rest = rest.substr(1, rest.size() - 2);
+            if (rest.empty()) return scriptErr(path, lineNo, "assert_ai_page_contains requiere el texto esperado");
+            sc.type   = ScriptCmdType::AssertAiPageContains;
+            sc.strArg = rest;
+        }
+        else if (lc == "assert_ai_check_contains") {
+            // Pantalla Check de la IA: TEXT es una subcadena de
+            // AiApp::debugCheckText (consulta editada, cursor, si se ofrece).
+            std::string rest;
+            std::getline(iss, rest);
+            size_t b = rest.find_first_not_of(" \t");
+            rest = (b == std::string::npos) ? std::string() : rest.substr(b);
+            size_t e = rest.find_last_not_of(" \t");
+            if (e != std::string::npos) rest = rest.substr(0, e + 1);
+            if (rest.size() >= 2 && rest.front() == '\"' && rest.back() == '\"')
+                rest = rest.substr(1, rest.size() - 2);
+            if (rest.empty()) return scriptErr(path, lineNo, "assert_ai_check_contains requiere el texto esperado");
+            sc.type   = ScriptCmdType::AssertAiCheckContains;
             sc.strArg = rest;
         }
         else if (lc == "assert_no_error") {
@@ -3438,6 +3490,40 @@ static void scriptStepBegin()
             } else {
                 assertFail(sc.line, "assert_history_arrow esperaba '" + sc.strArg +
                                     "' pero el indicador es '" + actual + "'");
+            }
+            break;
+        }
+
+        case ScriptCmdType::AssertAiPageContains: {
+            if (g_mode != AppMode::AI_WRAPPER || !g_aiApp) {
+                assertFail(sc.line, "assert_ai_page_contains requiere AI activa "
+                                    "(app actual: '" + std::string(activeAppName()) + "')");
+                break;
+            }
+            const std::string actual = g_aiApp->debugPageText();
+            if (actual.find(sc.strArg) != std::string::npos) {
+                assertPass(sc.line, "assert_ai_page_contains '" + sc.strArg + "'");
+            } else {
+                assertFail(sc.line, "assert_ai_page_contains esperaba '" + sc.strArg +
+                                    "' en la pagina cargada, que dice: '" + actual + "'");
+            }
+            break;
+        }
+
+        case ScriptCmdType::AssertAiCheckContains: {
+            // La pantalla Check de la IA: la consulta TAL COMO esta editada, el
+            // cursor y si se ofrece el chequeo (AiApp::debugCheckText).
+            if (g_mode != AppMode::AI_WRAPPER || !g_aiApp) {
+                assertFail(sc.line, "assert_ai_check_contains requiere AI activa "
+                                    "(app actual: '" + std::string(activeAppName()) + "')");
+                break;
+            }
+            const std::string actual = g_aiApp->debugCheckText();
+            if (actual.find(sc.strArg) != std::string::npos) {
+                assertPass(sc.line, "assert_ai_check_contains '" + sc.strArg + "'");
+            } else {
+                assertFail(sc.line, "assert_ai_check_contains esperaba '" + sc.strArg +
+                                    "' en la pantalla Check, que dice: '" + actual + "'");
             }
             break;
         }

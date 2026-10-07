@@ -1,0 +1,138 @@
+# ai.numos — the six website screenshots for the AI app (id 23).
+#
+# Shots (source of truth: the marketing site's AI plate, /apps/):
+#   1. out/shots-ai-1.ppm — the Greek/roots/powers page (glyph coverage).
+#   2. out/shots-ai-2.ppm — the display-maths page: the integral, drawn with a
+#      real limit and a real fraction bar.
+#   3. out/shots-ai-3.ppm — the sum with nested fractions (pi^2/6).
+#   4. out/shots-ai-4.ppm — the comparisons page (<= >= !=).
+#   5. out/shots-ai-5.ppm — the implication/arrow page (==> ->).
+#   6. out/shots-ai-6.ppm — the model picker, provider mark per row.
+#
+# Theme: captured under the CASIO profile (ALPHA+AC), the state this app was
+# migrated to (softkey band, numbered rows, ink-only focus). The AI smoke test
+# walks the same route.
+#
+# Every Result frame carries `assert_ai_page_contains`: a Result capture is the
+# SAME app on ~20 different pages, so `assert_app AI` alone would accept a
+# capture of any of them. The assert reads AiApp::debugPageText() (NATIVE_SIM
+# only). The page indices below are stable for this fixture (answer.sse); if
+# pagination moves, the assert fails and prints the page's own text.
+#
+# transport in the shared fixture is "replay": the Ask run streams
+# /ai/replay/answer.sse and commits by content-hash dedupe to the results dir
+# (so run against a COPY of tests/emulator/fs, never the tracked fixture).
+#
+# Run (from the repo root — screenshots land relative to the process cwd):
+#   ./"C:/.piobuild/numOS/emulator_pc/program" --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/ai.numos \
+#       --fs-root <a COPY of tests/emulator/fs> --frames 3000 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "ai shots: waiting for the launcher"
+wait 200
+assert_app Menu
+
+# Casio theme (ALPHA + AC), the same route the other casio scripts use.
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+assert_app Menu
+
+# ── The Ask run ──
+open_app ai
+wait 60
+assert_theme casio
+assert_app AI
+
+# Casio digit-launch: 1 = Ask, directly (keyboard-driven list row, no ENTER).
+key 1
+wait 20
+assert_app AI
+
+# ENTER sends the sample question. transport=replay streams the fixture and
+# commits, then the Result view opens on page 1.
+key enter
+wait 400
+assert_theme casio
+assert_app AI
+
+# ── SHOT 1 — the Greek alphabet page ──
+# Page 1 (not page 0): page 0 carries the title and the head of the paragraph,
+# the Greek alphabet itself starts on the second page.
+key right
+wait 8
+assert_ai_page_contains Greek alphabet
+screenshot out/shots-ai-1.ppm
+log "ai shots: shot 1 (Greek alphabet page) captured"
+
+# RIGHT walks the answer forward; every press past the last page is a no-op
+# (the handler clamps), so the walk is idempotent at the end of the document.
+key right
+wait 8
+key right
+wait 8
+key right
+wait 8
+key right
+wait 8
+key right
+wait 8
+key right
+wait 8
+
+# ── SHOT 2 — the display integral ──
+assert_app AI
+assert_ai_page_contains operator:
+screenshot out/shots-ai-2.ppm
+log "ai shots: shot 2 (display integral page) captured"
+
+key right
+wait 8
+
+# ── SHOT 3 — the sum with nested fractions ──
+assert_app AI
+assert_ai_page_contains Those two
+screenshot out/shots-ai-3.ppm
+log "ai shots: shot 3 (sum / fractions page) captured"
+
+key right
+wait 8
+key right
+wait 8
+key right
+wait 8
+
+# ── SHOT 4 — comparisons ──
+assert_app AI
+assert_ai_page_contains the face can draw
+screenshot out/shots-ai-4.ppm
+log "ai shots: shot 4 (comparisons page) captured"
+
+key right
+wait 8
+
+# ── SHOT 5 — implications and arrows ──
+assert_app AI
+assert_ai_page_contains arrows render
+screenshot out/shots-ai-5.ppm
+log "ai shots: shot 5 (arrows page) captured"
+
+# ── SHOT 6 — the model picker ──
+# AC (Result -> app menu), digit 4 -> Settings, digit 1 -> the model picker.
+# No model is ENTER-picked: that would persist a new id into the fixture.
+key ac
+wait 20
+assert_app AI
+key 4
+wait 20
+assert_app AI
+key 1
+wait 20
+assert_app AI
+screenshot out/shots-ai-6.ppm
+log "ai shots: shot 6 (model picker) captured"
+
+log "ai shots: done"

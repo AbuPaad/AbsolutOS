@@ -196,7 +196,6 @@ void FractalApp::handleInput(const KeyEvent& ev) {
             case KeyCode::RIGHT:
                 if ((next & 1) == 0 && (next + 1) < MODULE_COUNT) next += 1;
                 break;
-            case KeyCode::ENTER:
             case KeyCode::EXE:
                 _pendingModuleIndex = _selectedCard;
                 _pendingTransition = TransitionRequest::EnterModule;

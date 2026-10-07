@@ -36,6 +36,7 @@ const InteractionModel kNumOSInteraction = {
     /* chevron    */ false,
     /* splitGraph */ false,  // numos: the grapher keeps its full-width tabs
     /* back       */ BackPolicy::ToLauncher,
+    /* tallRows   */ false,  // shared 26 px rows, 1x marks, list fills the box
 };
 
 const InteractionModel kCasioInteraction = {
@@ -53,6 +54,7 @@ const InteractionModel kCasioInteraction = {
     /* chevron    */ true,   // corner up/down arrow on a scrollable list
     /* splitGraph */ true,   // grapher: list/table on the left, live graph right
     /* back       */ BackPolicy::ToLauncher,
+    /* tallRows   */ true,   // 29 px rows, 1.25x marks, three whole rows per viewport
 };
 
 } // namespace ui

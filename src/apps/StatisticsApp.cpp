@@ -589,7 +589,7 @@ void StatisticsApp::handleKeyData(const KeyEvent& ev) {
             lv_table_set_cell_value(_table, _tableRow + 1, _tableCol, display);
             return;
         }
-        if (ev.code == KeyCode::ENTER) {
+        if (ev.code == KeyCode::EXE) {
             finishEdit();
             return;
         }
@@ -626,7 +626,7 @@ void StatisticsApp::handleKeyData(const KeyEvent& ev) {
                 highlightCell();
             }
             break;
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             startEdit();
             break;
         case KeyCode::DEL:

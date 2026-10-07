@@ -114,7 +114,11 @@ uint32_t LvglKeypad::toLvKey(KeyCode code) {
         case KeyCode::UP:     return LV_KEY_UP;
         case KeyCode::DOWN:   return LV_KEY_DOWN;
 
-        // Confirmación / Cancelación
+        // Confirmación / Cancelación. EXE is the canonical confirm code now
+        // (SystemApp::handleKey folds ENTER into it before dispatch), so it MUST
+        // map here too: without this the confirm pushed into LVGL returns 0 and
+        // is dropped, and no launcher card or LVGL widget ever activates.
+        case KeyCode::EXE:
         case KeyCode::ENTER:  return LV_KEY_ENTER;
         case KeyCode::AC:     return LV_KEY_ESC;
         case KeyCode::DEL:    return LV_KEY_BACKSPACE;

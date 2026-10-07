@@ -92,6 +92,10 @@ void NotesApp::load() {
 
 void NotesApp::end() {
     if (_cursorRect) { lv_obj_delete(_cursorRect); _cursorRect = nullptr; }
+    // The renderer's page object lives in _content: forget it BEFORE the
+    // container dies, or the next load() renders into a fresh container and
+    // render() deletes the freed page object first (use-after-free).
+    _renderer.releasePage();
     if (_content) { lv_obj_delete(_content); _content = nullptr; }
     if (_title) { lv_obj_delete(_title); _title = nullptr; }
     if (_screen) { lv_obj_delete(_screen); _screen = nullptr; }

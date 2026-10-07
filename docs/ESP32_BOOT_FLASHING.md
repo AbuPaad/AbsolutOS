@@ -65,15 +65,16 @@ Never pass `--flash-mode qio` while merging or writing an image at offset zero.
 | `0x00000000` | `bootloader.bin` | before `0x8000` |
 | `0x00008000` | `partitions.bin` | one 4 KiB sector |
 | `0x0000e000` | `boot_app0.bin` / initial OTA data | 8 KiB `otadata` partition |
-| `0x00010000` | production `firmware.bin` | 6,144 KiB `app0` partition |
-| `0x00610000` | optional `littlefs.bin` | 9,875 KiB filesystem partition |
+| `0x00010000` | production `firmware.bin` (app0/ota_0) | 6.5 MiB `app0` partition |
+| `0x00690000` | spare firmware bank (app1/ota_1) | 6.5 MiB — target of OTA |
+| `0x00d10000` | optional `littlefs.bin` | 2.9375 MiB filesystem partition |
 
-The 16 MB partition layout is `boards/numos-16mb.csv`: **one** 6,144 KiB
-application slot, a 9,875 KiB filesystem partition, an 8 KiB `otadata` slot
-kept for a future OTA repartition, and a 64 KiB coredump partition. The
-framework's `default_16MB.csv` reserved a second, never-used OTA slot; NumOS
-ships no OTA workflow, and with the SD card DOA the filesystem is what needs
-the room.
+The 16 MB partition layout is `boards/numos-16mb.csv`: **two** 6.5 MiB
+application banks (`app0`/`app1`) so the device can update itself over the air
+(`net/OtaUpdater` + GitHub Releases), an 8 KiB `otadata` slot, and a 2.9375 MiB
+filesystem partition. A single 8 MiB slot would leave 7.9375 MiB for LittleFS,
+but esp_ota cannot rewrite the running partition, so dual banks are the price of
+OTA. With the SD card DOA the filesystem is still the only user-writable store.
 
 ## Build and package
 

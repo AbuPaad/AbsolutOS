@@ -1,0 +1,56 @@
+# casio_ai_models.numos — proves the AI Model picker and the transport setting.
+# Writes into the fs-root (model pick + transport flip), so run against a COPY
+# of tests/emulator/fs, then check the config.json there.
+#
+#   program --headless --deterministic --script tests/emulator/scripts/casio_ai_models.numos \
+#           --fs-root <copy> --frames 1400 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 4 assertion failure.
+
+log "casio_ai_models: launcher"
+wait 200
+assert_app Menu
+
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+assert_app Menu
+
+open_app ai
+wait 40
+assert_app AI
+
+# digit 4 = Settings; row 1 (digit 1) = the model picker.
+key 4
+wait 20
+assert_app AI
+screenshot out/casio_ai_settings_before.ppm
+
+key 1
+wait 20
+assert_app AI
+screenshot out/casio_ai_models.ppm
+
+# Walk deep down the list: at the top only the down chevron shows; once scrolled
+# both the up and down chevrons show.
+key down
+key down
+key down
+key down
+key down
+key down
+key down
+key down
+key down
+key down
+wait 20
+screenshot out/casio_ai_models_scrolled.ppm
+
+# ENTER picks the focused model and returns to Settings.
+key enter
+wait 30
+assert_app AI
+screenshot out/casio_ai_settings_after_pick.ppm
+
+log "casio_ai_models: done"

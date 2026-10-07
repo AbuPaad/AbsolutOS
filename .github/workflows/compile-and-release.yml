@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  # Manual release: lets an agent cut a release without a new commit. The run
+  # number still supplies the patch, so every run publishes a unique version.
+  workflow_dispatch:
 
 jobs:
   build:
@@ -17,14 +20,24 @@ jobs:
       # `build_dir = C:/.piobuild/numOS` in platformio.ini, so both the build and the
       # rename step agree on where firmware.bin lands.
       PLATFORMIO_BUILD_DIR: .pio/build
+      # scripts/build_metadata.py appends this to the VERSION file to form
+      # NUMOS_VERSION and we tag the exact same string. github.run_number is
+      # monotonic, so every released image has a strictly increasing semver and
+      # the device can trust its embedded version against the release tag.
+      NUMOS_BUILD_NUMBER: ${{ github.run_number }}
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Get Current Date
-        id: date
-        run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          BASE="$(tr -d '[:space:]' < VERSION)"
+          VER="${BASE}.${NUMOS_BUILD_NUMBER}"
+          echo "NUMOS_VERSION=${VER}" >> "$GITHUB_ENV"
+          echo "Resolved release version: v${VER}"
 
       - name: Patch platformio.ini for Ubuntu
         # Remove the Windows-only build_dir (e.g. `build_dir = C:/.piobuild/numOS`) so it
@@ -49,10 +62,11 @@ jobs:
           pip install -U platformio
 
       - name: Build NumOS (PlatformIO)
-        # Compila específicamente el entorno del ESP32-S3
+        # Compila específicamente el entorno del ESP32-S3 (CAM target). The OTA
+        # update path writes the resulting app image into the spare ota_1 bank.
         run: pio run -e esp32s3_n16r8
 
-      - name: Locate and Rename Firmware
+      - name: Locate and rename firmware
         run: |
           set -euo pipefail
 
@@ -60,6 +74,7 @@ jobs:
           echo "pwd                 : $(pwd)"
           echo "pio env             : esp32s3_n16r8"
           echo "PLATFORMIO_BUILD_DIR: ${PLATFORMIO_BUILD_DIR:-<unset>}"
+          echo "NUMOS_VERSION       : ${NUMOS_VERSION}"
           echo "--- listing of expected build dir ---"
           ls -la "${PLATFORMIO_BUILD_DIR:-.pio/build}/esp32s3_n16r8" 2>/dev/null \
             || echo "  (expected build dir not present)"
@@ -88,31 +103,41 @@ jobs:
           fi
 
           echo "Resolved firmware: $FW"
-          cp "$FW" NumOS_v1.0-alpha_ESP32S3.bin
-          echo "Created release artifact: NumOS_v1.0-alpha_ESP32S3.bin"
+          # The asset name is STABLE and single: the firmware fetches
+          # /releases/latest/download/NumOS.bin, so renaming it per release
+          # would break over-the-air updates.
+          cp "$FW" NumOS.bin
+          SHA="$(sha256sum NumOS.bin | cut -d' ' -f1)"
+          echo "FIRMWARE_SHA256=$SHA" >> "$GITHUB_ENV"
+          echo "Created release artifact: NumOS.bin"
+          echo "SHA256: $SHA"
 
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: "v1.0-alpha-${{ env.DATE }}-build${{ github.run_number }}"
-          name: "NumOS v1.0-alpha [${{ env.DATE }}]"
-          artifacts: "NumOS_v1.0-alpha_ESP32S3.bin"
+          tag: "v${{ env.NUMOS_VERSION }}"
+          name: "NumOS v${{ env.NUMOS_VERSION }}"
+          artifacts: "NumOS.bin"
           allowUpdates: true
-          makeLatest: false
-          prerelease: true
+          # Stable releases only: /releases/latest (and therefore the device's
+          # OTA check) must resolve to this one.
+          makeLatest: true
+          prerelease: false
           body: |
-            ## ⚠️ Alpha Release
-            This version is an **automated alpha build** (WIP).
-            
-            ### Installation
-            1. Download `NumOS_v1.0-alpha_ESP32S3.bin` from the **Assets** section.
-            2. Flash it to your **ESP32-S3** device.
-            
-            ### Build Details
-            - **Status:** Alpha / Experimental
-            - **Date:** ${{ env.DATE }}
-            - **Commit:** ${{ github.event.head_commit.message }}
-            
+            ## NumOS v${{ env.NUMOS_VERSION }}
+
+            Over-the-air update supported. On the calculator: **Settings → System Update**.
+
+            ### Manual installation
+            1. Download `NumOS.bin` from the **Assets** section.
+            2. Flash it to your **ESP32-S3 N16R8** device at offset `0x10000`.
+               (A first OTA-capable unit also needs the new partition table flashed once.)
+
+            ### Build details
+            - **Version:** `v${{ env.NUMOS_VERSION }}`
+            - **Commit:** ${{ github.sha }}
+            - **SHA256:** `${{ env.FIRMWARE_SHA256 }}`
+
             > [!IMPORTANT]
             > The "Source code" files below are automatically generated and are not required for flashing.

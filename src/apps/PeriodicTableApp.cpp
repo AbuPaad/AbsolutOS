@@ -729,7 +729,7 @@ void PeriodicTableApp::handleKey(const KeyEvent& ev) {
             switchTab(static_cast<Tab>(t));
             return;
         }
-        if (ev.code == KeyCode::DOWN || ev.code == KeyCode::ENTER) {
+        if (ev.code == KeyCode::DOWN || ev.code == KeyCode::EXE) {
             _tabFocused = false;
             updateTabHighlight();
             return;
@@ -763,7 +763,7 @@ void PeriodicTableApp::handleKeyTable(const KeyEvent& ev) {
         case KeyCode::RIGHT:
             navigateTable(ev.code);
             break;
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             openDeepDive();
             break;
         case KeyCode::DEL:
@@ -794,7 +794,7 @@ void PeriodicTableApp::handleKeyMolar(const KeyEvent& ev) {
         return;
     }
 
-    if (ev.code == KeyCode::ENTER) {
+    if (ev.code == KeyCode::EXE) {
         // Calculate molar mass
         if (_molarLen > 0) {
             float mass = chem::parseMolarMass(_molarBuf);
@@ -846,7 +846,7 @@ void PeriodicTableApp::handleKeyBalance(const KeyEvent& ev) {
         return;
     }
 
-    if (ev.code == KeyCode::ENTER) {
+    if (ev.code == KeyCode::EXE) {
         if (_balLen > 0) {
             char result[chem::MAX_RESULT_LEN];
             if (chem::balanceEquation(_balBuf, result)) {

@@ -11,4 +11,4 @@ d/dx x^3 = 3x^2
 - The rule is d/dx x^n = n*x^(n-1).
 - Here n = 3, so you get 3*x^2.
 
-%%ai: model=google/gemini-2.5-flash-lite hash=seed0000 pages=2 image=-%%
+%%ai: model=google/gemini-2.5-flash-lite hash=seed0000 pages=2 image=- tool_query=derivative%20of%20x%5E3 tool_server=wolfram transcribed=d/dx%20x%5E3%%

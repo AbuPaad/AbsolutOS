@@ -595,6 +595,16 @@ void MathCanvas::create(lv_obj_t* parent) {
     // Registrar el callback de dibujo
     lv_obj_set_user_data(_obj, this);
     lv_obj_add_event_cb(_obj, drawEventCb, LV_EVENT_DRAW_MAIN, this);
+
+    // doc 13 Phase 2 / "one face everywhere": the constructor latches whatever
+    // set was active at STATIC-INIT — and app objects are constructed before
+    // lv_init, so that is ALWAYS the numos STIX default. Without this the canvas
+    // renders STIX forever regardless of the active theme. create() runs on every
+    // (re)build of the widget, i.e. after a theme swap has already taken effect,
+    // so bind the ACTIVE theme's MathFontSet here. This is the single point that
+    // covers every MathCanvas owner (CalculationApp, GrapherApp, EquationsApp,
+    // CalculusApp, IntegralApp, TutorApp, the math showcase) with no per-app call.
+    setFontSet(ui::ThemeManager::instance().current().mathFonts);
 }
 
 void MathCanvas::destroy() {

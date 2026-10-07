@@ -47,7 +47,6 @@
 #include "ThemeManager.h"   // interaction() + current() tokens (doc 12/02)
 #include "ThemeFonts.h"   // theme font ladder (no font face in app code)
 #include "generated/CasioSlots.generated.h"   // Casio slot order + labels (generated)
-#include "generated/CasioArrowMasks.generated.h"   // page-turn arrow A8 masks (generated)
 #include "Theme.h"
 #include <cstdio>
 
@@ -93,6 +92,11 @@ static constexpr int MENU_RIGHT_X   = 162;    // right column
 static constexpr int MENU_ROW_H     = 30;     // focus box height (text ≈ 26)
 static constexpr int MENU_SLOT_W    = 150;    // focus box / label area width
 static constexpr int MENU_PAGE_CAP  = 8;      // slots per full page
+// Page-turn arrows: the theme face's own arrow glyphs (U+2190/U+2192) on the TOP
+// corners — the same edge and the same inset the calculator's history hint uses
+// (CalculationApp's CASIO_STRIP_R_PAD / CASIO_STRIP_Y), not a vertical middle.
+static constexpr int MENU_ARROW_X   = 4;      // corner inset
+static constexpr int MENU_ARROW_Y   = 2;      // strip text line
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // NumWorks colour palette
@@ -297,23 +301,24 @@ void MainMenu::buildMenuList() {
         _listSlots[s] = lbl;
     }
 
-    // Edge arrows are the operator's BITMAP, not drawn geometry and not a font
-    // glyph (SPEC-stageC §C6). Generated A8 masks (24x40, cropped to the ink
-    // bbox): the right arrow is the supplied asset, the left is its horizontal
-    // mirror made at generation time. The ink colour is the theme token via
-    // image_recolor, so a mask carries coverage only — no baked-in colour.
-    // (The mockup's top-right "more" mark is still deliberately NOT modelled.)
-    _listArrowLeft = lv_image_create(_screen);
-    lv_image_set_src(_listArrowLeft, &ui::kCasioArrowLeft);
-    lv_obj_set_style_image_recolor(_listArrowLeft, lv_color_hex(th.text), LV_PART_MAIN);
-    lv_obj_set_style_image_recolor_opa(_listArrowLeft, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_align(_listArrowLeft, LV_ALIGN_LEFT_MID, 0, 0);
+    // Edge arrows are the theme face's OWN arrow glyphs (U+2190/U+2192), on the
+    // TOP corners — the same place and the same line the calculator puts its
+    // history hint, so the two screens read as one design. Ink is the theme text
+    // token, exactly like the slot labels beside them (the A8 bitmap masks are
+    // no longer used anywhere).
+    _listArrowLeft = lv_label_create(_screen);
+    lv_obj_set_style_text_font(_listArrowLeft, ui::fontUiSmall(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_listArrowLeft, lv_color_hex(th.text), LV_PART_MAIN);
+    lv_obj_set_style_text_opa(_listArrowLeft, LV_OPA_COVER, LV_PART_MAIN);
+    lv_label_set_text(_listArrowLeft, "\xE2\x86\x90");   // ←
+    lv_obj_align(_listArrowLeft, LV_ALIGN_TOP_LEFT, MENU_ARROW_X, MENU_ARROW_Y);
 
-    _listArrowRight = lv_image_create(_screen);
-    lv_image_set_src(_listArrowRight, &ui::kCasioArrowRight);
-    lv_obj_set_style_image_recolor(_listArrowRight, lv_color_hex(th.text), LV_PART_MAIN);
-    lv_obj_set_style_image_recolor_opa(_listArrowRight, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_align(_listArrowRight, LV_ALIGN_RIGHT_MID, -2, 0);
+    _listArrowRight = lv_label_create(_screen);
+    lv_obj_set_style_text_font(_listArrowRight, ui::fontUiSmall(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_listArrowRight, lv_color_hex(th.text), LV_PART_MAIN);
+    lv_obj_set_style_text_opa(_listArrowRight, LV_OPA_COVER, LV_PART_MAIN);
+    lv_label_set_text(_listArrowRight, "\xE2\x86\x92");   // →
+    lv_obj_align(_listArrowRight, LV_ALIGN_TOP_RIGHT, -MENU_ARROW_X, MENU_ARROW_Y);
 
     rebuildListPage();
     updateListFocus();

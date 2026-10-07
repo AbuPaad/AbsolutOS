@@ -1,0 +1,67 @@
+# neolang.numos — the three website screenshots for the NeoLang app (id 18).
+#
+# Shots (source of truth: the marketing site, via DELIVERABLES.md):
+#   1. out/shots-neolang-1.ppm — the console after the one-line diff(x^3, x):
+#      the symbolic answer printed back.
+#   2. out/shots-neolang-2.ppm — the console after the one-line
+#      solve([x+y==5, x-y==1], [x, y]): both unknowns printed.
+#   3. out/shots-neolang-3.ppm — the full-screen plot overlay after the
+#      one-line plot(x^2, -5, 5).
+#
+# The app is a two-tab IDE (Editor / Console) sharing one content region, so
+# only one tab is visible at a time. F5 runs the editor content and
+# auto-switches to the Console tab; shots 1-2 therefore capture the Console
+# (where the symbolic answer is printed back), and shot 3 captures the plot
+# overlay that covers the screen below the status bar.
+#
+# BINARY REQUIREMENT: NeoLang (id 18) and the neo_source / assert_neo_* script
+# commands exist only in the emulator_pc_neo_smoke build (platformio.ini
+# [env:emulator_pc_neo_smoke], -DNUMOS_NEO_APP_SMOKE=1, which also adds
+# apps/Neo*.cpp to the build). The regular emulator_pc binary does NOT contain
+# them, so this script must be run with the neo_smoke binary:
+#   ./"C:/.piobuild/numOS/emulator_pc_neo_smoke/program" --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/neolang.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "neolang shots: waiting for the launcher"
+wait 200
+assert_app Menu
+assert_theme numos
+
+# ── SHOT 1 — symbolic differentiation as a function call ─────────────
+open_app neolang
+wait 60
+assert_app NeoLanguage
+
+neo_source diff(x^3, x)
+key f5
+wait 10
+# Giac returns 3*x^2; the console prints "=> (3*(x^2))" (NeoValue Math
+# toString parenthesises Mul/Pow). The assert uses the robust "x^2"
+# substring so it holds regardless of Mul child ordering.
+assert_neo_console_contains "x^2"
+screenshot out/shots-neolang-1.ppm
+log "neolang shot 1: diff(x^3, x) answer captured"
+
+# ── SHOT 2 — a two-equation system solved in a single call ──────────
+neo_source solve([x+y==5, x-y==1], [x, y])
+key f5
+wait 10
+assert_neo_console_contains "x": 3
+assert_neo_console_contains "y": 2
+screenshot out/shots-neolang-2.ppm
+log "neolang shot 2: system solve captured"
+
+# ── SHOT 3 — full-screen plot overlay after a one-line plot call ────
+neo_source plot(x^2, -5, 5)
+key f5
+wait 10
+assert_neo_plot_active
+assert_neo_plot_compile_count 1
+assert_neo_plot_near 2 4 0.000001
+screenshot out/shots-neolang-3.ppm
+log "neolang shot 3: plot overlay captured"
+
+log "neolang shots: done"

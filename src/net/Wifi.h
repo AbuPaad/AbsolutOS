@@ -73,6 +73,14 @@ public:
     static bool connect(const std::string& ssid, const std::string& pass, int timeoutMs);
 
     /**
+     * Start associating with `ssid` and return immediately — the caller polls
+     * state().connected (the portal's pre-scan "join a saved network before
+     * raising the AP" uses this, on the main loop task, so it must never block).
+     * Does NOT touch NVS: a failed pre-join must not reorder the saved list.
+     */
+    static bool connectAsync(const std::string& ssid, const std::string& pass);
+
+    /**
      * Real teardown, in the documented order: retry timer → disconnect(eraseap)
      * → WIFI_OFF. `WIFI_OFF` is what actually powers the radio down and returns
      * ~30-60 KB of internal RAM; disconnect() alone leaves the driver running.
@@ -95,10 +103,20 @@ public:
      * network it moves to the next stored one and wraps, so a unit that leaves
      * home and comes back to a phone hotspot finds it without being told. It
      * also pumps any scan that is in flight.
+     *
+     * While a provisioning AP is up (startProvisioningAp .. stopProvisioningAp)
+     * the STA's automatic retry/failover walk is SUSPENDED: every attempt (and
+     * every scan) yanks the shared radio off the AP's channel and makes clients
+     * stall at "authenticating". It resumes when the AP goes down.
      */
     static void tick(uint32_t nowMs);
 
-    /// AP+STA so the provisioning access point exists while STA keeps trying.
+    /**
+     * AP+STA so the provisioning access point exists while STA keeps trying.
+     * The AP is pinned to kApChannel and, for as long as it is up, owns the
+     * radio (tick() stops auto-retrying the STA). Callers must have finished
+     * any scan they care about first: a scan runs before the AP, never under it.
+     */
     static bool startProvisioningAp(const char* ssid, const char* pass);
     static void stopProvisioningAp();
 

@@ -261,6 +261,12 @@ void SettingsApp::end() {
             _wifiValues[i] = nullptr;
         }
         _wifiRowCount = 0;
+        for (int i = 0; i < UPDATE_ROWS_MAX; ++i) {
+            _updateRows[i] = nullptr;
+            _updateLabels[i] = nullptr;
+            _updateValues[i] = nullptr;
+        }
+        _updateRowCount = 0;
     }
 }
 
@@ -273,6 +279,7 @@ void SettingsApp::load() {
     // Always open on the Settings rows, never mid-way through the Wi-Fi screen:
     // the container is torn down on teardown, so _view has to agree with it.
     if (_view == View::Wifi) closeWifiView();
+    else if (_view == View::Update) closeUpdateView();
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     _brightnessSession.begin(setting_brightness);
     setting_brightness = _brightnessSession.runtimeBrightness();
@@ -374,6 +381,9 @@ void SettingsApp::createRows() {
         // Opens the Wi-Fi screen: saved networks, signal, connect/forget, and the
         // provisioning portal that puts networks on the list in the first place.
         "Wi-Fi",
+        // Opens the System Update screen (GitHub Releases OTA). Appended last so
+        // the Wi-Fi row above never shifts.
+        "System Update",
     };
 
     for (int i = 0; i < NUM_ITEMS; ++i) {
@@ -517,6 +527,25 @@ void SettingsApp::updateValues() {
         }
         lv_label_set_text(_values[WIFI_ROW], wbuf);
     }
+
+    // System Update row: the running version normally, a call to action when a
+    // check already found a newer release, and a progress hint while flashing.
+    {
+        char ubuf[24];
+        const net::OtaState os = net::OtaUpdater::state();
+        if (os.phase == net::OtaPhase::Available) {
+            std::snprintf(ubuf, sizeof(ubuf), "v%s ready", os.latestVersion.c_str());
+            lv_obj_set_style_text_color(_values[UPDATE_ROW], lv_color_hex(COL_VALUE_ON), LV_PART_MAIN);
+        } else if (os.phase == net::OtaPhase::Downloading ||
+                   os.phase == net::OtaPhase::Rebooting) {
+            std::snprintf(ubuf, sizeof(ubuf), "updating");
+            lv_obj_set_style_text_color(_values[UPDATE_ROW], lv_color_hex(COL_VALUE), LV_PART_MAIN);
+        } else {
+            std::snprintf(ubuf, sizeof(ubuf), "v%s", os.runningVersion.c_str());
+            lv_obj_set_style_text_color(_values[UPDATE_ROW], lv_color_hex(COL_VALUE), LV_PART_MAIN);
+        }
+        lv_label_set_text(_values[UPDATE_ROW], ubuf);
+    }
 }
 
 /**
@@ -537,6 +566,17 @@ void SettingsApp::refreshHint() {
             std::snprintf(buf, sizeof(buf), "%s   pass %s\n%s   stations %d",
                           ps.apSsid.c_str(), ps.apPass.c_str(),
                           ps.url.c_str(), ps.stations);
+        } else if (ps.phase == net::PortalPhase::Preparing ||
+                   ps.phase == net::PortalPhase::Joining) {
+            // Say what the pre-scan found — the count is the honest answer to
+            // "why is the hotspot not up yet?".
+            if (ps.scannedNetworks > 0) {
+                std::snprintf(buf, sizeof(buf), "portal %s   %d nets found",
+                              ps.activity.c_str(), ps.scannedNetworks);
+            } else {
+                std::snprintf(buf, sizeof(buf), "portal %s ...",
+                              ps.activity.c_str());
+            }
         } else if (const char* why = net::Portal::unavailableReason()) {
             std::snprintf(buf, sizeof(buf), "%s", why);
         } else if (!ps.lastError.empty()) {
@@ -549,6 +589,45 @@ void SettingsApp::refreshHint() {
         } else {
             std::snprintf(buf, sizeof(buf),
                           "EXE portal   DEL forget   RIGHT rescan   LEFT back");
+        }
+        lv_label_set_text(_hintLabel, buf);
+        return;
+    }
+
+    if (_view == View::Update) {
+        if (const char* why = net::OtaUpdater::unavailableReason()) {
+            std::snprintf(buf, sizeof(buf), "%s", why);
+            lv_label_set_text(_hintLabel, buf);
+            return;
+        }
+        const net::OtaState os = net::OtaUpdater::state();
+        switch (os.phase) {
+            case net::OtaPhase::Downloading:
+                if (os.bytesTotal > 0) {
+                    std::snprintf(buf, sizeof(buf), "Downloading %u%%\nDo not power off",
+                                  static_cast<unsigned>((os.bytesReceived * 100u) / os.bytesTotal));
+                } else {
+                    std::snprintf(buf, sizeof(buf), "Downloading %u KB\nDo not power off",
+                                  static_cast<unsigned>(os.bytesReceived / 1024u));
+                }
+                break;
+            case net::OtaPhase::Rebooting:
+                std::snprintf(buf, sizeof(buf), "Rebooting into v%s ...",
+                              os.latestVersion.c_str());
+                break;
+            case net::OtaPhase::Failed:
+                std::snprintf(buf, sizeof(buf), "failed: %s", os.error.c_str());
+                break;
+            case net::OtaPhase::UpToDate:
+                std::snprintf(buf, sizeof(buf), "Up to date (v%s)", os.runningVersion.c_str());
+                break;
+            case net::OtaPhase::Available:
+                std::snprintf(buf, sizeof(buf), "Update available: v%s", os.latestVersion.c_str());
+                break;
+            default:
+                std::snprintf(buf, sizeof(buf),
+                              "EXE check / install   LEFT back   Auto-check on boot");
+                break;
         }
         lv_label_set_text(_hintLabel, buf);
         return;
@@ -587,8 +666,10 @@ void SettingsApp::buildWifiView() {
     _focus = 0;
 
     // A scan takes 1-2 s and is collected asynchronously by Wifi::tick(), so the
-    // screen appears immediately and fills in signal as the results land.
-    net::Wifi::startScan();
+    // screen appears immediately and fills in signal as the results land. Skip
+    // it while the portal AP is up: a scan steals the shared radio and stalls a
+    // client mid-association. RIGHT still rescans on demand.
+    if (!net::Portal::running()) net::Wifi::startScan();
 
     lv_obj_clean(_container);
     for (int i = 0; i < NUM_ITEMS; ++i) {
@@ -661,13 +742,21 @@ void SettingsApp::refreshWifiView() {
     if (_view != View::Wifi || !_wifiRows[0]) return;
     char text[80];
 
-    // Row 0: the portal.
+    // Row 0: the portal. "Not running" is not the same as "off" any more: the
+    // portal scans a reachable saved network before it raises the AP.
     const net::PortalState ps = net::Portal::state();
     lv_label_set_text(_wifiLabels[0], "Web portal");
-    lv_label_set_text(_wifiValues[0], ps.running ? "ON" : "OFF");
-    lv_obj_set_style_text_color(_wifiValues[0],
-                                lv_color_hex(ps.running ? COL_VALUE_ON : COL_VALUE_OFF),
-                                LV_PART_MAIN);
+    const char* stateText = "OFF";
+    uint32_t    stateCol  = COL_VALUE_OFF;
+    switch (ps.phase) {
+        case net::PortalPhase::Running:   stateText = "ON";       stateCol = COL_VALUE_ON;  break;
+        case net::PortalPhase::Preparing: stateText = "scanning"; stateCol = COL_VALUE;     break;
+        case net::PortalPhase::Joining:   stateText = "joining";  stateCol = COL_VALUE;     break;
+        case net::PortalPhase::Failed:    stateText = "FAIL";     stateCol = COL_VALUE_OFF; break;
+        case net::PortalPhase::Off:       stateText = "OFF";      stateCol = COL_VALUE_OFF; break;
+    }
+    lv_label_set_text(_wifiValues[0], stateText);
+    lv_obj_set_style_text_color(_wifiValues[0], lv_color_hex(stateCol), LV_PART_MAIN);
 
     const size_t nets = net::Wifi::networkCount();
     const net::WifiState ws = net::Wifi::state();
@@ -744,9 +833,135 @@ void SettingsApp::wifiForget(int row) {
     updateWifiFocus();
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// System Update screen — GitHub Releases OTA (net/OtaUpdater)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Four rows: running version, status, "Check for update", "Install update".
+// Keys: UP/DOWN move, EXE runs the focused action, LEFT/AC goes back, MODE
+// still leaves Settings entirely (SystemApp intercepts it first).
+
+void SettingsApp::buildUpdateView() {
+    _view  = View::Update;
+    _focus = 2;   // start on "Check for update"
+
+    lv_obj_clean(_container);
+    for (int i = 0; i < NUM_ITEMS; ++i) {
+        _rows[i]   = nullptr;
+        _labels[i] = nullptr;
+        _values[i] = nullptr;
+    }
+    _brightnessSlider = nullptr;
+
+    _updateRowCount = UPDATE_ROWS_MAX;
+    for (int i = 0; i < _updateRowCount; ++i) {
+        const int y = 4 + i * (UPDATE_LIST_H + ROW_GAP);
+
+        _updateRows[i] = lv_obj_create(_container);
+        lv_obj_set_size(_updateRows[i], SCREEN_W - 2 * PAD, UPDATE_LIST_H);
+        lv_obj_set_pos(_updateRows[i], PAD, y);
+        lv_obj_set_style_bg_color(_updateRows[i], lv_color_hex(COL_ROW_BG), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_updateRows[i], LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_color(_updateRows[i], lv_color_hex(COL_BORDER), LV_PART_MAIN);
+        lv_obj_set_style_border_width(_updateRows[i], 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(_updateRows[i], 6, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(_updateRows[i], 0, LV_PART_MAIN);
+        lv_obj_remove_flag(_updateRows[i], LV_OBJ_FLAG_SCROLLABLE);
+
+        _updateLabels[i] = lv_label_create(_updateRows[i]);
+        lv_obj_set_width(_updateLabels[i], 176);
+        lv_label_set_long_mode(_updateLabels[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_style_text_font(_updateLabels[i], ui::fontUi(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(_updateLabels[i], lv_color_hex(COL_TEXT), LV_PART_MAIN);
+        lv_obj_align(_updateLabels[i], LV_ALIGN_LEFT_MID, 10, 0);
+
+        _updateValues[i] = lv_label_create(_updateRows[i]);
+        lv_obj_set_style_text_font(_updateValues[i], ui::fontUiSmall(), LV_PART_MAIN);
+        lv_obj_align(_updateValues[i], LV_ALIGN_RIGHT_MID, -10, 0);
+    }
+
+    refreshUpdateView();
+    refreshHint();
+}
+
+void SettingsApp::closeUpdateView() {
+    _view  = View::Main;
+    _focus = UPDATE_ROW;   // come back with the cursor on the row that opened it
+    createRows();
+    refreshHint();
+}
+
+void SettingsApp::updateUpdateFocus() {
+    for (int i = 0; i < _updateRowCount; ++i) {
+        if (!_updateRows[i]) continue;
+        if (i == _focus) {
+            lv_obj_set_style_bg_color(_updateRows[i], lv_color_hex(COL_ROW_FOCUS), LV_PART_MAIN);
+            lv_obj_set_style_border_color(_updateRows[i], lv_color_hex(COL_FOCUS_BD), LV_PART_MAIN);
+            lv_obj_set_style_border_width(_updateRows[i], 2, LV_PART_MAIN);
+        } else {
+            lv_obj_set_style_bg_color(_updateRows[i], lv_color_hex(COL_ROW_BG), LV_PART_MAIN);
+            lv_obj_set_style_border_color(_updateRows[i], lv_color_hex(COL_BORDER), LV_PART_MAIN);
+            lv_obj_set_style_border_width(_updateRows[i], 1, LV_PART_MAIN);
+        }
+    }
+    if (_updateRows[_focus]) lv_obj_scroll_to_view(_updateRows[_focus], LV_ANIM_OFF);
+    lv_obj_invalidate(_screen);
+}
+
+void SettingsApp::refreshUpdateView() {
+    if (_view != View::Update || !_updateRows[0]) return;
+
+    const bool unavailable = net::OtaUpdater::unavailableReason() != nullptr;
+    const net::OtaState os = net::OtaUpdater::state();
+    char status[64];
+
+    lv_label_set_text(_updateLabels[0], "Version");
+    lv_label_set_text(_updateValues[0], os.runningVersion.c_str());
+    lv_obj_set_style_text_color(_updateValues[0], lv_color_hex(COL_VALUE), LV_PART_MAIN);
+
+    lv_label_set_text(_updateLabels[1], "Status");
+    switch (os.phase) {
+        case net::OtaPhase::Checking:  std::snprintf(status, sizeof(status), "checking..."); break;
+        case net::OtaPhase::UpToDate:  std::snprintf(status, sizeof(status), "up to date"); break;
+        case net::OtaPhase::Available: std::snprintf(status, sizeof(status), "v%s available",
+                                                     os.latestVersion.c_str()); break;
+        case net::OtaPhase::Downloading:
+            if (os.bytesTotal > 0) {
+                std::snprintf(status, sizeof(status), "%u%%",
+                              static_cast<unsigned>((os.bytesReceived * 100u) / os.bytesTotal));
+            } else {
+                std::snprintf(status, sizeof(status), "%u KB",
+                              static_cast<unsigned>(os.bytesReceived / 1024u));
+            }
+            break;
+        case net::OtaPhase::Rebooting: std::snprintf(status, sizeof(status), "rebooting"); break;
+        case net::OtaPhase::Failed:    std::snprintf(status, sizeof(status), "failed"); break;
+        default:                       std::snprintf(status, sizeof(status), "not checked"); break;
+    }
+    lv_label_set_text(_updateValues[1], status);
+    lv_obj_set_style_text_color(_updateValues[1],
+                                lv_color_hex(os.phase == net::OtaPhase::Failed ? COL_VALUE_OFF
+                                                                              : COL_VALUE),
+                                LV_PART_MAIN);
+
+    lv_label_set_text(_updateLabels[2], "Check for update");
+    lv_label_set_text(_updateValues[2], "");
+    lv_label_set_text(_updateLabels[3], "Install update");
+    lv_label_set_text(_updateValues[3], "");
+    if (unavailable) {
+        lv_obj_set_style_text_color(_updateLabels[2], lv_color_hex(COL_HINT), LV_PART_MAIN);
+        lv_obj_set_style_text_color(_updateLabels[3], lv_color_hex(COL_HINT), LV_PART_MAIN);
+    }
+
+    updateUpdateFocus();
+}
+
 void SettingsApp::update() {
     const uint32_t now = lv_tick_get();
-    if ((now - _lastPollMs) < 1000u) return;
+    // The update screen shows byte progress, so it refreshes faster than the
+    // once-a-second status poll the other screens need.
+    const uint32_t period = (_view == View::Update) ? 250u : 1000u;
+    if ((now - _lastPollMs) < period) return;
     _lastPollMs = now;
 
     // Both the portal's state and the Wi-Fi association change with no user
@@ -755,6 +970,9 @@ void SettingsApp::update() {
     if (_view == View::Wifi) {
         refreshWifiView();
         refreshHint();   // the AP's station count/error text moves while it runs
+    } else if (_view == View::Update) {
+        refreshUpdateView();
+        refreshHint();
     } else {
         updateValues();
         refreshHint();
@@ -839,6 +1057,9 @@ void SettingsApp::toggleCurrent() {
         case WIFI_ROW:  // opens the Wi-Fi screen; nothing to persist here
             buildWifiView();
             return;     // the rows this function would refresh were just deleted
+        case UPDATE_ROW:  // opens the System Update screen
+            buildUpdateView();
+            return;
     }
 
     updateValues();
@@ -881,18 +1102,20 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
                 closeWifiView();
                 return;
             case KeyCode::EXE:
-            case KeyCode::ENTER:
                 // Row 0 is the portal toggle; rows 1..n connect.
                 //
-                // Both codes are handled because on the production target the
-                // execute key is run through KeySemanticResolver, whose plane
-                // definitions rewrite KeyCode::EXE to KeyCode::ENTER. So EXE is
-                // emulator/serial only — on the real device the toggle arrives
-                // as ENTER. FractalApp handles the pair the same way.
+                // One case is enough now: SystemApp::handleKey folds ENTER into
+                // EXE before any app sees the event, so this code arrives
+                // identically whether the production resolver ran or the raw
+                // keypad code came through.
                 if (_focus == 0) {
                     // Raising the portal is also how a network gets ON this
                     // list, since the password has to be typed on a phone.
-                    if (net::Portal::running()) {
+                    // A second press during the pre-scan/pre-join cancels it.
+                    const net::PortalPhase phase = net::Portal::state().phase;
+                    const bool starting = phase == net::PortalPhase::Preparing ||
+                                          phase == net::PortalPhase::Joining;
+                    if (net::Portal::running() || starting) {
                         net::Portal::stop();
                     } else if (!net::Portal::start()) {
                         Serial.printf("[SETTINGS] portal start failed: %s\n",
@@ -903,6 +1126,33 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
                     return;
                 }
                 wifiActivate(_focus - 1);
+                return;
+            default:
+                return;
+        }
+    }
+
+    // ── the System Update screen has its own keymap ─────────────────────────
+    if (_view == View::Update) {
+        switch (ev.code) {
+            case KeyCode::UP:
+                if (_focus > 0) { --_focus; updateUpdateFocus(); }
+                return;
+            case KeyCode::DOWN:
+                if (_focus + 1 < _updateRowCount) { ++_focus; updateUpdateFocus(); }
+                return;
+            case KeyCode::LEFT:
+            case KeyCode::AC:
+                closeUpdateView();
+                return;
+            case KeyCode::EXE:
+                if (_focus == 2 && !net::OtaUpdater::busy()) {
+                    net::OtaUpdater::check();
+                } else if (_focus == 3 && !net::OtaUpdater::busy()) {
+                    net::OtaUpdater::install();
+                }
+                refreshUpdateView();
+                refreshHint();
                 return;
             default:
                 return;
@@ -924,9 +1174,7 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
             }
             break;
 
-        case KeyCode::ENTER:
-        case KeyCode::EXE:   // Prod resolver rewrites EXE->ENTER; on non-Prod
-                             // builds EXE arrives raw, so treat it as confirm too.
+        case KeyCode::EXE:
             toggleCurrent();
             break;
 

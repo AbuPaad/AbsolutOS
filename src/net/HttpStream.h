@@ -46,6 +46,12 @@ struct HttpReq {
     std::string        userAgent   = "NumOS/1.0";
     int                timeoutMs   = 60000;   ///< socket timeout, NOT the stall rule
     int                headerBufSize = 2048;  ///< 512 (default) is too small for headers
+    /**
+     * Follow 3xx hops. OFF for the AI path on purpose (a silent hop is an
+     * availability/security surprise). ON for OTA: GitHub serves a release asset
+     * as a 302 to a signed CDN host, so the download must chase it.
+     */
+    bool               followRedirects = false;
 };
 
 class HttpStream {
@@ -68,6 +74,10 @@ public:
     /// Chunked/streamed responses have no length; ask the client instead.
     bool complete() const;
 
+    /// Response Content-Length, or -1 when absent (chunked/streamed). For OTA
+    /// progress only.
+    long contentLength() const;
+
     /// > 0 bytes read, 0 or negative = end (or failure).
     int  read(char* buf, size_t n);
 
@@ -82,6 +92,9 @@ public:
 
 private:
     void*       _h         = nullptr;   ///< esp_http_client_handle_t
+    /// True between a successful tlsSessionAcquire() and close(); guarantees the
+    /// one-and-only TLS slot is given back exactly once, from any task.
+    bool        _tlsHeld   = false;
     const std::string* _body = nullptr; ///< borrowed; only used inside open()
     std::string _url;
     std::string _userAgent;

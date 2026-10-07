@@ -494,7 +494,7 @@ void CircuitCoreApp::handleKeyGrid(const KeyEvent& ev) {
             if (_cursorX < GRID_W - GRID_SNAP)
                 _cursorX += GRID_SNAP;
             break;
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             if (_ideOpen) {
                 handleKeyIDE(ev);
             } else if (_simRunning) {
@@ -601,7 +601,7 @@ void CircuitCoreApp::handleKeyToolbar(const KeyEvent& ev) {
             }
             updateToolbarHighlight();
             break;
-        case KeyCode::ENTER: {
+        case KeyCode::EXE: {
             Tool selected = pageToolAt(_toolbarPage, _toolbarIdx);
             if (selected == Tool::RUN) {
                 // Toggle simulation
@@ -2049,7 +2049,7 @@ void CircuitCoreApp::handleKeyIDE(const KeyEvent& ev) {
             }
             break;
         }
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             lv_textarea_add_char(_ideTextArea, '\n');
             updateAutoComplete();
             break;

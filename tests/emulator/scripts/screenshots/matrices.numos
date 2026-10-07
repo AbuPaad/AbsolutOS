@@ -1,0 +1,152 @@
+# matrices.numos — Screenshot script for Matrices app (APP 09)
+# Three shots: Manager view, Editor 3x3 with cell editing, Result (inverse/determinant)
+#
+# Run:
+#   ./C:/.piobuild/numOS/emulator_pc/program --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/matrices.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+
+log "matrices: waiting for launcher"
+wait 200
+assert_app Menu
+
+# Navigate to Matrices (index 9 in 3-col grid: row 3, col 0)
+# Start at Calculation (index 0, row 0, col 0) -> DOWN 3 times
+log "matrices: navigating to Matrices app"
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+
+# Launch Matrices
+key enter
+wait 120
+assert_theme numos
+
+# SHOT 1: Manager view with three matrix slots (default 2x2) and operation row
+log "matrices: shot 1 - manager view"
+screenshot out/shots-matrices-1.ppm
+
+# SHOT 2: Editor on 3x3 with one cell in edit mode
+# Enter editor for MatA (selectedItem=0, press ENTER)
+log "matrices: entering editor for MatA"
+key enter
+wait 40
+assert_theme numos
+
+# Resize from 2x2 to 3x3: add row (F1), add row (F1), add col (F3), add col (F3)
+log "matrices: resizing to 3x3"
+key f1
+wait 10
+key f1
+wait 10
+key f3
+wait 10
+key f3
+wait 10
+
+# Navigate to center cell (1,1) - from (0,0): DOWN, RIGHT
+key down
+wait 5
+key right
+wait 5
+
+# Enter edit mode on this cell
+key enter
+wait 20
+assert_theme numos
+
+log "matrices: shot 2 - editor 3x3 with cell editing"
+screenshot out/shots-matrices-2.ppm
+
+# Exit edit mode (ENTER to finish, keep value)
+key enter
+wait 10
+
+# Return to manager
+key ac
+wait 40
+assert_theme numos
+
+# SHOT 3: Compute inverse of MatA (need non-singular matrix)
+# First, edit MatA to be a non-singular 2x2 matrix (e.g., [[1,2],[3,4]])
+log "matrices: editing MatA for inverse"
+key enter
+wait 40
+assert_theme numos
+
+# Edit cell (0,0) = 1
+key enter
+wait 10
+key 1
+wait 5
+key enter
+wait 10
+
+# Navigate to (0,1) = 2
+key right
+wait 5
+key enter
+wait 10
+key 2
+wait 5
+key enter
+wait 10
+
+# Navigate to (1,0) = 3
+key down
+wait 5
+key left
+wait 5
+key enter
+wait 10
+key 3
+wait 5
+key enter
+wait 10
+
+# Navigate to (1,1) = 4
+key right
+wait 5
+key enter
+wait 10
+key 4
+wait 5
+key enter
+wait 10
+
+# Back to manager
+key ac
+wait 40
+assert_theme numos
+
+# Select INV operation (operation index 4, so selectedItem = 3 + 4 = 7)
+# From MatA (index 0): DOWN to operations row (index 3), RIGHT 4 times to INV
+log "matrices: selecting INV operation"
+key down
+wait 10
+key right
+wait 10
+key right
+wait 10
+key right
+wait 10
+key right
+wait 10
+
+# Press ENTER to start picking matrix for inverse
+key enter
+wait 20
+assert_theme numos
+
+# MatA is already selected (index 0), press ENTER to compute inverse
+key enter
+wait 60
+assert_theme numos
+
+log "matrices: shot 3 - inverse result"
+screenshot out/shots-matrices-3.ppm
+
+log "matrices: all shots captured"

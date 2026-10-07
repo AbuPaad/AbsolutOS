@@ -36,6 +36,7 @@
 #include "../Config.h"
 #include "BrightnessSettingPolicy.h"
 #include "../net/Wifi.h"
+#include "../net/OtaUpdater.h"
 #include "../ui/StatusBar.h"
 #include "../input/KeyCodes.h"
 #include "../input/KeyboardManager.h"
@@ -76,9 +77,12 @@ private:
     // existing row indexes before it never shift.
     static constexpr int THEME_ROW =
         NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 5 : 4;
+    // A "System Update" row is appended AFTER Wi-Fi so Wi-Fi keeps its existing
+    // index: closeWifiView() and the keymap both name WIFI_ROW explicitly.
     static constexpr int NUM_ITEMS =
-        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 7 : 6;
-    static constexpr int WIFI_ROW = NUM_ITEMS - 1;
+        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 8 : 7;
+    static constexpr int WIFI_ROW = NUM_ITEMS - 2;
+    static constexpr int UPDATE_ROW = NUM_ITEMS - 1;
     static constexpr int SCREEN_W  = 320;
     static constexpr int SCREEN_H  = SCREEN_HEIGHT;  // canvas (Config.h)
     static constexpr int PAD       = 12;
@@ -97,7 +101,11 @@ private:
     static constexpr int WIFI_ROWS_MAX = 1 + static_cast<int>(net::Wifi::kMaxNetworks);
     static constexpr int WIFI_LIST_H   = 30;   ///< row height on that screen
 
-    enum class View { Main, Wifi };
+    /// The System Update screen: version, status, and two actions.
+    static constexpr int UPDATE_ROWS_MAX = 4;
+    static constexpr int UPDATE_LIST_H   = 32;
+
+    enum class View { Main, Wifi, Update };
 
     lv_obj_t*       _screen;
     ui::StatusBar   _statusBar;
@@ -118,6 +126,12 @@ private:
     int             _wifiRowCount = 0;
     uint32_t        _lastPollMs   = 0;
 
+    // System Update screen widgets (created on entry, destroyed on exit)
+    lv_obj_t*       _updateRows[UPDATE_ROWS_MAX];
+    lv_obj_t*       _updateLabels[UPDATE_ROWS_MAX];
+    lv_obj_t*       _updateValues[UPDATE_ROWS_MAX];
+    int             _updateRowCount = 0;
+
     int             _focus;
     DisplayDriver*  _display;
     numos::settings::BrightnessSettingSession _brightnessSession;
@@ -137,4 +151,10 @@ private:
     void updateWifiFocus();
     void wifiActivate(int row); ///< connect / promote the selected network
     void wifiForget(int row);
+
+    // ── System Update screen ────────────────────────────────────────────────
+    void buildUpdateView();     ///< enter: tears the Settings rows down
+    void closeUpdateView();     ///< leave: rebuilds them
+    void refreshUpdateView();   ///< status + focus highlight
+    void updateUpdateFocus();
 };

@@ -50,6 +50,12 @@
 #include <utility>
 #include <vector>
 
+// 2D-math draw state, declared incomplete at GLOBAL scope — deliberately outside
+// namespace mdrender, because a nested `namespace vpam` here would declare
+// mdrender::vpam and shadow the real vpam. Keeps MdRenderer.h LVGL-free so it
+// still compiles on the plain host build.
+namespace vpam { class MathNode; class MathCanvas; }
+
 namespace mdrender {
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -139,6 +145,7 @@ enum class SpanType : uint8_t {
     Strike,     ///< ~~strike~~
     Highlight,  ///< ==highlight==
     Math,       ///< $...$ inline math
+    MathDisplay,///< $$...$$ display math (drawn by the 2D canvas)
     Link,       ///< [text](url)
     Wikilink,   ///< [[Note]] / [[Note|Display]]
     Tag,        ///< #tag
@@ -397,6 +404,16 @@ public:
     /// rebuilds them. Never call off the UI task.
     void render(int page, void* parent, const MdStyles& styles);
 
+    /// Forget everything the last render() created, without drawing.
+    ///
+    /// render() keeps a RAW pointer to the page object it built inside the
+    /// caller's container, and only clears it when it next runs. So an app that
+    /// destroys that container — every screen rebuild does — leaves the pointer
+    /// dangling, and the NEXT render() deletes a freed object: a use-after-free
+    /// that presents as a crash on the second view of a rendered document, not on
+    /// the first. Call this immediately BEFORE destroying the parent object.
+    void releasePage();
+
     // ── Accessors (tests / apps) ─────────────────────────────────────────
     const MdDocument&   doc() const     { return _doc; }
     const DisplayList&  display() const  { return _display; }
@@ -429,6 +446,13 @@ private:
 
     // LVGL draw state (LVGL builds only).
     void*                    _pageObj = nullptr;
+
+    // 2D math for the CURRENT page: one compiled AST + one MathCanvas wrapper per
+    // MathBlock run that compiled. Both are cleared when render() rebuilds the page
+    // and by ~MdRenderer(). The canvases' lv_objs are children of the page object
+    // (LVGL deletes those); the wrappers and the trees are owned here.
+    std::vector<vpam::MathNode*>   _mathTrees;
+    std::vector<vpam::MathCanvas*> _mathCanvases;
 };
 
 }  // namespace mdrender

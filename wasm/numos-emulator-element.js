@@ -11,13 +11,13 @@ import {
 import { createPersistenceController } from "./numos-persistence.js";
 
 const COMPONENT_CSS = "__NUMOS_INLINE_CSS__";
-// The firmware's logical display: 320x156 (NativeHal SCREEN_W/H, derived from
-// Config.h). The panel is 240 rows tall, but the fx-82 shell exposes only 156
-// of them, so sizing the canvas as 320x240 stretched the image 1.54x vertically.
+// The web runtime's logical display: the FULL 320x240 panel. The fx-82 shell
+// cut-out that crops the firmware to 320x156 does not exist behind a browser, so
+// the host canvas is the glass (Config.h NATIVE_SIM branch, NativeHal SCREEN_W/H).
 // These are the pre-boot defaults; once the runtime is up, `#fitCanvas` reads
 // the canvas backing store (which SDL sets to the real logical size) instead.
 const LOGICAL_WIDTH = 320;
-const LOGICAL_HEIGHT = 156;
+const LOGICAL_HEIGHT = 240;
 const KEY_PRESS = 1;
 const KEY_RELEASE = 2;
 const ACTIVE_BY_DOCUMENT = new WeakMap();
@@ -319,7 +319,7 @@ export class NumosEmulatorElement extends HTMLElement {
           <dl>
             <dt>Lifecycle</dt><dd data-detail-state>idle</dd>
             <dt>Build</dt><dd data-detail-build>not loaded</dd>
-            <dt>Display</dt><dd data-detail-scale>320×156 logical</dd>
+            <dt>Display</dt><dd data-detail-scale>320×240 logical</dd>
             <dt>Storage</dt><dd data-detail-storage>not initialized</dd>
             <dt>Error</dt><dd data-detail-error>none</dd>
           </dl>
@@ -968,7 +968,7 @@ export class NumosEmulatorElement extends HTMLElement {
     canvas.dataset.generation = String(token);
     this.#shadow.querySelector(".canvas-mount").append(canvas);
     this.#canvas = canvas;
-    // SDL sets the backing store to the real logical size (320x156) while
+    // SDL sets the backing store to the real logical size (320x240) while
     // main() runs, after the CSS fit has already been computed. Re-fit whenever
     // the backing store changes so the CSS size keeps the correct aspect ratio.
     this.#canvasObserver?.disconnect();
@@ -1051,8 +1051,8 @@ export class NumosEmulatorElement extends HTMLElement {
   #fitCanvas() {
     if (!this.#canvas) return;
     const stage = this.#shadow.querySelector(".display-stage");
-    // Trust the real backing store: SDL resizes it to the firmware's logical
-    // resolution (320x156) once main() runs. Deriving the CSS box from the
+    // Trust the real backing store: SDL resizes it to the host runtime's logical
+    // resolution (320x240, the full panel) once main() runs. Deriving the CSS box from the
     // backing store keeps the aspect ratio right without hardcoding the panel.
     const backingWidth = this.#canvas.width || LOGICAL_WIDTH;
     const backingHeight = this.#canvas.height || LOGICAL_HEIGHT;

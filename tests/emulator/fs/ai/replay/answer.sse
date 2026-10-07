@@ -2,60 +2,92 @@
 
 data: {"choices":[{"delta":{"content":"{\"title\":\"Quadratic roots\",\"answer\":\""}}]}
 
-data: {"choices":[{"delta":{"content":"# Solving x^2 - 5x + 6 = 0\\n\\nThis is"}}]}
+data: {"choices":[{"delta":{"content":"# Greek, roots and powers\\n\\nThe disp"}}]}
 
-data: {"choices":[{"delta":{"content":" a monic quadratic, so factor it: loo"}}]}
+data: {"choices":[{"delta":{"content":"lay face carries the full Greek alpha"}}]}
 
-data: {"choices":[{"delta":{"content":"k for two numbers that multiply to\\n*"}}]}
+data: {"choices":[{"delta":{"content":"bet: \\u03b1 \\u03b2 \\u03b3 \\u03b4 \\u03"}}]}
 
-data: {"choices":[{"delta":{"content":"*6** and add to **-5**. They are -2 a"}}]}
+data: {"choices":[{"delta":{"content":"b5 \\u03b8 \\u03bb \\u03bc \\u03bd \\u03c0"}}]}
 
-data: {"choices":[{"delta":{"content":"nd -3.\\n\\nSo the left side factors as"}}]}
+data: {"choices":[{"delta":{"content":" \\u03c1 \\u03c3 \\u03c4 \\u03c6 \\u03c7 \\"}}]}
 
-data: {"choices":[{"delta":{"content":":\\n\\n(x - 2)(x - 3) = 0\\n\\nA product "}}]}
+data: {"choices":[{"delta":{"content":"u03c8 \\u03c9\\nand the capitals \\u0393"}}]}
 
-data: {"choices":[{"delta":{"content":"is zero when either factor is zero, w"}}]}
+data: {"choices":[{"delta":{"content":" \\u0394 \\u0398 \\u039b \\u03a3 \\u03a6 \\"}}]}
 
-data: {"choices":[{"delta":{"content":"hich gives x = 2 or x = 3.\\n\\n---\\n\\n"}}]}
+data: {"choices":[{"delta":{"content":"u03a8 \\u03a9.\\n\\nInline maths swaps L"}}]}
 
-data: {"choices":[{"delta":{"content":"# Checking the roots\\n\\nSubstitute ea"}}]}
+data: {"choices":[{"delta":{"content":"aTeX tokens for real glyphs, so $\\\\sq"}}]}
 
-data: {"choices":[{"delta":{"content":"ch root back into the original expres"}}]}
+data: {"choices":[{"delta":{"content":"rt{2}$, $\\\\pi r^2$ and\\n$x^2 + y^2 = "}}]}
 
-data: {"choices":[{"delta":{"content":"sion.\\n\\nFor x = 2: 4 - 10 + 6 = 0. G"}}]}
+data: {"choices":[{"delta":{"content":"r^2$ come out as symbols rather than "}}]}
 
-data: {"choices":[{"delta":{"content":"ood.\\n\\nFor x = 3: 9 - 15 + 6 = 0. Go"}}]}
+data: {"choices":[{"delta":{"content":"as command names.\\n\\n---\\n\\n# Display"}}]}
 
-data: {"choices":[{"delta":{"content":"od.\\n\\nBoth roots check out, so the s"}}]}
+data: {"choices":[{"delta":{"content":" maths is drawn, not spelled\\n\\nA $$."}}]}
 
-data: {"choices":[{"delta":{"content":"olution set is {2, 3}.\\n\\n---\\n\\n# Wh"}}]}
+data: {"choices":[{"delta":{"content":"..$$ block goes through the 2D render"}}]}
 
-data: {"choices":[{"delta":{"content":"at this tells you\\n\\n- The discrimina"}}]}
+data: {"choices":[{"delta":{"content":"er, so fractions stack and limits sit"}}]}
 
-data: {"choices":[{"delta":{"content":"nt is 25 - 24 = 1, a perfect square, "}}]}
+data: {"choices":[{"delta":{"content":"\\nover their operator:\\n\\n$$\\\\int_{0}"}}]}
 
-data: {"choices":[{"delta":{"content":"so the roots are rational.\\n- The ver"}}]}
+data: {"choices":[{"delta":{"content":"^{1} x^2 dx = \\\\frac{1}{3}$$\\n\\n$$\\\\s"}}]}
 
-data: {"choices":[{"delta":{"content":"tex sits at x = 2.5, exactly between "}}]}
+data: {"choices":[{"delta":{"content":"um_{n=1}^{\\\\infty} \\\\frac{1}{n^2} = \\"}}]}
 
-data: {"choices":[{"delta":{"content":"the two roots.\\n- The parabola opens "}}]}
+data: {"choices":[{"delta":{"content":"\\frac{\\\\pi^2}{6}$$\\n\\nThose two fract"}}]}
 
-data: {"choices":[{"delta":{"content":"upward because the leading coefficien"}}]}
+data: {"choices":[{"delta":{"content":"ions are laid out with a real horizon"}}]}
 
-data: {"choices":[{"delta":{"content":"t is positive.\\n\\n```\\nb^2 - 4ac = (-"}}]}
+data: {"choices":[{"delta":{"content":"tal bar.\\n\\n---\\n\\n# Comparisons, arr"}}]}
 
-data: {"choices":[{"delta":{"content":"5)^2 - 4*1*6 = 1\\n```\\n\",\"followups\":"}}]}
+data: {"choices":[{"delta":{"content":"ows and subscripts\\n\\nEvery compariso"}}]}
 
-data: {"choices":[{"delta":{"content":"[\"graph y = x^2 - 5x + 6\",\"solve x^2 "}}]}
+data: {"choices":[{"delta":{"content":"n the face can draw: $x \\\\leq 5$, $y "}}]}
 
-data: {"choices":[{"delta":{"content":"+ x - 6 = 0\",\"what is the discriminan"}}]}
+data: {"choices":[{"delta":{"content":"\\\\geq 3$, $a \\\\neq b$.\\n\\nImplication"}}]}
 
-data: {"choices":[{"delta":{"content":"t for?\"],\"confidence\":0.92,\"tool_quer"}}]}
+data: {"choices":[{"delta":{"content":" and arrows render too: $A \\\\implies "}}]}
 
-data: {"choices":[{"delta":{"content":"y\":\"\",\"tool_server\":\"\",\"transcribed_q"}}]}
+data: {"choices":[{"delta":{"content":"B$ and $f: X \\\\to Y$.\\n\\nSubscripts u"}}]}
 
-data: {"choices":[{"delta":{"content":"uestion\":\"solve x^2 - 5x + 6 = 0 and "}}]}
+data: {"choices":[{"delta":{"content":"se the ten subscript digits: $a_0 a_1"}}]}
 
-data: {"choices":[{"delta":{"content":"check the roots\"}"}}]}
+data: {"choices":[{"delta":{"content":" a_2 a_3 a_4 a_5 a_6 a_7 a_8 a_9$.\\n\\"}}]}
+
+data: {"choices":[{"delta":{"content":"n---\\n\\n# Symbols with no glyph\\n\\nSo"}}]}
+
+data: {"choices":[{"delta":{"content":"me symbols have no glyph in the face."}}]}
+
+data: {"choices":[{"delta":{"content":" Write them in ASCII instead: \\\"+-\\\" "}}]}
+
+data: {"choices":[{"delta":{"content":"for\\nplus-or-minus, the word \\\"approx"}}]}
+
+data: {"choices":[{"delta":{"content":"imately\\\" as a stand-in for the appro"}}]}
+
+data: {"choices":[{"delta":{"content":"x sign,\\nd/dx for a partial derivativ"}}]}
+
+data: {"choices":[{"delta":{"content":"e, -> for a right arrow, <= and >= fo"}}]}
+
+data: {"choices":[{"delta":{"content":"r\\nless-or-equal and greater-or-equal"}}]}
+
+data: {"choices":[{"delta":{"content":".\\n\\nUse the plain ASCII hyphen - as "}}]}
+
+data: {"choices":[{"delta":{"content":"a minus sign.\\n\",\"followups\":[\"graph "}}]}
+
+data: {"choices":[{"delta":{"content":"y = x^2 - 5x + 6\",\"solve x^2 + x - 6 "}}]}
+
+data: {"choices":[{"delta":{"content":"= 0\",\"what is the discriminant for?\"]"}}]}
+
+data: {"choices":[{"delta":{"content":",\"confidence\":0.92,\"tool_query\":\"\",\"t"}}]}
+
+data: {"choices":[{"delta":{"content":"ool_server\":\"\",\"transcribed_question\""}}]}
+
+data: {"choices":[{"delta":{"content":":\"solve x^2 - 5x + 6 = 0 and check th"}}]}
+
+data: {"choices":[{"delta":{"content":"e roots\"}"}}]}
 
 data: [DONE]

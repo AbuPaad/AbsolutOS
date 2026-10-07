@@ -1,0 +1,80 @@
+# gameboy.numos — the three website screenshots for the Game Boy app (id 21).
+#
+# Shots (source of truth: the marketing site, via DELIVERABLES.md):
+#   1. out/shots-gameboy-1.ppm — the ROM picker in the CASIO theme, digit-launch
+#      key hints around the list (the casio softkey band "1-9 play ENTER play AC
+#      exit" is built for the picker when the interaction profile has a softkey
+#      row; GameBoyApp.cpp:261).
+#   2. out/shots-gameboy-2.ppm — a Game Boy Color homebrew running: digit 1
+#      launches the first sorted ROM, Petris.gbc (CGB-only cart, cgb=1).
+#   3. out/shots-gameboy-3.ppm — the DMG core running: digit 2 launches
+#      dmg-acid2.gb (DMG-only), then the calculator keypad is played as a
+#      controller (arrows = D-pad, ENTER = A, DEL = B, SHIFT = Start,
+#      ALPHA = Select) with a held Up button.
+#
+# Run:
+#   program --headless --deterministic --script tests/emulator/scripts/screenshots/gameboy.numos \
+#           --fs-root tests/emulator/fs --frames 1400 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "gameboy shots: waiting for the launcher"
+wait 200
+assert_app Menu
+
+# Casio theme (ALPHA + AC), same route the other casio scripts use.
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+assert_app Menu
+
+# ── SHOT 1 — the ROM picker in casio chrome with the digit-launch hints ──
+open_app gameboy
+wait 60
+assert_theme casio
+assert_app gameboy
+screenshot out/shots-gameboy-1.ppm
+log "gameboy shots: shot 1 (casio ROM picker) captured"
+
+# ── SHOT 2 — a Game Boy Color homebrew running (Petris.gbc, CGB-only) ──
+# Casio digit-launch: 1 = the first sorted ROM = Petris.gbc (cgb=1 in the
+# "[GB] playing" line). 500 frames is ~8.4 s of emulated time, past the
+# fluff into the game's own title screen.
+key 1
+wait 500
+assert_app gameboy
+screenshot out/shots-gameboy-2.ppm
+log "gameboy shots: shot 2 (Petris CGB running) captured"
+
+# Back to the picker (AC from the running game -> ROM list).
+key ac
+wait 30
+assert_app gameboy
+
+# ── SHOT 3 — the DMG core, keypad mapped to the controller ──
+# Digit 2 = the second sorted ROM = dmg-acid2.gb (DMG-only, cgb=0 in the
+# "[GB] playing" line). 300 frames is well past its draw-complete point.
+key 2
+wait 300
+assert_app gameboy
+
+# Play the keypad as a controller: hold a d-pad direction for a while, then
+# tap the buttons (A=ENTER, B=DEL, Start=SHIFT, Select=ALPHA) and the rest of
+# the D-pad. The core sees each edge; the app stays Playing the whole time.
+keydown up
+wait 40
+keyup up
+key down
+key left
+key right
+key enter
+key del
+key shift
+key alpha
+wait 20
+assert_app gameboy
+screenshot out/shots-gameboy-3.ppm
+log "gameboy shots: shot 3 (DMG core + keypad mapping) captured"
+
+log "gameboy shots: done"

@@ -735,7 +735,7 @@ void PythonApp::handleKey(const KeyEvent& ev) {
             }
             return;
         }
-        if (ev.code == KeyCode::ENTER) {
+        if (ev.code == KeyCode::EXE) {
             applyAutocomplete();
             return;
         }
@@ -764,7 +764,7 @@ void PythonApp::handleTabBarKey(const KeyEvent& ev) {
         case KeyCode::RIGHT:
             if (_tabIdx < 2) { _tabIdx++; refreshTabBar(); }
             break;
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
         case KeyCode::DOWN:
             switchTab(static_cast<Tab>(_tabIdx));
             _focus = Focus::CONTENT;
@@ -812,7 +812,7 @@ void PythonApp::handleScriptsKey(const KeyEvent& ev) {
                 refreshBtnBar();
             }
             break;
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             if (_btnFocus) {
                 switch (_btnIdx) {
                     case 0: createNewScript(); break;
@@ -866,7 +866,7 @@ void PythonApp::handleEditorKey(const KeyEvent& ev) {
             if (_editorTA) lv_textarea_delete_char(_editorTA);
             closeAutocomplete();
             break;
-        case KeyCode::ENTER:
+        case KeyCode::EXE:
             if (_editorTA) lv_textarea_add_char(_editorTA, '\n');
             closeAutocomplete();
             break;

@@ -141,7 +141,7 @@ button:focus-visible, canvas:focus-visible, summary:focus-visible {
 canvas {
   display: block;
   width: 320px;
-  height: 156px;
+  height: 240px;
   max-width: none;
   background: #000;
   image-rendering: pixelated;
@@ -309,7 +309,7 @@ canvas {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: .16rem;
 }
-/* Compact face: 20px tall so the ten keypad rows and the 320x156 screen both
+/* Compact face: 20px tall so the ten keypad rows and the 320x240 screen both
    fit the viewport without scrolling. The SHIFT/ALPHA legends do not fit at
    this height; they stay in each key's accessible name (aria-label). Hover and
    focus reveal them for pointer users. */

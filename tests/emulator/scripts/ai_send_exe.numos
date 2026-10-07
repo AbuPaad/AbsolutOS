@@ -1,0 +1,18 @@
+# ai_send_exe.numos — does the Ask screen SEND when the key arrives as exe?
+log "ai_send_exe: waiting for launcher"
+wait 200
+assert_app Menu
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+open_app ai
+wait 40
+assert_app AI
+key 1
+wait 20
+key exe
+wait 320
+assert_app AI
+screenshot out/casio/ai_send_exe.ppm
+log "ai_send_exe: captured"

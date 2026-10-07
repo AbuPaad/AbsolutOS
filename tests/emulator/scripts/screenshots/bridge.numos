@@ -1,0 +1,117 @@
+# bridge.numos — Bridge (APP 12 · BridgeDesignerApp) capture script for paadweb.
+#
+# The three shots this file owns (tests/emulator/scripts/screenshots/README.md):
+#   1. /assets/img/apps/bridge-1.webp — edit mode part way through a build (anchors
+#      at both banks, deck nodes arching, truss above, active material highlighted)
+#   2. /assets/img/apps/bridge-2.webp — sim running, truck part way across, members
+#      coloured by stress, deck sagging
+#   3. /assets/img/apps/bridge-3.webp — failure moment: one beam snapped/dimmed,
+#      neighbours red, truck dropping through
+#
+# ════════════════════════════════════════════════════════════════════════════
+# STATUS: 0 of the 3 shots are capturable on this build. BridgeDesignerApp is NOT
+# compiled into the emulator and is NOT routed by it, so there is no Bridge screen
+# to reach, to assert on, or to capture. Evidence (all from this repo / this exact
+# binary):
+#   * platformio.ini [env:emulator_pc] build_src_filter is a per-file whitelist;
+#     it lists apps one by one and has NO +<apps/BridgeDesignerApp.cpp>, and
+#     C:/.piobuild/numOS/emulator_pc/src/apps/ has no BridgeDesignerApp.o
+#     (the dir holds only AiApp, CalculationApp, CalculusApp, EquationsApp,
+#     GameBoyApp, GrapherApp/GraphModel, MathRenderVisualTestApp, NotesApp,
+#     Probability/Prob, Regression/RegressionEngine, Sequences, Settings,
+#     Statistics/Stats).
+#   * src/hal/NativeHal.cpp:1338 launchApp() has no case 12 — it prints
+#     "[APP] App 12 no implementada en simulador" and leaves the mode alone.
+#   * NativeHal.cpp:2229 scriptAppNameToId() has no "bridge" slug, so a script
+#     containing `open_app bridge` fails to LOAD (reproduced on this binary,
+#     exit 2):
+#       [SCRIPT] <file>:1: open_app: app no lanzable
+#         (Calculation|Grapher|Statistics|Probability|Sequences|Regression|
+#          Settings|MathShowcase|MathVisual|GameBoy|Notes|AI)
+#   * NativeHal.cpp:2192 canonicalAppName() has no "Bridge", so `assert_app
+#     Bridge` would likewise fail to load with exit 2 — i.e. even a screenshot of
+#     some other screen could never be honestly asserted as Bridge.
+#   * The binary itself carries no BridgeDesignerApp string at all
+#     ("Bridge Designer", "Beam placed", "Tool: WOOD", "Node placed",
+#     "SIM  F1:truck", "Arrows:move" all return 0 hits); the only "Bridge" in it
+#     is the launcher card label (MainMenu.cpp:125, {12, "Bridge", ...}).
+#   * Firmware DOES route it (SystemApp.cpp:1167-1171, id 12 -> load();
+#     :887-893, Mode::APP_BRIDGE_DESIGNER -> handleKey()) — the gap is the
+#     emulator whitelist + NativeHal routing only.
+#
+# The launcher CARD does exist (MainMenu APPS id 12), so this script does what IS
+# provable: focus that card, activate it, and assert that the emulator keeps the
+# launcher — i.e. machine-check the dead card. It writes no screenshot: a launcher
+# frame must never land on bridge-1/2/3.webp.
+#
+# ════════════════════════════════════════════════════════════════════════════
+# INTENDED CAPTURE WALK — UNVERIFIED, NOT EXECUTED (kept for the rebuild once
+# app 12 is added to the emulator whitelist + NativeHal routing). Traced from
+# src/apps/BridgeDesignerApp.cpp only; no line of it has ever run, and three
+# source-level hazards are known (see the report's NOTES):
+#   begin() (:94-132) seeds two FIXED deck anchors at (60,160) and (260,160),
+#   cursor (160,160), tool WOOD (toolbar tab 0 highlighted COL_TOOL_ACTIVE :222),
+#   status title "Bridge Designer", info bar "Arrows:move  ENTER:place  EXE:sim".
+#   handleKeyEdit (:704): arrows move the cursor in GRID_SNAP=10 steps (:710-738);
+#   ENTER places a node / starts a beam on an existing node / finishes it
+#   (:741-781); F1..F4 = WOOD/STEEL/CABLE/DEL and repaint the toolbar highlight
+#   (:795-814); DEL cancels or deletes the selected node (:784); AC clears the
+#   selection (:844); SHIFT+UP toggles is_deck and SHIFT+DOWN toggles fixed on the
+#   selected node (:710-730). SOLVE starts the sim (:817): truck placed at the
+#   leftmost deck node, 16 ms lv_timer physics (:837).
+#   handleKeySim (:858): AC stops + resetSimulation (:860), F1 relaunches the
+#   truck (:872), F2 the car (:886).
+#     SHOT 1 (edit mode): arrows + ENTER to lay a deck line from the left anchor
+#     to the right one, ENTER on each new node then ENTER on the next node to run
+#     truss members above it; SHIFT+UP on each placed node to flag it is_deck
+#     (otherwise there is no deck at all — hazard 2); F2 to move the toolbar
+#     highlight to STEEL before the capture.
+#     assert_app Bridge · assert_theme numos
+#     # screenshot out/shots-bridge-1.ppm   (NOT RUN — app unreachable)
+#     SHOT 2 (simulation): SOLVE from edit mode (hazard 1: no script token maps to
+#     KeyCode::SOLVE, so this step cannot be driven from .numos at all), then wait
+#     so the truck (v = 30 px/s * DT, :533) is part way across the 60..260 deck and
+#     satisfyConstraints has coloured the members via lerpColor(stress) green->red
+#     (:686) while gravity + truck force (updateVehicle :540) bow the deck down.
+#     assert_app Bridge · assert_theme numos
+#     # screenshot out/shots-bridge-2.ppm   (NOT RUN — app unreachable)
+#     SHOT 3 (failure): keep the sim running until a member's stress exceeds
+#     MAT_BREAK_POINT (wood .7 / steel .95 / cable .5, :112, :524); bm.broken then
+#     draws that beam at COL_TEXT_DIM LV_OPA_40 (:304) while its neighbours sit at
+#     max stress (red), and the truck keeps dropping through the gap because the
+#     model carries on stepping.
+#     assert_app Bridge · assert_theme numos
+#     # screenshot out/shots-bridge-3.ppm   (NOT RUN — app unreachable)
+#
+# Run:
+#   program --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/bridge.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot error · 4 assertion failure.
+
+log "bridge: waiting for splash -> launcher"
+wait 200
+assert_app Menu
+assert_theme numos
+
+# The launcher grid is 3 columns wide (menu_nav_parity.numos), so card id 12
+# (Bridge) is row 4, column 0. Four DOWNs from Calculation (id 0) land on it.
+key down
+key down
+key down
+key down
+assert_menu_focus Bridge
+assert_theme numos
+
+# Activate the card. launchApp(12) is unimplemented in the emulator, so the
+# launcher must stay active — this assert is the machine check that app 12 is a
+# dead card on THIS build. (If it ever FAILS, routing was added: then rebuild the
+# walk above, add `open_app bridge` + `assert_app Bridge`, and capture.)
+key enter
+wait 60
+assert_app Menu
+assert_theme numos
+assert_menu_focus Bridge
+
+log "bridge: card id 12 focused and activated; emulator kept the launcher"
+log "bridge: 0 of 3 shots captured — BridgeDesignerApp is not in the emulator build"

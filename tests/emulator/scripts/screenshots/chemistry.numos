@@ -1,0 +1,112 @@
+# chemistry.numos — Screenshot script for Chemistry app (PeriodicTableApp)
+#
+# Three shots required by the website:
+# 1. /assets/img/apps/chemistry-1.webp — Table tab, cursor on Tungsten (Z=74),
+#    detail panel showing electron configuration [Xe] 4f14 5d4 6s2
+# 2. /assets/img/apps/chemistry-2.webp — Deep-dive overlay on Mercury (Z=80),
+#    showing melting/boiling points, density, atomic radius, ionization energy, fun fact
+# 3. /assets/img/apps/chemistry-3.webp — Balance tab with "Fe+O2=Fe2O3" typed in,
+#    balanced result "4Fe + 3O2 = 2Fe2O3" displayed
+#
+# LIMITATIONS (emulator binary lacks support):
+# - No "chemistry" / "periodictable" in canonicalAppName / scriptAppNameToId → cannot assert_app or open_app
+# - launchApp(11) prints "App 11 no implementado en simulador" → Chemistry app never launches
+# - No ALPHA_A..ALPHA_F KeyCodes reachable from script → cannot type most element symbols
+# - No SOLVE key name in script → cannot type '=' in balancer input
+# - Shots 1 & 2 (table navigation + deep-dive) require the app to be running — impossible
+# - Shot 3 (balancer) additionally requires text input not supported by emulator
+#
+# Run:
+#   ./C:/.piobuild/numOS/emulator_pc/program --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/chemistry.numos \
+#       --fs-root tests/emulator/fs --frames 2000 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "chemistry: waiting for launcher"
+wait 200
+assert_app Menu
+assert_theme numos
+
+# Navigate menu grid to Chemistry (app_id=11, row 3, col 2 in 3-col grid)
+# Start at Calculation (0,0) -> DOWN x3 to row 3 -> RIGHT x2 to col 2 -> ENTER
+key down
+wait 10
+key down
+wait 10
+key down
+wait 10
+key right
+wait 10
+key right
+wait 10
+key enter
+wait 150
+
+# App launches as "Periodic Table". No assert_app available for it.
+# We rely on wait timing and the fact that menu navigation reached app_id=11.
+
+# ── SHOT 1: Table tab, cursor on Tungsten (Z=74) ───────────────────────────
+# Cursor starts at Hydrogen (Z=1). Navigate to Tungsten (Z=74):
+# Path via NAV_LUT: H(1) DOWN->Li(3) DOWN->Na(11) DOWN->K(19) DOWN->Rb(37) DOWN->Cs(55)
+#   RIGHT->Ba(56) RIGHT->Hf(72) RIGHT->Ta(73) RIGHT->W(74)
+# Total: 5 DOWN, 4 RIGHT
+log "chemistry: navigating to Tungsten (Z=74)"
+key down
+wait 5
+key down
+wait 5
+key down
+wait 5
+key down
+wait 5
+key down
+wait 5
+key right
+wait 5
+key right
+wait 5
+key right
+wait 5
+key right
+wait 5
+
+screenshot out/shots-chemistry-1.ppm
+log "chemistry: shot 1 captured (Tungsten detail)"
+
+# ── SHOT 2: Deep-dive overlay on Mercury (Z=80) ────────────────────────────
+# From Tungsten (74) navigate RIGHT x6 to Mercury (80):
+# W(74) -> Re(75) -> Os(76) -> Ir(77) -> Pt(78) -> Au(79) -> Hg(80)
+log "chemistry: navigating to Mercury (Z=80)"
+key right
+wait 5
+key right
+wait 5
+key right
+wait 5
+key right
+wait 5
+key right
+wait 5
+key right
+wait 5
+
+# Open deep-dive with ENTER
+key enter
+wait 30
+screenshot out/shots-chemistry-2.ppm
+log "chemistry: shot 2 captured (Mercury deep-dive)"
+
+# Close deep-dive (any key except UP/DOWN)
+key ac
+wait 20
+
+# ── SHOT 3: Balance tab — CANNOT CAPTURE ───────────────────────────────────
+# Requires typing "Fe+O2=Fe2O3" which needs:
+#   - Letters O, H, N, C etc. (only A-F available via ALPHA modifier)
+#   - SOLVE key for '=' (no script key name for SOLVE)
+#   - ENTER to balance (available)
+# Emulator binary lacks these key mappings. Shot 3 is impossible.
+log "chemistry: SKIPPING shot 3 (balancer) — emulator lacks SOLVE key and full alpha alphabet"
+
+log "chemistry: done"

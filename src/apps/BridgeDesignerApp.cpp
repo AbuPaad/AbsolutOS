@@ -738,7 +738,7 @@ void BridgeDesignerApp::handleKeyEdit(const KeyEvent& ev) {
             break;
 
         // ── Place / connect / select ─────────────────────────────────────
-        case KeyCode::ENTER: {
+        case KeyCode::EXE: {
             int nodeHere = findNodeAt(_cursorX, _cursorY);
             if (nodeHere < 0) {
                 // No node at cursor — place a new one

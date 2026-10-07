@@ -1,0 +1,38 @@
+# sequences.numos — Screenshot captures for the Sequences app (APP 07).
+#
+# Two shots required by the website:
+#   1. Define tab with two sequence formulas, one row selected.
+#   2. Table tab with the first terms of both sequences listed against n.
+#
+# Run:
+#   ./C:/.piobuild/numOS/emulator_pc/program --headless --deterministic \
+#       --script tests/emulator/scripts/screenshots/sequences.numos \
+#       --fs-root tests/emulator/fs --frames 1400 --quiet
+#
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+
+log "sequences: waiting for launcher"
+wait 200
+assert_app Menu
+
+log "sequences: launching app"
+open_app sequences
+wait 120
+
+# Shot 1: Define tab — two sequence formulas, one row selected.
+# App starts on Define tab (Tab::DEFINE) with _selectedSeq = 0 (u(n)).
+assert_app Sequences
+assert_theme numos
+screenshot out/shots-sequences-1.ppm
+log "sequences: shot 1 captured (define tab)"
+
+# Shot 2: Table tab — first terms of both sequences against n.
+# RIGHT key switches from Define to Table.
+key right
+wait 40
+assert_app Sequences
+assert_theme numos
+screenshot out/shots-sequences-2.ppm
+log "sequences: shot 2 captured (table tab)"
+
+log "sequences: done"
