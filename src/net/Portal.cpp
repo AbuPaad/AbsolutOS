@@ -403,12 +403,18 @@ function toast(m,bad){$('toast').innerHTML='<div class="msg'+(bad?' err':'')+'">
   if(!bad)setTimeout(function(){$('toast').innerHTML=''},2500)}
 function goBack(){if(history.length>1){history.back()}else{location.hash='#/'}}
 function api(path,opt){
-  opt=opt||{};var ctl=new AbortController(),tm=setTimeout(function(){ctl.abort()},15000);
-  opt.signal=ctl.signal;
+  opt=opt||{};
+  // The deadline is best-effort: an older or in-app browser with no
+  // AbortController must still render the page, so nothing here may throw at
+  // load time (a throw in api() kills render() and leaves "loading…" for ever).
+  var ctl=(typeof AbortController==='function')?new AbortController():null;
+  var tm=ctl?setTimeout(function(){ctl.abort()},15000):0;
+  if(ctl)opt.signal=ctl.signal;
   return fetch(path,opt).then(function(r){return r.text().then(function(t){
-  try{return JSON.parse(t)}catch(e){throw new Error(t||('HTTP '+r.status))}})})
-  .then(function(j){if(j&&j.ok===false)throw new Error(j.error||'failed');return j})
-  .then(function(j){clearTimeout(tm);return j},function(e){clearTimeout(tm);
+    try{return JSON.parse(t)}catch(e){throw new Error(t||('HTTP '+r.status))}})})
+  .then(function(j){if(tm)clearTimeout(tm);
+    if(j&&j.ok===false)throw new Error(j.error||'failed');return j},
+    function(e){if(tm)clearTimeout(tm);
     if(e&&e.name==='AbortError')throw new Error('timed out waiting for the device');
     throw e})}
 function params(h){var o={},q=h.split('?')[1];if(q)q.split('&').forEach(function(kv){var p=kv.split('=');
@@ -536,6 +542,7 @@ function viewConfig(){
     '<div class="hint">Joining stops this access point, so save it last. Scanning briefly '+
     'pauses the page. Only your own network can be configured here — a scan reports names '+
     'and signal only; it cannot read anybody\'s password.</div>'+
+    (j.diag?'<div class="hint">device at this moment: '+esc(j.diag)+'</div>':'')+
     '<div id="saved"></div>';
     $('title').textContent='Config';
     loadSaved()})
@@ -795,19 +802,42 @@ void writeAiConfig(const std::string& baseUrl, const std::string& model) {
 }
 
 void handleConfigGet() {
-    const ai::AiConfig cfg = ai::AiConfig::load("/ai/config.json");
-    std::string ssid, pass;
-    const bool wifiSet = net::Wifi::loadCredentials(ssid, pass);
+    // The Config tab is the only view whose data comes from NVS as well as
+    // LittleFS, on the portal task rather than the loop task — the one code
+    // path in this file with no working counterpart to compare against. It also
+    // answers with a JSON error instead of nothing at all, and reports the
+    // portal task's remaining stack: a handler that dies (or a task whose stack
+    // is exhausted) shows up in the browser as an eternal "loading…", which
+    // names no cause. This makes it name one.
+    Serial.println("[PORTAL] config: begin");
+    try {
+        const ai::AiConfig cfg = ai::AiConfig::load("/ai/config.json");
+        std::string ssid, pass;
+        const bool wifiSet = net::Wifi::loadCredentials(ssid, pass);
 
-    std::string body = "{\"ok\":true,\"model\":\"" + jsonEscape(cfg.model) +
-                       "\",\"base_url\":\"" + jsonEscape(cfg.baseUrl) +
-                       "\",\"key_set\":" + (cfg.apiKey.empty() ? "false" : "true") +
-                       // The AppID's PRESENCE and where it came from; never the value.
-                       ",\"wa_appid_set\":" + (cfg.waAppId.empty() ? "false" : "true") +
-                       ",\"wa_appid_source\":\"" + jsonEscape(cfg.waKeySource()) +
-                       ",\"wifi_ssid\":\"" + jsonEscape(ssid) +
-                       "\",\"wifi_set\":" + (wifiSet ? "true" : "false") + "}";
-    sendJson(200, body);
+        char diag[96];
+        std::snprintf(diag, sizeof(diag), "%uK free heap, %u bytes stack left",
+                      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024u),
+                      static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+
+        std::string body = "{\"ok\":true,\"model\":\"" + jsonEscape(cfg.model) +
+                           "\",\"base_url\":\"" + jsonEscape(cfg.baseUrl) +
+                           "\",\"key_set\":" + (cfg.apiKey.empty() ? "false" : "true") +
+                           // The AppID's PRESENCE and where it came from; never the value.
+                           ",\"wa_appid_set\":" + (cfg.waAppId.empty() ? "false" : "true") +
+                           ",\"wa_appid_source\":\"" + jsonEscape(cfg.waKeySource()) +
+                           ",\"wifi_ssid\":\"" + jsonEscape(ssid) +
+                           "\",\"wifi_set\":" + (wifiSet ? "true" : "false") +
+                           ",\"diag\":\"" + jsonEscape(diag) + "\"}";
+        Serial.printf("[PORTAL] config: ok (%s)\n", diag);
+        sendJson(200, body);
+    } catch (const std::exception& e) {
+        Serial.printf("[PORTAL] config: threw %s\n", e.what());
+        sendError(500, std::string("reading the config failed: ") + e.what());
+    } catch (...) {
+        Serial.println("[PORTAL] config: threw an unknown exception");
+        sendError(500, "reading the config failed");
+    }
 }
 
 void handleConfigPost() {
@@ -1132,8 +1162,21 @@ void handleNotFound() {
 void portalTask(void*) {
     for (;;) {
         if (g_quit) break;
-        g_server.handleClient();
-        g_dns.processNextRequest();
+        // A handler that throws must not take the device down with it. This
+        // firmware is built with -fexceptions (Giac needs them), so an
+        // allocation failure or any other throw inside a handler would
+        // otherwise reach std::terminate() -> abort() -> panic -> reboot: the
+        // AP disappears and the browser that asked the question waits for an
+        // answer that never comes ("stuck on loading"). Catching here keeps the
+        // portal alive and names the fault on the serial line.
+        try {
+            g_server.handleClient();
+            g_dns.processNextRequest();
+        } catch (const std::exception& e) {
+            Serial.printf("[PORTAL] handler threw: %s\n", e.what());
+        } catch (...) {
+            Serial.println("[PORTAL] handler threw an unknown exception");
+        }
         vTaskDelay(pdMS_TO_TICKS(2));
     }
     g_server.stop();
