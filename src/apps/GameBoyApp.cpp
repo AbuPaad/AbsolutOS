@@ -578,22 +578,25 @@ void GameBoyApp::handleKey(const KeyEvent& ev) {
 
     if (_state != State::Playing) return;
 
-    // AC backs out of the running game to the ROM list (the game keeps its save).
-    if (ev.code == KeyCode::AC) {
+    // EXE backs out of the running game to the ROM list (the game keeps its
+    // save). This used to be AC, which is now the Game Boy B button — the only
+    // key that can carry the back-out, since AC/B is consumed by the core.
+    if (ev.code == KeyCode::EXE) {
         if (ev.action == KeyAction::PRESS) leaveGame();
         return;
     }
 
+    // The Game Boy pad. Nothing else in the 6x9 keypad is a GB button.
     GbButton button;
     switch (ev.code) {
         case KeyCode::LEFT:  button = GbButton::Left;   break;
         case KeyCode::RIGHT: button = GbButton::Right;  break;
         case KeyCode::UP:    button = GbButton::Up;     break;
         case KeyCode::DOWN:  button = GbButton::Down;   break;
-        case KeyCode::EXE: button = GbButton::A;      break;
-        case KeyCode::DEL:   button = GbButton::B;      break;
-        case KeyCode::SHIFT: button = GbButton::Start;  break;
-        case KeyCode::ALPHA: button = GbButton::Select; break;
+        case KeyCode::DEL:   button = GbButton::A;      break;
+        case KeyCode::AC:    button = GbButton::B;      break;
+        case KeyCode::SHIFT: button = GbButton::Select; break;
+        case KeyCode::ALPHA: button = GbButton::Start;  break;
         default: return;   // every other key is not a Game Boy button
     }
 

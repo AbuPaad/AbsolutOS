@@ -22,8 +22,9 @@
  *             lv_image centred on the screen.
  *
  * Input (PC keyboard via the SDL2 emulator, mapped in NativeHal.cpp):
- *   arrows = D-pad · ENTER = A · DEL = B · SHIFT = Start · ALPHA = Select
- *   AC     = back to the picker while playing; leaves the app from the picker
+ *   arrows = D-pad · DEL = A · AC = B · SHIFT = Select · ALPHA = Start
+ *   EXE (the ENTER key) = back to the picker while playing
+ *   AC     = leaves the app from the picker/error screens
  *   MODE   = leaves the app (SystemApp intercepts it before the app sees it)
  *
  * Cartridge RAM is persisted to "/roms/<name>.sav" on leaving a game, and read

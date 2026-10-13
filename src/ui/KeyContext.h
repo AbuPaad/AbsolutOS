@@ -294,15 +294,14 @@ inline constexpr KeyRole kCtxGameBoy[] = {
     { KeyCode::RIGHT, Role::Primary, "Right" },
     { KeyCode::UP,    Role::Primary, "Up" },
     { KeyCode::DOWN,  Role::Primary, "Down" },
-    { KeyCode::EXE,   Role::Primary, "A" },
-    // "B" was listed as EXE, which the handler never reads: GameBoyApp maps B to
-    // DEL (GameBoyApp.cpp case KeyCode::DEL -> GbButton::B). Kept truthful so the
-    // soft-key bar and the web pad label the key that actually works.
-    { KeyCode::DEL,   Role::Secondary, "B" },
-    { KeyCode::F1,    Role::Secondary, "Start" },
-    { KeyCode::F2,    Role::Secondary, "Select" },
-    { KeyCode::SHIFT, Role::Secondary, "Run" },
-    { KeyCode::AC,    Role::Secondary, "Reset" },
+    // A takes the fifth (and last) soft-key slot; the remaining three buttons are
+    // secondary because the bar holds only five primaries. Each label names the
+    // key GameBoyApp::handleKey actually reads — keep the two in step.
+    { KeyCode::DEL,   Role::Primary, "A" },
+    { KeyCode::AC,    Role::Secondary, "B" },
+    { KeyCode::SHIFT, Role::Secondary, "Select" },
+    { KeyCode::ALPHA, Role::Secondary, "Start" },
+    { KeyCode::EXE,   Role::Secondary, "Back" },
 };
 
 // Notes: pure reading. Page and line movement only.

@@ -761,7 +761,9 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
     // ── SHIFT + AC → Apagado del sistema (DESACTIVADO mientras USB conectado) ──
     // Deep sleep deshabilitado temporalmente: con cable USB conectado
     // el sistema debe permanecer encendido al 100%.
-    if (km.isShift() && ev.code == KeyCode::AC) {
+    // GameBoyApp is exempt: AC is its B button (and SHIFT its Select), so a
+    // Select+B combo would otherwise be swallowed here and never reach the core.
+    if (_mode != Mode::APP_GAMEBOY && km.isShift() && ev.code == KeyCode::AC) {
         Serial.println("[SYSTEM] SHIFT+AC detected — deep sleep DISABLED (USB mode)");
         km.reset();
         _shiftActive = false;
@@ -773,8 +775,8 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
     //    Must run before mode dispatch so it fires in every mode. We only set
     //    intent; update() performs activate() + recreate at a safe point
     //    (never mutate a live canvas mid-frame). Plain AC still clears.
-    if (ev.action == KeyAction::PRESS && km.isAlpha() &&
-        ev.code == KeyCode::AC) {
+    if (ev.action == KeyAction::PRESS && _mode != Mode::APP_GAMEBOY &&
+        km.isAlpha() && ev.code == KeyCode::AC) {
         const bool isCasio =
             ui::ThemeManager::instance().id() == ui::ThemeId::Casio;
         _pendingTheme = isCasio ? ui::ThemeId::NumOS : ui::ThemeId::Casio;
@@ -968,8 +970,10 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
                 }
             }
             break;
-        // GameBoyApp is LVGL-native (Walnut-CGB front-end). MODE and AC both
-        // leave; while playing, AC is consumed by the app to reopen the ROM list.
+        // GameBoyApp is LVGL-native (Walnut-CGB front-end). MODE leaves the app;
+        // AC is NOT intercepted — it is the Game Boy B button while playing, and
+        // the app's own exit key from the picker/error screens (EXE backs out of
+        // a running game to the ROM list).
         case Mode::APP_GAMEBOY:
             if (ev.code == KeyCode::MODE) {
                 returnToMenu();

@@ -159,8 +159,12 @@ int main(int argc, char** argv)
     // breaks them is a test failure rather than a surprise in the browser.
     {
         const Ctx gb = Ctx::GameBoy;
-        require(numos::ctxRoleFor(gb, KeyCode::EXE) == Role::Primary,
-                "Game Boy: EXE is the A button (primary)");
+        require(numos::ctxRoleFor(gb, KeyCode::DEL) == Role::Primary,
+                "Game Boy: DEL is the A button (primary)");
+        require(numos::ctxRoleFor(gb, KeyCode::AC) == Role::Secondary,
+                "Game Boy: AC is the B button");
+        require(numos::ctxRoleFor(gb, KeyCode::EXE) == Role::Secondary,
+                "Game Boy: EXE is the back-out to the ROM list, not a button");
         bool deadMaths = true;
         for (KeyCode math : {KeyCode::NUM_7, KeyCode::SIN, KeyCode::SQRT}) {
             if (numos::ctxRoleFor(gb, math) != Role::Disabled) deadMaths = false;

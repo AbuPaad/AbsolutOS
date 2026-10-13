@@ -43,11 +43,11 @@ log "gb_smoke: rom running"
 screenshot out/gb_smoke.ppm
 log "gb_smoke: screenshot captured"
 
-# AC backs out of the running game to the ROM list, still inside the app...
-key ac
+# EXE backs out of the running game to the ROM list, still inside the app...
+key exe
 wait 30
 assert_app gameboy
-log "gb_smoke: AC returned to the rom list"
+log "gb_smoke: EXE returned to the rom list"
 
 # ...and MODE leaves the app for the launcher.
 key mode
