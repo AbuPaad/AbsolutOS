@@ -136,7 +136,10 @@
 #include "../apps/SequencesApp.h"         // Phase 7A: LVGL-only, pure-math (no CAS/HW)
 #include "../apps/RegressionApp.h"        // Phase 7C: LVGL-only, pure-math (no CAS/HW)
 #include "../apps/GrapherApp.h"           // Phase 8G: LVGL-native grapher (RPN pipeline; no Giac/CAS)
-#include "../apps/MathRenderVisualTestApp.h" // Candidate-only renderer verification
+#include "../apps/MathRenderVisualTestApp.h"
+#include "../apps/MatricesApp.h"
+#include "../apps/BridgeDesignerApp.h"
+#include "../apps/Fluid2DApp.h" // Candidate-only renderer verification
 #include "../apps/GameBoyApp.h"             // Game Boy / GBC front-end (Walnut-CGB)
 #include "../apps/NotesApp.h"         // Shared Markdown renderer demo host (mdrender)
 #include "../apps/AiApp.h"             // AI wrapper (ai/AiClient + shared mdrender)
@@ -296,6 +299,9 @@ enum class AppMode : uint8_t {
     NOTES_READER,   // Shared Markdown render module demo host (mdrender)
     AI_WRAPPER,     // AI wrapper: action menu, ask/capture, streaming answer
     MATH_VISUAL,    // Full MathRenderer verification canvas
+    MATRICES,       // Matrices editor/solver
+    BRIDGE,         // Bridge designer sim
+    FLUID2D,        // Fluid 2D simulator
 #if defined(NUMOS_NEO_APP_SMOKE)
     NEO_LANGUAGE    // Opt-in: excluded from the normal emulator whitelist
 #endif
@@ -381,6 +387,9 @@ static StatisticsApp*   g_statsApp = nullptr;      // Phase 6A (emulador)
 static ProbabilityApp*  g_probApp  = nullptr;      // Phase 6A (emulador)
 static SequencesApp*    g_seqApp   = nullptr;      // Phase 7A (emulador)
 static RegressionApp*   g_regApp   = nullptr;      // Phase 7C (emulador)
+static MatricesApp*      g_matricesApp = nullptr;
+static BridgeDesignerApp* g_bridgeApp  = nullptr;
+static Fluid2DApp*       g_fluid2dApp = nullptr;
 static GrapherApp*      g_grapherApp = nullptr;    // Phase 8G (emulador)
 static MathRenderVisualTestApp* g_mathVisualApp = nullptr;
 static GameBoyApp*      g_gameboyApp   = nullptr;   // Game Boy front-end (emulador)
@@ -965,6 +974,21 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
             }
             break;
 
+        case AppMode::MATRICES:
+            if (isDown && kc == KeyCode::MODE) { returnToMenu(); break; }
+            if (g_matricesApp) { KeyEvent ke; ke.code=kc; ke.action=action; ke.row=-1; ke.col=-1; g_matricesApp->handleKey(ke); }
+            break;
+
+        case AppMode::BRIDGE:
+            if (isDown && kc == KeyCode::MODE) { returnToMenu(); break; }
+            if (g_bridgeApp) { KeyEvent ke; ke.code=kc; ke.action=action; ke.row=-1; ke.col=-1; g_bridgeApp->handleKey(ke); }
+            break;
+
+        case AppMode::FLUID2D:
+            if (isDown && kc == KeyCode::MODE) { returnToMenu(); break; }
+            if (g_fluid2dApp) { KeyEvent ke; ke.code=kc; ke.action=action; ke.row=-1; ke.col=-1; g_fluid2dApp->handleKey(ke); }
+            break;
+
         case AppMode::PROBABILITY:
             // Phase 6A: mismo contrato que SETTINGS — MODE vuelve al launcher; el
             // resto (incluido RELEASE) se reenvia a ProbabilityApp::handleKey.
@@ -1321,6 +1345,9 @@ static void transitionToMenu()
     // Phase 7C: RegressionApp (LVGL-native). Mismo patron perezoso: solo se construye
     // el objeto; su pantalla se crea en el primer load() (load() llama a begin()).
     g_regApp   = new RegressionApp();
+    g_matricesApp = new MatricesApp();
+    g_bridgeApp   = new BridgeDesignerApp();
+    g_fluid2dApp  = new Fluid2DApp();
 
     // Phase 8G: GrapherApp (LVGL-native). Mismo patron perezoso: solo se construye
     // el objeto (sin begin(), para no agotar el heap LVGL al arranque); su pantalla
@@ -1398,6 +1425,18 @@ static void launchApp(int appId)
                 g_mode = AppMode::STATISTICS;
                 std::printf("[APP] StatisticsApp activa\n");
             }
+            break;
+
+        case 9: // Matrices
+            if (g_matricesApp) { g_matricesApp->load(); g_mode = AppMode::MATRICES; std::printf("[APP] MatricesApp activa\n"); }
+            break;
+
+        case 12: // Bridge
+            if (g_bridgeApp) { g_bridgeApp->load(); g_mode = AppMode::BRIDGE; std::printf("[APP] BridgeDesignerApp activa\n"); }
+            break;
+
+        case 14: // Fluid 2D
+            if (g_fluid2dApp) { g_fluid2dApp->load(); g_mode = AppMode::FLUID2D; std::printf("[APP] Fluid2DApp activa\n"); }
             break;
 
         case 5: // Probability (LVGL-native; Phase 6A, mismo id que la tarjeta del launcher)
@@ -1517,6 +1556,9 @@ static void performAppTeardown(AppMode m)
             // Phase 6A: StatisticsApp::load() vuelve a llamar begin() perezosamente.
             if (g_statsApp) g_statsApp->end();
             break;
+        case AppMode::MATRICES:   if (g_matricesApp) g_matricesApp->end(); break;
+        case AppMode::BRIDGE:     if (g_bridgeApp) g_bridgeApp->end(); break;
+        case AppMode::FLUID2D:    if (g_fluid2dApp) g_fluid2dApp->end(); break;
         case AppMode::PROBABILITY:
             // Phase 6A: ProbabilityApp::load() vuelve a llamar begin() perezosamente.
             if (g_probApp) g_probApp->end();
@@ -1589,6 +1631,9 @@ static void reloadActiveView()
         case AppMode::CALCULUS:    if (g_calculusApp) g_calculusApp->load(); break;
         case AppMode::SETTINGS:    if (g_settingsApp) g_settingsApp->load(); break;
         case AppMode::STATISTICS:  if (g_statsApp) g_statsApp->load(); break;
+        case AppMode::MATRICES:    if (g_matricesApp) g_matricesApp->load(); break;
+        case AppMode::BRIDGE:      if (g_bridgeApp) g_bridgeApp->load(); break;
+        case AppMode::FLUID2D:     if (g_fluid2dApp) g_fluid2dApp->load(); break;
         case AppMode::PROBABILITY: if (g_probApp) g_probApp->load(); break;
         case AppMode::SEQUENCES:   if (g_seqApp) g_seqApp->load(); break;
         case AppMode::REGRESSION:  if (g_regApp) g_regApp->load(); break;
@@ -2230,6 +2275,9 @@ static const char* canonicalAppName(const std::string& name)
     if (lc == "probability" || lc == "prob")      return "Probability";     // Phase 6A
     if (lc == "sequences" || lc == "seq")         return "Sequences";       // Phase 7A
     if (lc == "regression" || lc == "reg")        return "Regression";      // Phase 7C
+    if (lc == "matrices" || lc == "matrix")         return "Matrices";
+    if (lc == "bridge" || lc == "bridgedesigner")   return "Bridge";
+    if (lc == "fluid2d" || lc == "fluid_2d")        return "Fluid 2D";
     if (lc == "grapher" || lc == "graph")         return "Grapher";         // Phase 8G
     if (lc == "gameboy" || lc == "gb" ||
         lc == "game_boy")                         return "Game Boy";
@@ -2259,6 +2307,9 @@ static int scriptAppNameToId(const std::string& name)
     if (lc == "probability" || lc == "prob")                          return 5;   // Phase 6A
     if (lc == "sequences" || lc == "seq")                             return 7;   // Phase 7A
     if (lc == "regression" || lc == "reg")                            return 6;   // Phase 7C
+    if (lc == "matrices" || lc == "matrix")                           return 9;
+    if (lc == "bridge" || lc == "bridgedesigner")                     return 12;
+    if (lc == "fluid2d" || lc == "fluid_2d")                          return 14;
     if (lc == "grapher" || lc == "graph")                             return 1;   // Phase 8G
     if (lc == "settings")                                             return 10;
     if (lc == "gameboy" || lc == "gb" || lc == "game_boy")            return 21;   // Walnut-CGB front-end

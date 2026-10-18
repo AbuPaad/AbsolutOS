@@ -442,15 +442,15 @@ void CalculusApp::createUI() {
     lv_label_set_text(_resultLabel, "f'(x) =");
     lv_obj_set_style_text_font(_resultLabel, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_resultLabel, lv_color_hex(COL_RESULT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_resultLabel, PAD, 58);
+    lv_obj_set_pos(_resultLabel, PAD, 50);
 
     _resultCanvas.create(_resultContainer);
-    lv_obj_set_pos(_resultCanvas.obj(), PAD + 4, 78);
-    lv_obj_set_size(_resultCanvas.obj(), SCREEN_W - 2 * PAD - 4, 80);
+    lv_obj_set_pos(_resultCanvas.obj(), PAD + 4, 70);
+    lv_obj_set_size(_resultCanvas.obj(), SCREEN_W - 2 * PAD - 4, 18);
     lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
 
     _resultFallback = lv_label_create(_resultContainer);
-    lv_obj_set_pos(_resultFallback, PAD + 4, 80);
+    lv_obj_set_pos(_resultFallback, PAD + 4, 70);
     lv_obj_set_width(_resultFallback, SCREEN_W - 2 * PAD - 8);
     lv_label_set_long_mode(_resultFallback, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_font(_resultFallback, &stix_math_12, LV_PART_MAIN);
@@ -462,7 +462,7 @@ void CalculusApp::createUI() {
     lv_label_set_text(_resultHint, "STEPS: See steps    AC: New");
     lv_obj_set_style_text_font(_resultHint, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_resultHint, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_resultHint, PAD, contentH - 22);
+    lv_obj_set_pos(_resultHint, PAD, contentH - 16);
 
     // ─────────────────────────────────────────────────────────────────
     // STEPS container (scrollable)
@@ -1164,6 +1164,12 @@ void CalculusApp::buildResultDisplay() {
         lv_obj_remove_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
         _resultCanvas.setExpression(_resultRow, nullptr);
         _resultRow->calculateLayout(_resultCanvas.normalMetrics());
+        {   // content-driven height (mirrors adjustInputHeight, :786-800)
+            int h = mathObjectHeightPx(_resultRow->layout(), _resultCanvas.normalMetrics(), 0) + 16;
+            if (h < 18) h = 18;
+            if (h > 34) h = 34;   // cap: must not swallow the hint at contentH-16
+            lv_obj_set_height(_resultCanvas.obj(), h);
+        }
         _resultCanvas.invalidate();
         _resultKind = ResultKind::Structured;
         return;

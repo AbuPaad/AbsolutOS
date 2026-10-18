@@ -140,7 +140,7 @@ void ProbabilityApp::createUI() {
 
     // Parameter panel (left side)
     _paramPanel = lv_obj_create(_screen);
-    lv_obj_set_size(_paramPanel, 140, 120);
+    lv_obj_set_size(_paramPanel, 140, 96);
     lv_obj_set_pos(_paramPanel, 0, topY);
     lv_obj_set_style_bg_opa(_paramPanel, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(_paramPanel, 0, LV_PART_MAIN);
@@ -150,10 +150,10 @@ void ProbabilityApp::createUI() {
     const char* labels[NUM_FIELDS] = { "mu:", "sigma:", "x:" };
 
     for (int i = 0; i < NUM_FIELDS; ++i) {
-        int y = 4 + i * 36;
+        int y = 4 + i * 28;
 
         _paramRows[i] = lv_obj_create(_paramPanel);
-        lv_obj_set_size(_paramRows[i], 128, 30);
+        lv_obj_set_size(_paramRows[i], 128, 24);
         lv_obj_set_pos(_paramRows[i], 4, y);
         lv_obj_set_style_bg_color(_paramRows[i], lv_color_hex(COL_ROW_BG), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(_paramRows[i], LV_OPA_COVER, LV_PART_MAIN);
@@ -177,8 +177,8 @@ void ProbabilityApp::createUI() {
 
     // Result panel (below params)
     _resultPanel = lv_obj_create(_screen);
-    lv_obj_set_size(_resultPanel, 140, 60);
-    lv_obj_set_pos(_resultPanel, 0, topY + 124);
+    lv_obj_set_size(_resultPanel, 140, 30);
+    lv_obj_set_pos(_resultPanel, 0, topY + 100);
     lv_obj_set_style_bg_opa(_resultPanel, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(_resultPanel, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_resultPanel, 4, LV_PART_MAIN);
@@ -188,24 +188,26 @@ void ProbabilityApp::createUI() {
     // → tofu. Plain UI result text uses montserrat_14 (the LVGL body font).
     _pdfLabel = lv_label_create(_resultPanel);
     lv_label_set_text(_pdfLabel, "PDF: ---");
-    lv_obj_set_style_text_font(_pdfLabel, ui::fontUi(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(_pdfLabel, ui::fontUiSmall(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_pdfLabel, lv_color_hex(COL_RESULT), LV_PART_MAIN);
-    lv_obj_set_pos(_pdfLabel, 8, 4);
+    lv_obj_set_pos(_pdfLabel, 4, 2);
 
     _cdfLabel = lv_label_create(_resultPanel);
     lv_label_set_text(_cdfLabel, "P(X<x): ---");
-    lv_obj_set_style_text_font(_cdfLabel, ui::fontUi(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(_cdfLabel, ui::fontUiSmall(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_cdfLabel, lv_color_hex(COL_RESULT), LV_PART_MAIN);
-    lv_obj_set_pos(_cdfLabel, 8, 24);
+    lv_obj_set_pos(_cdfLabel, 4, 15);
 
-    // Hint at very bottom.
+    // Hint at bottom-right, under the chart (kept off the result panel so the two
+    // never collide at 156 px). fontUiXSmall: the full hint line is ~190 px at
+    // montserrat_12, which would not fit the 168-px right column.
     // Phase 7G: plain UI text → montserrat_14 (STIX tofus spaces). LV_SYMBOL_UP/DOWN
     // (U+F077/F078) are in neither font (already tofu) → dropped; "Select" conveys it.
     _hintLabel = lv_label_create(_screen);
     lv_label_set_text(_hintLabel, "Select  ENTER Edit  MODE Back");
-    lv_obj_set_style_text_font(_hintLabel, ui::fontUi(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(_hintLabel, ui::fontUiXSmall(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_hintLabel, lv_color_hex(COL_HINT), LV_PART_MAIN);
-    lv_obj_set_pos(_hintLabel, 8, SCREEN_H - 16);
+    lv_obj_set_pos(_hintLabel, 146, SCREEN_H - 13);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -216,8 +218,8 @@ void ProbabilityApp::createChart() {
     int topY = ui::StatusBar::HEIGHT + 1;
 
     _chart = lv_chart_create(_screen);
-    lv_obj_set_size(_chart, 168, 170);
-    lv_obj_set_pos(_chart, 146, topY + 4);
+    lv_obj_set_size(_chart, 168, 117);
+    lv_obj_set_pos(_chart, 146, topY);
     lv_chart_set_type(_chart, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(_chart, CHART_POINTS);
     lv_chart_set_div_line_count(_chart, 3, 0);

@@ -71,7 +71,7 @@ BridgeDesignerApp::BridgeDesignerApp()
     , _beamCount(0)
     , _appMode(AppMode::EDIT_MODE)
     , _currentTool(ToolType::TOOL_WOOD)
-    , _cursorX(160), _cursorY(160)
+    , _cursorX(160), _cursorY(DRAW_H / 2)
     , _selectedNode(-1)
     , _startBeamNode(-1)
     , _viewOffX(0.0f), _viewOffY(0.0f)
@@ -120,11 +120,11 @@ void BridgeDesignerApp::begin() {
     createUI();
 
     // Default anchor points: left and right fixed deck nodes
-    addNode(60.0f,  160.0f, true, true);
-    addNode(260.0f, 160.0f, true, true);
+    addNode(60.0f,  DRAW_H / 2, true, true);
+    addNode(260.0f, DRAW_H / 2, true, true);
 
     _cursorX = 160;
-    _cursorY = 160;
+    _cursorY = DRAW_H / 2;
     _selectedNode  = -1;
     _startBeamNode = -1;
     _appMode       = AppMode::EDIT_MODE;

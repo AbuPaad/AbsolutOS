@@ -182,9 +182,9 @@ void MatricesApp::createManagerView() {
 
     // Matrix buttons (3 matrices)
     const char* matNames[NUM_MATS] = { "MatA", "MatB", "MatC" };
-    int btnW = 90, btnH = 50;
+    int btnW = 90, btnH = 34;
     int startX = 12;
-    int btnY = 28;
+    int btnY = 20;
 
     for (int i = 0; i < NUM_MATS; ++i) {
         _matBtns[i] = lv_obj_create(_managerPanel);
@@ -217,8 +217,8 @@ void MatricesApp::createManagerView() {
 
     // Operation buttons
     const char* opNames[5] = { "A+B", "A-B", "A\xC3\x97""B", "det", "A\xE2\x81\xBB\xC2\xB9" };
-    int opBtnW = 52, opBtnH = 32;
-    int opY = btnY + btnH + 36;
+    int opBtnW = 52, opBtnH = 22;
+    int opY = btnY + btnH + 34;
 
     for (int i = 0; i < 5; ++i) {
         _opBtns[i] = lv_obj_create(_managerPanel);
@@ -254,7 +254,7 @@ void MatricesApp::createManagerView() {
     lv_obj_set_style_bg_opa(_errorLabel, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_errorLabel, 4, LV_PART_MAIN);
     lv_obj_set_style_radius(_errorLabel, 4, LV_PART_MAIN);
-    lv_obj_set_pos(_errorLabel, 12, panelH - 40);
+    lv_obj_set_pos(_errorLabel, 12, 22);
     lv_label_set_text(_errorLabel, "");
     lv_obj_add_flag(_errorLabel, LV_OBJ_FLAG_HIDDEN);
 }
@@ -274,7 +274,7 @@ void MatricesApp::createEditorView() {
     lv_obj_set_style_border_width(_editorPanel, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_editorPanel, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(_editorPanel, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_editorPanel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(_editorPanel, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title
     _editorTitle = lv_label_create(_editorPanel);
@@ -292,7 +292,7 @@ void MatricesApp::createEditorView() {
 
     // Table
     _editorTable = lv_table_create(_editorPanel);
-    lv_obj_set_pos(_editorTable, 8, 26);
+    lv_obj_set_pos(_editorTable, 8, 40);
     lv_obj_set_style_text_font(_editorTable, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_border_width(_editorTable, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(_editorTable, lv_color_hex(COL_BORDER), LV_PART_MAIN);
@@ -303,7 +303,7 @@ void MatricesApp::createEditorView() {
         "F1 +Row  F2 -Row  F3 +Col  F4 -Col  AC Back");
     lv_obj_set_style_text_font(_editorHint, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_editorHint, lv_color_hex(COL_HINT), LV_PART_MAIN);
-    lv_obj_set_pos(_editorHint, 6, panelH - 18);
+    lv_obj_set_pos(_editorHint, 6, 22);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -321,7 +321,7 @@ void MatricesApp::createResultView() {
     lv_obj_set_style_border_width(_resultPanel, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_resultPanel, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(_resultPanel, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_resultPanel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(_resultPanel, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title
     _resultTitle = lv_label_create(_resultPanel);

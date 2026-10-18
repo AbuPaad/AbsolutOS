@@ -252,7 +252,10 @@ void StatisticsApp::createStatsTab() {
     };
 
     for (int i = 0; i < 7; ++i) {
-        int y = 6 + i * 24;
+        int col = i / 4;          // 0 = left, 1 = right (2x4 grid)
+        int row = i % 4;
+        int x = 10 + col * 160;   // name x: 10 / 170
+        int y = 4 + row * 22;     // pitch 22 fits 4 rows in 99 px
 
         // Name label (left)
         // Phase 7G: stat names "Std Dev:"/"Count (n):" contain spaces → STIX tofus
@@ -262,14 +265,14 @@ void StatisticsApp::createStatsTab() {
         lv_label_set_text(name, statNames[i]);
         lv_obj_set_style_text_font(name, ui::fontUi(), LV_PART_MAIN);
         lv_obj_set_style_text_color(name, lv_color_hex(COL_TEXT), LV_PART_MAIN);
-        lv_obj_set_pos(name, 10, y);
+        lv_obj_set_pos(name, x, y);
 
         // Value label (right)
         _statLabels[i] = lv_label_create(_statsPanel);
         lv_label_set_text(_statLabels[i], "---");
         lv_obj_set_style_text_font(_statLabels[i], ui::fontUi(), LV_PART_MAIN);
         lv_obj_set_style_text_color(_statLabels[i], lv_color_hex(0x1565C0), LV_PART_MAIN);
-        lv_obj_set_pos(_statLabels[i], 180, y);
+        lv_obj_set_pos(_statLabels[i], x + 85, y);
     }
 }
 

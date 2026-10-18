@@ -57,7 +57,7 @@ SequencesApp::SequencesApp()
     , _selectedSeq(0)
     , _editing(false)
     , _editLen(0)
-    , _numTerms(10)
+    , _numTerms(5)
 {
     memset(_editBuf, 0, sizeof(_editBuf));
     memset(_tabBtns, 0, sizeof(_tabBtns));
@@ -192,7 +192,7 @@ void SequencesApp::createDefineTab() {
     const uint32_t colors[] = { COL_SEQ_U, COL_SEQ_V };
 
     for (int i = 0; i < MAX_SEQ; ++i) {
-        int ry = 20 + i * 60;
+        int ry = 20 + i * 42;
 
         // Sequence name label.
         // Phase 7G: "u(n) ="/"v(n) =" contain a space → STIX (no U+0020 glyph) tofus
@@ -215,7 +215,7 @@ void SequencesApp::createDefineTab() {
     // Hint — Phase 7G: plain UI prose with spaces → montserrat_14 (STIX tofus spaces)
     _defineHint = lv_label_create(_definePanel);
     lv_label_set_text(_defineHint, "ENTER to edit, LEFT/RIGHT to switch tab");
-    lv_obj_set_pos(_defineHint, 15, panelH - 25);
+    lv_obj_set_pos(_defineHint, 15, panelH - 22);
     lv_obj_set_style_text_color(_defineHint, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_style_text_font(_defineHint, ui::fontUi(), LV_PART_MAIN);
 }
@@ -238,6 +238,7 @@ void SequencesApp::createTableTab() {
     lv_obj_remove_flag(_tablePanel, LV_OBJ_FLAG_SCROLLABLE);
 
     _table = lv_table_create(_tablePanel);
+    lv_obj_set_style_text_font(_table, ui::fontUiSmall(), LV_PART_MAIN);
     lv_obj_set_pos(_table, 5, 5);
     lv_obj_set_size(_table, SCREEN_W - 10, panelH - 10);
     lv_table_set_column_count(_table, 3);
@@ -296,7 +297,7 @@ void SequencesApp::updateDefineDisplay() {
         // Highlight selected
         if (_seqLabels[i]) {
             bool sel = (i == _selectedSeq && !_editing);
-            lv_obj_set_style_bg_color(lv_obj_get_parent(_seqLabels[i]),
+            lv_obj_set_style_bg_color(_seqLabels[i],
                 lv_color_hex(sel ? COL_CELL_FOCUS : COL_BG), LV_PART_MAIN);
         }
     }

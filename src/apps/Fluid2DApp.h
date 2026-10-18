@@ -28,8 +28,8 @@
  *   - Internal wall obstacles
  *   - Blinn-Phong liquid shading with density-gradient normals
  *
- * Grid: 64×48 cells at 5×5 px per cell = 320×240 of grid, drawn into the 320×180
- * canvas: the bottom rows are clipped (re-fit M/CELL_H if that matters).
+ * Grid: 64×44 cells at 5×3 px per cell = 320×132 of grid, drawn into the 320×132
+ * canvas: exact fit, no clipping.
  * Physics tick at ~30 Hz via lv_timer_t.
  * Custom draw via LV_EVENT_DRAW_MAIN (no lv_canvas).
  *
@@ -74,10 +74,10 @@ public:
 private:
     // ── Grid dimensions ──────────────────────────────────────────────────
     static constexpr int N       = 64;      // grid width (cells)
-    static constexpr int M       = 48;      // grid height (cells)
+    static constexpr int M       = 44;      // grid height (cells)
     static constexpr int SIZE    = (N + 2) * (M + 2);  // with boundary cells
     static constexpr int CELL_W  = 5;       // pixels per cell X (320/64)
-    static constexpr int CELL_H  = 5;       // pixels per cell Y (240/48)
+    static constexpr int CELL_H  = 3;       // pixels per cell Y (132/44)
 
     // ── Screen geometry ──────────────────────────────────────────────────
     static constexpr int SCREEN_W = 320;
