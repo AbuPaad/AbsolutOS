@@ -46,7 +46,8 @@
 #include "../Config.h"
 #include "ThemeManager.h"   // interaction() + current() tokens (doc 12/02)
 #include "ThemeFonts.h"   // theme font ladder (no font face in app code)
-#include "generated/CasioSlots.generated.h"   // Casio slot order + labels (generated)
+#include "generated/CasioSlots.generated.h"
+#include "generated/StatusBarIcons.generated.h"   // Carbon battery A8 mask (generated)   // Casio slot order + labels (generated)
 #include "Theme.h"
 #include <cstdio>
 
@@ -609,13 +610,26 @@ void MainMenu::buildStatusBar() {
     lv_obj_set_style_text_letter_space(title, 1, 0);
     lv_obj_align(title, LV_ALIGN_CENTER, 0, 0);
 
-    // Right: battery
-    lv_obj_t* batt = lv_label_create(bar);
-    lv_label_set_text(batt, LV_SYMBOL_BATTERY_FULL);
-    lv_obj_set_style_text_font(batt, ui::fontUi(), 0);
-    lv_obj_set_style_text_color(batt, lv_color_hex(COL_STATUS_TEXT), 0);
-    lv_obj_set_style_text_opa(batt, LV_OPA_COVER, 0);
-    lv_obj_align(batt, LV_ALIGN_RIGHT_MID, -8, 0);
+    // Right: battery — Carbon A8 mask, the same art the StatusBar draws.
+    // A label with LV_SYMBOL_BATTERY_FULL cannot work here: the theme's font
+    // ladder is generated from 0x20-0x7F and carries no symbol glyphs, so the
+    // symbol rendered as tofu. Symbol-only labels must use ui::fontSymbol().
+    {
+        static lv_image_dsc_t s_batt = {};
+        s_batt.header.magic  = LV_IMAGE_HEADER_MAGIC;
+        s_batt.header.cf     = LV_COLOR_FORMAT_A8;
+        s_batt.header.w      = ui::kBatteryIconW;
+        s_batt.header.h      = ui::kBatteryIconH;
+        s_batt.header.stride = ui::kBatteryIconW;
+        s_batt.data_size     = sizeof(ui::kFullMap);
+        s_batt.data          = ui::kFullMap;
+
+        lv_obj_t* batt = lv_image_create(bar);
+        lv_image_set_src(batt, &s_batt);
+        lv_obj_set_style_image_recolor(batt, lv_color_hex(COL_STATUS_TEXT), 0);
+        lv_obj_set_style_image_recolor_opa(batt, LV_OPA_COVER, 0);
+        lv_obj_align(batt, LV_ALIGN_RIGHT_MID, -8, 0);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

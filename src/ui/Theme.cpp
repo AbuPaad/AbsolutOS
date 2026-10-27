@@ -127,7 +127,7 @@ const Theme kNUMOS = {
     /* graphLineWidth*/ 1,          // numos: hairline curves (unchanged)
 
     /* fontUi        */ &lv_font_montserrat_11,
-    /* fontUiSmall   */ &lv_font_montserrat_9,
+    /* fontUiSmall   */ &lv_font_montserrat_10,
     /* fontUiXSmall  */ &lv_font_montserrat_8,
     /* fontDisplay   */ &lv_font_montserrat_15,
     /* fontMono      */ &lv_font_unscii_8,

@@ -204,7 +204,6 @@ extern const lv_font_t stix_math_18;
 extern const lv_font_t stix_math_12;
 extern const lv_font_t lv_font_montserrat_15;
 extern const lv_font_t lv_font_montserrat_11;
-extern const lv_font_t lv_font_montserrat_9;
 #ifdef __cplusplus
 }
 #endif
@@ -216,7 +215,6 @@ extern const lv_font_t lv_font_montserrat_9;
 #define LV_FONT_MONTSERRAT_12   1
 #define LV_FONT_MONTSERRAT_14   1
 #define LV_FONT_MONTSERRAT_15   1
-#define LV_FONT_MONTSERRAT_9    1
 #define LV_FONT_MONTSERRAT_16   0
 #define LV_FONT_MONTSERRAT_18   0
 #define LV_FONT_MONTSERRAT_20   1

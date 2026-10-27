@@ -43,7 +43,6 @@ gen_font  9 "${OUT_DIR}/lv_font_montserrat_9.c"
 
 python3 scripts/add_font_provenance_header.py montserrat "${OUT_DIR}/lv_font_montserrat_15.c"
 python3 scripts/add_font_provenance_header.py montserrat "${OUT_DIR}/lv_font_montserrat_11.c"
-python3 scripts/add_font_provenance_header.py montserrat "${OUT_DIR}/lv_font_montserrat_9.c"
 
 echo "Generated:"
 echo "  ${OUT_DIR}/lv_font_montserrat_15.c"

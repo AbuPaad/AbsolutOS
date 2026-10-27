@@ -14,7 +14,7 @@
  */
 
 /**
- * StatusBar.cpp — Barra de estado global LVGL (24 px)
+ * StatusBar.cpp — Barra de estado global LVGL (18 px)
  *
  * Implementación:
  *   · Reloj: <time.h> + oscilador interno.  En ESP32 se arranca con
@@ -26,6 +26,7 @@
  */
 
 #include "StatusBar.h"
+#include "generated/StatusBarIcons.generated.h"
 #include "ThemeFonts.h"
 #include "../input/KeyboardManager.h"
 #include "../math/MathEvaluator.h"   // g_angleMode, AngleMode
@@ -39,6 +40,25 @@
 #endif
 
 namespace ui {
+
+// Image descriptors for the three generated masks. Built here (not in the generated
+// header) so the header stays pure data and stays C++17-safe: no designated
+// initialisers of vtable-less structs, no extern "C" wrapper around a namespace.
+static lv_image_dsc_t makeBatteryDsc(const uint8_t* map, uint32_t size) {
+    lv_image_dsc_t d{};
+    d.header.magic  = LV_IMAGE_HEADER_MAGIC;
+    d.header.cf     = LV_COLOR_FORMAT_A8;
+    d.header.w      = ui::kBatteryIconW;
+    d.header.h      = ui::kBatteryIconH;
+    d.header.stride = ui::kBatteryIconW;
+    d.data_size     = size;
+    d.data          = map;
+    return d;
+}
+static const lv_image_dsc_t s_batLow  = makeBatteryDsc(ui::kLowMap,  sizeof(ui::kLowMap));
+static const lv_image_dsc_t s_batHalf = makeBatteryDsc(ui::kHalfMap, sizeof(ui::kHalfMap));
+static const lv_image_dsc_t s_batFull = makeBatteryDsc(ui::kFullMap, sizeof(ui::kFullMap));
+
 
 #ifdef NATIVE_SIM
 StatusBar* StatusBar::s_active = nullptr;
@@ -96,30 +116,12 @@ void StatusBar::create(lv_obj_t* parent) {
     lv_obj_set_style_text_color(_angleLabel, lv_color_hex(COL_TEXT), LV_PART_MAIN);
     lv_obj_align(_angleLabel, LV_ALIGN_RIGHT_MID, -38, 0);
 
-    // ── Icono de batería (esquina derecha) — 3-bar style ────────────
-    _batIcon = lv_obj_create(_bar);
-    lv_obj_set_size(_batIcon, 22, 11);
-    lv_obj_align(_batIcon, LV_ALIGN_RIGHT_MID, -8, 0);
-    lv_obj_set_style_bg_color(_batIcon, lv_color_hex(COL_BG), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(_batIcon, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_color(_batIcon, lv_color_hex(COL_TEXT), LV_PART_MAIN);
-    lv_obj_set_style_border_width(_batIcon, 1, LV_PART_MAIN);
-    lv_obj_set_style_radius(_batIcon, 1, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_batIcon, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_batIcon, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Create 3 individual bars inside the battery icon
-    for (int i = 0; i < 3; ++i) {
-        lv_obj_t* bar = lv_obj_create(_batIcon);
-        lv_obj_set_size(bar, 4, 7);
-        lv_obj_set_pos(bar, 2 + i * 6, 1);
-        lv_obj_set_style_bg_color(bar, lv_color_hex(0x66CC66), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(bar, 0, LV_PART_MAIN);
-        lv_obj_set_style_radius(bar, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(bar, 0, LV_PART_MAIN);
-        lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
-    }
+    // ── Batería — Carbon icon (low/half/full) as one A8 mask, recoloured by level ──
+    _batIcon = lv_image_create(_bar);
+    lv_image_set_src(_batIcon, &s_batFull);
+    lv_obj_align(_batIcon, LV_ALIGN_RIGHT_MID, -6, 0);
+    lv_obj_set_style_image_recolor(_batIcon, lv_color_hex(COL_BAT), LV_PART_MAIN);
+    lv_obj_set_style_image_recolor_opa(_batIcon, LV_OPA_COVER, LV_PART_MAIN);
 
     // ── Línea separadora inferior (1 px) ──────────────────────────────
     _separator = lv_obj_create(parent);
@@ -272,32 +274,15 @@ void StatusBar::updateAngleMode() {
 void StatusBar::updateBatteryIcon() {
     if (!_batIcon) return;
 
-    // 3 bars: bar0 (0-33%), bar1 (34-66%), bar2 (67-100%)
-    // Color per level: green >50%, yellow >20%, red ≤20%
-    uint32_t col;
-    if (_batLevel > 50) {
-        col = 0x66CC66;  // Verde
-    } else if (_batLevel > 20) {
-        col = 0xFFCC00;  // Amarillo
-    } else {
-        col = 0xFF4444;  // Rojo
-    }
+    // One icon per level band; the shape carries the state, the tint carries urgency.
+    if (_batLevel > 66)       lv_image_set_src(_batIcon, &s_batFull);
+    else if (_batLevel > 33)  lv_image_set_src(_batIcon, &s_batHalf);
+    else                      lv_image_set_src(_batIcon, &s_batLow);
 
-    int numBars = 0;
-    if (_batLevel > 66) numBars = 3;
-    else if (_batLevel > 33) numBars = 2;
-    else if (_batLevel > 5)  numBars = 1;
-
-    for (int i = 0; i < 3; ++i) {
-        lv_obj_t* bar = lv_obj_get_child(_batIcon, i);
-        if (!bar) continue;
-        if (i < numBars) {
-            lv_obj_set_style_bg_color(bar, lv_color_hex(col), LV_PART_MAIN);
-            lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_MAIN);
-        } else {
-            lv_obj_set_style_bg_opa(bar, LV_OPA_TRANSP, LV_PART_MAIN);
-        }
-    }
+    uint32_t col = (_batLevel > 50) ? COL_BAT
+                 : (_batLevel > 20) ? 0xFFCC00u
+                                    : 0xFF4444u;
+    lv_obj_set_style_image_recolor(_batIcon, lv_color_hex(col), LV_PART_MAIN);
 }
 
 } // namespace ui
