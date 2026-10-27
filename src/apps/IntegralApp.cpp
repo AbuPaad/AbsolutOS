@@ -260,7 +260,7 @@ void IntegralApp::createUI() {
 
     // Integral label
     _resultLabel = lv_label_create(_resultContainer);
-    lv_label_set_text(_resultLabel, LV_SYMBOL_REFRESH " F(x) =");
+    lv_label_set_text(_resultLabel, "F(x) =");
     lv_obj_set_style_text_font(_resultLabel, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_resultLabel, lv_color_hex(COL_INTEG_HEX), LV_PART_MAIN);
     lv_obj_set_pos(_resultLabel, PAD, 58);
@@ -873,7 +873,7 @@ void IntegralApp::buildStepsDisplay() {
 
     // Footer hint
     lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
-    lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
+    lv_label_set_text(hintLbl, "Scroll    AC: Back");
     lv_obj_set_style_text_font(hintLbl, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
 }

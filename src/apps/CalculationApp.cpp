@@ -1614,7 +1614,7 @@ void CalculationApp::buildStepsDisplay() {
         if (!step.reason.empty()) {
             lv_obj_t* reasonLbl = lv_label_create(_stepsContainer);
             char reasonBuf[128];
-            snprintf(reasonBuf, sizeof(reasonBuf), "  " LV_SYMBOL_RIGHT " %s",
+            snprintf(reasonBuf, sizeof(reasonBuf), "  %s",
                      step.reason.c_str());
             lv_label_set_text(reasonLbl, reasonBuf);
             lv_obj_add_style(reasonLbl, &ui::style_math_primary, LV_PART_MAIN);
@@ -1631,7 +1631,7 @@ void CalculationApp::buildStepsDisplay() {
     // Footer hint
     lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
     lv_label_set_text(hintLbl,
-                      LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    F2/AC: Back");
+                      "Scroll    F2/AC: Back");
     lv_obj_add_style(hintLbl, &ui::style_math_primary, LV_PART_MAIN);
     lv_obj_set_style_text_color(hintLbl, lv_color_hex(0x808080), LV_PART_MAIN);
 }
