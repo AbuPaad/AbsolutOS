@@ -21,6 +21,7 @@ extern "C" {
 #endif
 
 LV_FONT_DECLARE(lv_font_montserrat_15);
+LV_FONT_DECLARE(lv_font_montserrat_26);   // splash wordmark only
 LV_FONT_DECLARE(lv_font_montserrat_11);
 
 #ifdef __cplusplus

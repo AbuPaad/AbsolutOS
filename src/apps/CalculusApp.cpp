@@ -28,6 +28,8 @@
  */
 
 #include "CalculusApp.h"
+#include "../ui/generated/CalculusModeIcons.generated.h"
+#include "../ui/ThemeFonts.h"
 #include "../Config.h"   // SCREEN_HEIGHT = logical canvas
 #include "../math/MathAST.h"
 #include "../math/cas/SymToAST.h"
@@ -57,7 +59,9 @@ static constexpr int SCREEN_W  = 320;
 static constexpr int SCREEN_H  = SCREEN_HEIGHT;  // canvas (Config.h)
 static constexpr int BAR_H     = ui::StatusBar::HEIGHT + 1;
 static constexpr int PAD       = 6;
-static constexpr int TAB_H     = 26;   // Tab strip height
+static constexpr int MODE_ROW_H  = 18;   // row: label left, mode chip right
+static constexpr int MODE_CHIP_W = 34;   // two 17px cells
+static constexpr int MODE_CHIP_H = 22;   // taller than the row on purpose
 
 // ════════════════════════════════════════════════════════════════════════════
 // Computing messages (derivative + integral)
@@ -209,6 +213,10 @@ void CalculusApp::end() {
     if (_scr) {
         lv_obj_delete(_scr);
         _scr               = nullptr;
+        _modeRow           = nullptr;
+        _modeChip          = nullptr;
+        _imgDeriv          = nullptr;
+        _imgIntegral       = nullptr;
         _tabDerivative     = nullptr;
         _tabIntegral       = nullptr;
         _inputContainer    = nullptr;
@@ -265,10 +273,10 @@ void CalculusApp::setMode(CalcMode mode) {
     if (_state == State::EDITING) {
         if (_calcMode == CalcMode::DERIVATIVE) {
             lv_label_set_text(_inputTitle, "Introduce f(x):");
-            lv_label_set_text(_inputHint, "EXE: Differentiate   GRAPH: Mode   AC: Back");
+            if (_inputHint) lv_label_set_text(_inputHint, "EXE: Differentiate");
         } else {
             lv_label_set_text(_inputTitle, "Introduce f(x):");
-            lv_label_set_text(_inputHint, "EXE: Integrate   GRAPH: Mode   AC: Back");
+            if (_inputHint) lv_label_set_text(_inputHint, "EXE: Integrate");
         }
         lv_obj_set_style_text_color(_inputTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
     }
@@ -277,27 +285,27 @@ void CalculusApp::setMode(CalcMode mode) {
 void CalculusApp::updateTabStyles() {
     if (!_tabDerivative || !_tabIntegral) return;
 
-    uint32_t activeCol = accentColor();
+    const uint32_t activeCol = accentColor();
+    const bool deriv = (_calcMode == CalcMode::DERIVATIVE);
 
-    if (_calcMode == CalcMode::DERIVATIVE) {
-        // d/dx tab active
-        lv_obj_set_style_bg_color(_tabDerivative, lv_color_hex(activeCol), LV_PART_MAIN);
-        lv_obj_set_style_text_color(_tabDerivative, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(_tabDerivative, LV_OPA_COVER, LV_PART_MAIN);
-        // ∫dx tab inactive
-        lv_obj_set_style_bg_color(_tabIntegral, lv_color_hex(COL_TAB_INACTIVE), LV_PART_MAIN);
-        lv_obj_set_style_text_color(_tabIntegral, lv_color_hex(COL_SEP_HEX), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(_tabIntegral, LV_OPA_COVER, LV_PART_MAIN);
-    } else {
-        // d/dx tab inactive
-        lv_obj_set_style_bg_color(_tabDerivative, lv_color_hex(COL_TAB_INACTIVE), LV_PART_MAIN);
-        lv_obj_set_style_text_color(_tabDerivative, lv_color_hex(COL_SEP_HEX), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(_tabDerivative, LV_OPA_COVER, LV_PART_MAIN);
-        // ∫dx tab active
-        lv_obj_set_style_bg_color(_tabIntegral, lv_color_hex(activeCol), LV_PART_MAIN);
-        lv_obj_set_style_text_color(_tabIntegral, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(_tabIntegral, LV_OPA_COVER, LV_PART_MAIN);
+    // Selected cell = accent fill + white ink; the other cell = pale pane + dim ink.
+    lv_obj_set_style_bg_color(_tabDerivative, lv_color_hex(deriv ? activeCol : COL_TAB_INACTIVE), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_tabDerivative, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_tabIntegral, lv_color_hex(deriv ? COL_TAB_INACTIVE : activeCol), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_tabIntegral, LV_OPA_COVER, LV_PART_MAIN);
+
+    if (_imgDeriv) {
+        lv_obj_set_style_image_recolor(_imgDeriv, lv_color_hex(deriv ? 0xFFFFFF : COL_SEP_HEX), LV_PART_MAIN);
+        lv_obj_set_style_image_recolor_opa(_imgDeriv, LV_OPA_COVER, LV_PART_MAIN);
     }
+    if (_imgIntegral) {
+        lv_obj_set_style_image_recolor(_imgIntegral, lv_color_hex(deriv ? COL_SEP_HEX : 0xFFFFFF), LV_PART_MAIN);
+        lv_obj_set_style_image_recolor_opa(_imgIntegral, LV_OPA_COVER, LV_PART_MAIN);
+    }
+}
+
+void CalculusApp::toggleMode() {
+    setMode(_calcMode == CalcMode::DERIVATIVE ? CalcMode::INTEGRAL : CalcMode::DERIVATIVE);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -317,44 +325,78 @@ void CalculusApp::createUI() {
     _statusBar.setBatteryLevel(100);
 
     // ─────────────────────────────────────────────────────────────────
-    // Mode tabs (d/dx | ∫dx) — positioned below status bar
+    // Mode row: "Introduce f(x):" left, d/dx | ∫dx chip right.
+    // One 18px row replaces the old 26px two-tab strip. The chip is 20px tall so
+    // it reads as a control sitting on the row, not a band filling it.
     // ─────────────────────────────────────────────────────────────────
-    int tabY = BAR_H;
-    int tabW = SCREEN_W / 2;
+    _modeRow = lv_obj_create(_scr);
+    lv_obj_set_size(_modeRow, SCREEN_W, MODE_ROW_H);
+    lv_obj_set_pos(_modeRow, 0, BAR_H);
+    lv_obj_set_style_bg_opa(_modeRow, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_modeRow, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_modeRow, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_modeRow, LV_OBJ_FLAG_SCROLLABLE);
 
-    _tabDerivative = lv_obj_create(_scr);
-    lv_obj_set_size(_tabDerivative, tabW, TAB_H);
-    lv_obj_set_pos(_tabDerivative, 0, tabY);
+    _inputTitle = lv_label_create(_modeRow);
+    lv_label_set_text(_inputTitle, "Introduce f(x):");
+    lv_obj_set_style_text_font(_inputTitle, ui::fontUi(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(_inputTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
+    lv_obj_align(_inputTitle, LV_ALIGN_LEFT_MID, PAD, 0);
+
+    _modeChip = lv_obj_create(_scr);
+    lv_obj_set_size(_modeChip, MODE_CHIP_W, MODE_CHIP_H);
+    lv_obj_set_pos(_modeChip, SCREEN_W - 4 - MODE_CHIP_W, BAR_H - 3);
+    lv_obj_set_style_border_width(_modeChip, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_modeChip, lv_color_hex(0xD8DDE4), LV_PART_MAIN);
+    lv_obj_set_style_radius(_modeChip, 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_modeChip, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_modeChip, LV_OBJ_FLAG_SCROLLABLE);
+
+    _tabDerivative = lv_obj_create(_modeChip);
+    lv_obj_set_size(_tabDerivative, MODE_CHIP_W / 2, MODE_CHIP_H - 2);
+    lv_obj_set_pos(_tabDerivative, 0, 0);
     lv_obj_set_style_border_width(_tabDerivative, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(_tabDerivative, 3, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_tabDerivative, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(_tabDerivative, 0, LV_PART_MAIN);
     lv_obj_remove_flag(_tabDerivative, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(_tabDerivative, LV_OBJ_FLAG_CLICKABLE);
     {
-        lv_obj_t* lbl = lv_label_create(_tabDerivative);
-        lv_label_set_text(lbl, "d/dx  Differentiate");
-        lv_obj_set_style_text_font(lbl, &stix_math_18, LV_PART_MAIN);
-        lv_obj_center(lbl);
+        static lv_image_dsc_t s_ddx = {};
+        s_ddx.header.magic  = LV_IMAGE_HEADER_MAGIC;
+        s_ddx.header.cf     = LV_COLOR_FORMAT_A8;
+        s_ddx.header.w      = ui::kCalcDerivW;
+        s_ddx.header.h      = ui::kCalcDerivH;
+        s_ddx.header.stride = ui::kCalcDerivW;
+        s_ddx.data_size     = sizeof(ui::kCalcDerivMap);
+        s_ddx.data          = ui::kCalcDerivMap;
+        _imgDeriv = lv_image_create(_tabDerivative);
+        lv_image_set_src(_imgDeriv, &s_ddx);
+        lv_obj_center(_imgDeriv);
     }
 
-    _tabIntegral = lv_obj_create(_scr);
-    lv_obj_set_size(_tabIntegral, tabW, TAB_H);
-    lv_obj_set_pos(_tabIntegral, tabW, tabY);
+    _tabIntegral = lv_obj_create(_modeChip);
+    lv_obj_set_size(_tabIntegral, MODE_CHIP_W / 2, MODE_CHIP_H - 2);
+    lv_obj_set_pos(_tabIntegral, MODE_CHIP_W / 2, 0);
     lv_obj_set_style_border_width(_tabIntegral, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(_tabIntegral, 3, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_tabIntegral, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(_tabIntegral, 0, LV_PART_MAIN);
     lv_obj_remove_flag(_tabIntegral, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(_tabIntegral, LV_OBJ_FLAG_CLICKABLE);
     {
-        lv_obj_t* lbl = lv_label_create(_tabIntegral);
-        lv_label_set_text(lbl, u8"\u222Bdx  Integrate");
-        lv_obj_set_style_text_font(lbl, &stix_math_18, LV_PART_MAIN);
-        lv_obj_center(lbl);
+        static lv_image_dsc_t s_int = {};
+        s_int.header.magic  = LV_IMAGE_HEADER_MAGIC;
+        s_int.header.cf     = LV_COLOR_FORMAT_A8;
+        s_int.header.w      = ui::kCalcIntegralW;
+        s_int.header.h      = ui::kCalcIntegralH;
+        s_int.header.stride = ui::kCalcIntegralW;
+        s_int.data_size     = sizeof(ui::kCalcIntegralMap);
+        s_int.data          = ui::kCalcIntegralMap;
+        _imgIntegral = lv_image_create(_tabIntegral);
+        lv_image_set_src(_imgIntegral, &s_int);
+        lv_obj_center(_imgIntegral);
     }
 
     updateTabStyles();
 
-    int contentY = tabY + TAB_H;
+    int contentY = BAR_H + MODE_ROW_H;
     int contentH = SCREEN_H - contentY;
 
     // ─────────────────────────────────────────────────────────────────
@@ -368,21 +410,12 @@ void CalculusApp::createUI() {
     lv_obj_set_style_pad_all(_inputContainer, 0, LV_PART_MAIN);
     lv_obj_remove_flag(_inputContainer, LV_OBJ_FLAG_SCROLLABLE);
 
-    _inputTitle = lv_label_create(_inputContainer);
-    lv_label_set_text(_inputTitle, "Introduce f(x):");
-    lv_obj_set_style_text_font(_inputTitle, &stix_math_18, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_inputTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
-    lv_obj_set_pos(_inputTitle, PAD, 4);
 
     _inputCanvas.create(_inputContainer);
-    lv_obj_set_pos(_inputCanvas.obj(), PAD + 4, 24);
-    lv_obj_set_size(_inputCanvas.obj(), SCREEN_W - 2 * PAD - 4, contentH - 50);
+    lv_obj_set_pos(_inputCanvas.obj(), PAD + 4, 6);
+    lv_obj_set_size(_inputCanvas.obj(), SCREEN_W - 2 * PAD - 4, contentH - 14);
 
-    _inputHint = lv_label_create(_inputContainer);
-    lv_label_set_text(_inputHint, "EXE: Differentiate   GRAPH: Mode   AC: Back");
-    lv_obj_set_style_text_font(_inputHint, &stix_math_18, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_inputHint, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_inputHint, PAD, contentH - 18);
+    // No bottom hint bar: the help affordance is a chip over the input box.
 
     // ─────────────────────────────────────────────────────────────────
     // COMPUTING container (spinner + message)
@@ -1167,7 +1200,7 @@ void CalculusApp::buildResultDisplay() {
         {   // content-driven height (mirrors adjustInputHeight, :786-800)
             int h = mathObjectHeightPx(_resultRow->layout(), _resultCanvas.normalMetrics(), 0) + 16;
             if (h < 18) h = 18;
-            if (h > 34) h = 34;   // cap: must not swallow the hint at contentH-16
+            if (h > 64) h = 64;   // cap: box is ~112px tall now, hint bar is gone
             lv_obj_set_height(_resultCanvas.obj(), h);
         }
         _resultCanvas.invalidate();
@@ -1300,7 +1333,7 @@ void CalculusApp::buildStepsDisplay() {
     // Footer hint
     lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
     lv_label_set_text(hintLbl,
-                      LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
+                      "Scroll    AC: Back");
     lv_obj_set_style_text_font(hintLbl, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX),
                                 LV_PART_MAIN);

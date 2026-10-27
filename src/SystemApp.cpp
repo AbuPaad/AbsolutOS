@@ -538,6 +538,37 @@ bool SystemApp::unwindTopmostDemoState() {
 // render() — Dispatch to active mode
 // ═════════════════════════════════════════════════
 void SystemApp::render() {
+    // ── GLOBAL: SHIFT+7 opens the help page; AC closes it. This is the only
+    //    documentation surface left after the hint bars were removed, so it is
+    //    handled before mode dispatch and works on every screen.
+    if (_mode != Mode::APP_GAMEBOY && ev.action == KeyAction::PRESS) {
+        if (km.isShift() && ev.code == KeyCode::NUM_7) {
+            if (!_help.isOpen()) {
+                lv_obj_t* parent = lv_screen_active();
+                _help.open(parent, _activeAppId);
+            }
+            km.reset();
+            _shiftActive = false;
+            return;
+        }
+        if (_help.isOpen() && ev.code == KeyCode::AC) {
+            _help.close();
+            km.reset();
+            return;
+        }
+    }
+
+    // ── GLOBAL: SHIFT+EXE toggles the Calculus mode chip (derivative <-> integral).
+    //    Resolved here, before mode dispatch, so the chord never steals a plain EXE
+    //    from any app and the chip itself never needs LVGL focus.
+    if (ev.action == KeyAction::PRESS && _mode == Mode::APP_CALCULUS &&
+        km.isShift() && ev.code == KeyCode::EXE) {
+        if (_calculusApp) _calculusApp->toggleMode();
+        km.reset();
+        _shiftActive = false;
+        return;
+    }
+
     switch (_mode) {
         case Mode::MENU:            /* LVGL maneja el menú — no-op */   break;
         case Mode::APP_CALCULATION: break;  // Handled in update() via _calcApp
@@ -1542,7 +1573,9 @@ void SystemApp::powerOff() {
 
     // Label "Apagando..." sutil, centrado
     lv_obj_t* lblBye = lv_label_create(scrOff);
-    lv_label_set_text(lblBye, LV_SYMBOL_POWER " Apagando...");
+    // No LV_SYMBOL_POWER: the ladder fonts carry no FontAwesome glyphs, so it
+    // would render as tofu at the one moment the user sees this screen.
+    lv_label_set_text(lblBye, "Apagando...");
     lv_obj_set_style_text_font(lblBye, &stix_math_18, 0);
     lv_obj_set_style_text_color(lblBye, lv_color_make(0x80, 0x80, 0x80), 0);
     lv_obj_set_style_text_align(lblBye, LV_TEXT_ALIGN_CENTER, 0);

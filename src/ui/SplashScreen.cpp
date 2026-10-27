@@ -57,7 +57,7 @@ void SplashScreen::create() {
     // ── Logo "NumOS" ──
     _lblLogo = lv_label_create(_screen);
     lv_label_set_text(_lblLogo, "NumOS");
-    lv_obj_set_style_text_font(_lblLogo, ui::fontDisplay(), 0);
+    lv_obj_set_style_text_font(_lblLogo, ui::fontLogotype(), 0);
     lv_obj_set_style_text_color(_lblLogo, lv_color_make(0xFF, 0x95, 0x00), 0);
     lv_obj_set_style_text_align(_lblLogo, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(_lblLogo, LV_ALIGN_CENTER, 0, -12);

@@ -20,6 +20,7 @@
  * since LV_USE_CANVAS / LV_USE_TABLE / LV_USE_TABVIEW = 0.
  */
 #include "GrapherApp.h"
+#include "../ui/HelpOverlay.h"
 #include "../ui/ThemeFonts.h"
 #include "../input/generated/ProductionKeypadMap.generated.h"
 #include "../utils/HwUxProbe.h"
@@ -111,6 +112,7 @@ GrapherApp::GrapherApp()
     : _screen(nullptr)
     , _tabBar(nullptr)
     , _bgExpr(nullptr)
+    , _legend(nullptr)
     , _panelExpr(nullptr), _panelGraph(nullptr), _panelTable(nullptr)
     , _addRow(nullptr), _addLabel(nullptr)
     , _exprHint(nullptr), _plotBtn(nullptr), _tableBtn(nullptr)
@@ -126,7 +128,12 @@ GrapherApp::GrapherApp()
     , _tab(Tab::EXPRESSIONS), _focus(Focus::TAB_BAR), _tabIdx(0)
     , _numFuncs(0), _exprIdx(0), _exprMode(ExprMode::LIST)
     , _grMode(GrMode::IDLE), _toolIdx(0)
-    , _xMin(-10.0f), _xMax(10.0f), _yMin(-7.0f), _yMax(7.0f)
+    // Default window: 20 units across (the long-standing "±10" muscle memory).
+    // y is DERIVED from the buffer aspect so one unit is one unit on both axes:
+    // with a 320x111 plot that is 14.1 px/unit, not the 4.18 the old 59px band gave.
+    , _xMin(-10.0f), _xMax(10.0f)
+    , _yMin(-10.0f * (float)GRAPH_CANVAS_H / (float)GRAPH_CANVAS_W)
+    , _yMax( 10.0f * (float)GRAPH_CANVAS_H / (float)GRAPH_CANVAS_W)
     , _traceX(0.0f), _traceY(0.0f), _traceFn(0)
     , _traceValid(false), _traceSeeded(false), _traceHeadX(0.0f), _traceHeadY(0.0f)
     , _plotDirty(true)
@@ -217,6 +224,7 @@ void GrapherApp::end() {
         _tabBar = nullptr;
         _bgExpr = nullptr;
         _panelExpr = nullptr;
+        _legend = nullptr;
         _panelGraph = nullptr;
         _panelTable = nullptr;
         _addRow = nullptr; _addLabel = nullptr;
@@ -329,6 +337,11 @@ void GrapherApp::createUI() {
 
     Serial.println("[GRAPHER] tabBar...");
     createTabBar();
+
+    // The one help affordance: bottom-right, over the plot. SHIFT+7 opens the page.
+    if (!_casio) {
+        ui::HelpChip::create(_screen, SCREEN_W - 22, SCREEN_H - 18);
+    }
     Serial.println("[GRAPHER] exprPanel...");
     createExpressionsPanel();
     // Graph panel is created lazily on first tab switch
@@ -348,12 +361,12 @@ void GrapherApp::createTabBar() {
     for (int i = 0; i < 3; ++i) {
         // Create a rounded pill bg for each tab label
         lv_obj_t* pill = lv_obj_create(_tabBar);
-        lv_obj_set_size(pill, tw - 4, TAB_H - 6);
-        lv_obj_set_pos(pill, i * tw + 2, 3);
+        lv_obj_set_size(pill, tw - 4, TAB_H - 2);
+        lv_obj_set_pos(pill, i * tw + 2, 1);
         lv_obj_set_style_bg_color(pill, lv_color_hex(COL_TAB_BG), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(pill, LV_OPA_TRANSP, LV_PART_MAIN);
         lv_obj_set_style_border_width(pill, 0, LV_PART_MAIN);
-        lv_obj_set_style_radius(pill, 8, LV_PART_MAIN);
+        lv_obj_set_style_radius(pill, 3, LV_PART_MAIN);
         lv_obj_set_style_pad_all(pill, 0, LV_PART_MAIN);
         lv_obj_remove_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
         _tabPills[i] = pill;
@@ -364,7 +377,7 @@ void GrapherApp::createTabBar() {
         // half). Fill the pill width + center on both axes so the label is
         // correctly centred regardless of font metrics.
         _tabLabels[i] = makeLabel(pill, 0, 0, titles[i], COL_TAB_TXT_I,
-                                   ui::fontUi());
+                                   ui::fontUiSmall());
         lv_obj_set_width(_tabLabels[i], tw - 4);
         lv_obj_set_style_text_align(_tabLabels[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_center(_tabLabels[i]);
@@ -595,6 +608,7 @@ void GrapherApp::createGraphPanel() {
     lv_obj_add_flag(_panelGraph, LV_OBJ_FLAG_HIDDEN);
 
     // ── Toolbar at top of panel ──
+    if (TOOLBAR_H > 0) {
     _graphToolbar = makeContainer(_panelGraph, 0, 0, SCREEN_W, TOOLBAR_H, COL_TB_BG);
     const char* tools[] = { "Auto", "Axes", "Pan", "Trace" };
     int tw = SCREEN_W / 4;
@@ -606,6 +620,7 @@ void GrapherApp::createGraphPanel() {
         lv_obj_set_width(_toolLabels[i], tw);
         lv_obj_set_style_text_align(_toolLabels[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     }
+    }   // TOOLBAR_H > 0
 
     // ── Graph area (below toolbar, above info bar) ──
     int graphY = TOOLBAR_H;
@@ -632,7 +647,7 @@ void GrapherApp::createGraphPanel() {
         Serial.printf("[GRAPHER] FAIL: Kandinsky PSRAM alloc %u bytes\n", (unsigned)bufSz);
         // ── PSRAM Safety Net: graceful degradation with user-visible warning ──
         lv_obj_t* errLabel = lv_label_create(_graphArea);
-        lv_label_set_text(errLabel, LV_SYMBOL_WARNING " ERR: INSUFFICIENT PSRAM\nClose other apps.");
+        lv_label_set_text(errLabel, "!  ERR: INSUFFICIENT PSRAM\nClose other apps.");
         lv_obj_set_style_text_color(errLabel, lv_color_hex(0xCC0000), LV_PART_MAIN);
         lv_obj_set_style_text_font(errLabel, &stix_math_18, LV_PART_MAIN);
         lv_obj_set_style_text_align(errLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -654,16 +669,17 @@ void GrapherApp::createGraphPanel() {
     lv_obj_add_event_cb(_graphCanvas, graphTickLabelsCb, LV_EVENT_DRAW_MAIN_END, this);
 
     createTraceOverlay(_graphArea, 200);
+    rebuildLegend();
 
     // ── Info bar at bottom ──
     _infoBar = makeContainer(_panelGraph, 0, panelH - INFO_BAR_H, SCREEN_W, INFO_BAR_H, COL_TB_BG);
-    _infoLabel = makeLabel(_infoBar, PAD, 2, "", 0x333333, ui::fontUi());
+    _infoLabel = makeLabel(_infoBar, PAD, 0, "", 0x333333, ui::fontUiXSmall());
     // Mode badge on the right side of info bar: "[Trace]" or "[Pan]".
     // montserrat_14 fits the 20px info bar and matches _infoLabel; stix_math_18
     // (lh 31) clipped vertically AND ran "[Trace]" off the right screen edge.
     // Right-align inside a fixed box so both "[Trace]" and "[Pan]" stay on-screen.
-    _modeBadge = makeLabel(_infoBar, SCREEN_W - 72, 2, "[Trace]", 0x4A90E2,
-                            ui::fontUi());
+    _modeBadge = makeLabel(_infoBar, SCREEN_W - 72, 0, "[Trace]", 0x4A90E2,
+                            ui::fontUiXSmall());
     lv_obj_set_width(_modeBadge, 72 - PAD);
     lv_obj_set_style_text_align(_modeBadge, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
 }
@@ -1377,6 +1393,43 @@ void GrapherApp::refreshExprFocus() {
     if (sel) lv_obj_scroll_to_view(sel, LV_ANIM_OFF);
 }
 
+void GrapherApp::rebuildLegend() {
+    if (_legend) { lv_obj_delete(_legend); _legend = nullptr; }
+    if (_casio || !_panelGraph || _numFuncs <= 0) return;
+
+    const int n = _numFuncs;
+    const int h = 4 + n * LEGEND_ROW_H;
+    const int y = TOOLBAR_H + (GRAPH_CANVAS_H - h) / 2;   // centred on the plot
+
+    _legend = lv_obj_create(_panelGraph);
+    lv_obj_set_pos(_legend, 2, y);
+    lv_obj_set_size(_legend, LEGEND_W, h);
+    lv_obj_set_style_bg_color(_legend, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_legend, 220, LV_PART_MAIN);   // curve shows through
+    lv_obj_set_style_border_width(_legend, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_legend, lv_color_hex(0xDFE3E8), LV_PART_MAIN);
+    lv_obj_set_style_radius(_legend, 3, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_legend, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_legend, LV_OBJ_FLAG_SCROLLABLE);
+
+    for (int i = 0; i < n; ++i) {
+        lv_obj_t* num = lv_label_create(_legend);
+        lv_label_set_text_fmt(num, "%d", i + 1);
+        lv_obj_set_style_text_font(num, ui::fontUiXSmall(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(num, lv_color_hex(0x333333), LV_PART_MAIN);
+        lv_obj_set_pos(num, 3, 2 + i * LEGEND_ROW_H);
+
+        lv_obj_t* dot = lv_obj_create(_legend);
+        lv_obj_set_size(dot, 7, 7);
+        lv_obj_set_pos(dot, 13, 3 + i * LEGEND_ROW_H);
+        lv_obj_set_style_bg_color(dot, lv_color_hex(_funcs[i].color), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(dot, 0, LV_PART_MAIN);
+    }
+}
+
 void GrapherApp::addFunction() {
     if (_numFuncs >= MAX_FUNCS) return;
     int idx = _numFuncs;
@@ -1386,10 +1439,12 @@ void GrapherApp::addFunction() {
     _numFuncs++;
     _exprIdx = idx;
     refreshExprList();
+    rebuildLegend();          // the new slot gets its number + colour dot
     startEditing(_exprIdx);
 }
 
 void GrapherApp::removeFunction(int idx) {
+    struct LegendRefresh { GrapherApp* app; ~LegendRefresh() { app->rebuildLegend(); } } _lr{this};
     if (idx < 0 || idx >= _numFuncs) return;
 
     // Destroy VPAM resources for this slot
@@ -2815,7 +2870,7 @@ void GrapherApp::autoFit() {
         _yMax = globalYMax + margin;
     } else {
         // No visible functions or all out of bounds: keep legacy default logic.
-        _yMin = -7.0f;
+        _yMin = -10.0f * (float)GRAPH_CANVAS_H / (float)GRAPH_CANVAS_W;   // square default
         _yMax = 7.0f;
     }
 

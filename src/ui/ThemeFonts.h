@@ -46,6 +46,14 @@ inline const lv_font_t* fontDisplay() {
  * labels (arrows, battery, warning) must read this accessor instead of the
  * ladder. Do not use it for text.
  */
+/*
+ * fontLogotype() — the splash wordmark. One size above the ladder, ASCII only,
+ * and the only caller should be SplashScreen: a display face at 15px is a label,
+ * not a logo.
+ */
+inline const lv_font_t* fontLogotype() {
+    return &lv_font_montserrat_26;
+}
 inline const lv_font_t* fontSymbol() {
     return &lv_font_montserrat_14;
 }
