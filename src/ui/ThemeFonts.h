@@ -8,10 +8,10 @@
  * The ladder, and why it is a ladder: the sources use four text sizes plus a mono
  * face. Collapsing them onto a single role would repaint the numos screens, which
  * must stay byte-identical, so each rung keeps its own size per theme.
- *   fontUi        body        numos 14 / casio 18   (math face, one face everywhere)
- *   fontUiSmall   secondary   numos 12 / casio 12
- *   fontUiXSmall  tertiary    numos 10 / casio 12
- *   fontDisplay   headline    numos 20 / casio 18   (no 26pt math rung)
+ *   fontUi        body        numos 11 / casio 18   (math face, one face everywhere)
+ *   fontUiSmall   secondary   numos  9 / casio 12
+ *   fontUiXSmall  tertiary    numos  8 / casio 12
+ *   fontDisplay   headline    numos 15 / casio 18   (no 26pt math rung)
  *   fontMono      editor/code unscii-8 (a real mono face, both themes)
  */
 

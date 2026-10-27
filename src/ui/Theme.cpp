@@ -27,6 +27,7 @@
 
 #include "../fonts/StixMathFont.h"
 #include "../fonts/CasioMathFont.h"
+#include "../fonts/UiFonts.h"
 #include "nav/InteractionModel.h"
 
 namespace ui {
@@ -125,10 +126,10 @@ const Theme kNUMOS = {
     /* shadows       */ true,
     /* graphLineWidth*/ 1,          // numos: hairline curves (unchanged)
 
-    /* fontUi        */ &lv_font_montserrat_14,
-    /* fontUiSmall   */ &lv_font_montserrat_12,
-    /* fontUiXSmall  */ &lv_font_montserrat_10,
-    /* fontDisplay   */ &lv_font_montserrat_20,
+    /* fontUi        */ &lv_font_montserrat_11,
+    /* fontUiSmall   */ &lv_font_montserrat_9,
+    /* fontUiXSmall  */ &lv_font_montserrat_8,
+    /* fontDisplay   */ &lv_font_montserrat_15,
     /* fontMono      */ &lv_font_unscii_8,
 
     /* mathFonts */ {
