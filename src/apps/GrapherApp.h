@@ -236,6 +236,19 @@ private:
     static constexpr int LEGEND_W      = 26;
     static constexpr int LEGEND_ROW_H  = 13;
     lv_obj_t*       _legend;            // container, nullptr when no functions
+    lv_obj_t*       _tabIcons[3];       // A8 masks inside the tab chips
+    lv_obj_t*       _chipWrap;          // transient wrapper: hidden at rest
+    lv_timer_t*     _chipTimer;         // auto-hide timer for _chipWrap
+    static constexpr uint32_t CHIP_VISIBLE_MS = 1400;
+    void            revealChips();
+    lv_obj_t*       _editModal;         // 192x94 editor panel (GRAPH tab only)
+    lv_obj_t*       _editHome;          // canvas' original parent
+    lv_point_t      _editHomePos;
+    lv_point_t      _editHomeSize;
+    int             _editSlot;
+    int             _selFunc;           // highlighted function on the GRAPH tab, -1 = none
+    void openEditModal(int idx);
+    void closeEditModal();
     void rebuildLegend();
 
     // ── Graph panel widgets ──────────────────────────────────────────

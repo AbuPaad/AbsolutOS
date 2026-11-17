@@ -25,7 +25,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pngmask import decode_png_rgba, ink_bbox, resample  # noqa: E402
+from pngmask import decode_png_rgba, ink_bbox, integer_scale, resample  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "assets", "images", "icons")
@@ -33,8 +33,8 @@ OUT = os.path.join(REPO, "src", "ui", "generated", "CalculusModeIcons.generated.
 
 # (key, file, target pixel height inside the 20px-tall mode chip)
 ICONS = [
-    ("Deriv",    "calculus_ddx.png",      18),   # chip cell is 17x20: 12x18 leaves 2px slack
-    ("Integral", "calculus_integral.png", 15),   # square glyph: 15x15 inside a 17px cell
+    ("Deriv",    "calculus_ddx.png",      40),   # 1:1 with the master — no resampling
+    ("Integral", "calculus_integral.png", 24),   # 1:1 with the 24px tabler master
 ]
 
 
@@ -47,7 +47,7 @@ def build_header():
         w, h, rgba = decode_png_rgba(path)
         bbox = ink_bbox(w, h, rgba)
         bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        tw = max(1, round(th * bw / bh))
+        tw, th = integer_scale(bw, bh, th)   # integer division of the master
         built.append((key, tw, th, resample(w, h, rgba, bbox, tw, th)))
 
     L = [

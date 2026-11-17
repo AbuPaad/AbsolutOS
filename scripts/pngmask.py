@@ -93,3 +93,71 @@ def resample(w, h, rgba, bbox, tw, th):
     return bytes(out)
 
 
+
+
+def integer_scale(bw, bh, target_max):
+    """Largest integer downscale whose longer side stays <= target_max.
+
+    Sampling a 64px master into 13px invents staircases: some destination
+    columns average two source columns, others three. Constraining the target to
+    an integer division means every output pixel is the same clean box of source
+    pixels, so strokes stay one pixel and diagonals stay regular. Returns
+    (tw, th), never smaller than 1x1.
+    """
+    if bw <= 0 or bh <= 0:
+        return 1, 1
+    k = max(1, int(round(max(bw, bh) / float(target_max))))
+    return max(1, bw // k), max(1, bh // k)
+
+
+def area_threshold(bw, bh, alpha, tw, th, coverage=0.40):
+    """Area-average downscale with a coverage threshold, tuned for 1-bit strokes.
+
+    Why not point sampling: one source pixel per destination pixel drops or doubles
+    strokes depending on alignment, which is what staircases diagonals.
+
+    Why not the plain 50% rule: a 1px diagonal covers ~35-45% of each destination
+    cell. At 50% it disappears or breaks into dots. 0.40 keeps hairlines continuous
+    while still dropping dust.
+
+    Averaging happens in *linear* light — a gamma-encoded average over-weights the
+    bright source pixels, which fattens strokes on dark backgrounds and thins them on
+    light ones. For an alpha mask that bias shows up as uneven stroke weight.
+    """
+    if bw <= 0 or bh <= 0 or tw <= 0 or th <= 0:
+        raise ValueError("bad dims")
+    out = bytearray(tw * th)
+    for ty in range(th):
+        sy0 = (ty * bh) // th
+        sy1 = max(((ty + 1) * bh) // th, sy0 + 1)
+        for tx in range(tw):
+            sx0 = (tx * bw) // tw
+            sx1 = max(((tx + 1) * bw) // tw, sx0 + 1)
+            acc = 0.0; n = 0
+            for sy in range(sy0, min(sy1, bh)):
+                row = sy * bw
+                for sx in range(sx0, min(sx1, bw)):
+                    a = alpha[row + sx] / 255.0
+                    acc += a * a if False else a   # alpha is already linear coverage
+                    n += 1
+            out[ty * tw + tx] = 255 if (n and (acc / n) >= coverage) else 0
+    return bytes(out)
+
+
+def erode(mask, w, h):
+    """4-neighbour erosion: drops any ink pixel with a transparent orthogonal neighbour.
+
+    Used only when a glyph comes back fatter than 1px after thresholding — it
+    removes the salt-and-pepper along an edge but never grows the shape.
+    """
+    out = bytearray(mask)
+    for y in range(h):
+        for x in range(w):
+            if not mask[y * w + x]:
+                continue
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                if nx < 0 or ny < 0 or nx >= w or ny >= h or not mask[ny * w + nx]:
+                    out[y * w + x] = 0
+                    break
+    return bytes(out)

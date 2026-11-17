@@ -20,6 +20,7 @@
  * since LV_USE_CANVAS / LV_USE_TABLE / LV_USE_TABVIEW = 0.
  */
 #include "GrapherApp.h"
+#include "../ui/generated/GrapherTabIcons.generated.h"
 #include "../ui/HelpOverlay.h"
 #include "../ui/ThemeFonts.h"
 #include "../input/generated/ProductionKeypadMap.generated.h"
@@ -142,7 +143,9 @@ GrapherApp::GrapherApp()
     , _casio(false), _sc{}, _curveW(1), _casioEdit(-1)
     , _casioCol(nullptr), _casioPaneBox(nullptr), _tblW(SCREEN_W)
 {
-    for (int i = 0; i < 3; ++i) { _tabLabels[i] = nullptr; _tabPills[i] = nullptr; }
+    for (int i = 0; i < 3; ++i) { _tabLabels[i] = nullptr; _tabPills[i] = nullptr; _tabIcons[i] = nullptr; }
+    _editModal = nullptr;
+    _selFunc = -1;
     for (int i = 0; i < MAX_FUNCS; ++i) {
         _exprRows[i] = nullptr;
         _exprDots[i] = nullptr;
@@ -190,6 +193,8 @@ void GrapherApp::begin() {
 }
 
 void GrapherApp::end() {
+    if (_chipTimer) { lv_timer_delete(_chipTimer); _chipTimer = nullptr; }
+    _chipWrap = nullptr;
     // ── Stop lazy loading timer ──
     if (_tplLoadTimer) {
         lv_timer_delete(_tplLoadTimer);
@@ -225,6 +230,9 @@ void GrapherApp::end() {
         _bgExpr = nullptr;
         _panelExpr = nullptr;
         _legend = nullptr;
+        _editModal = nullptr;
+        _chipWrap = nullptr;
+        _chipTimer = nullptr;
         _panelGraph = nullptr;
         _panelTable = nullptr;
         _addRow = nullptr; _addLabel = nullptr;
@@ -338,50 +346,103 @@ void GrapherApp::createUI() {
     Serial.println("[GRAPHER] tabBar...");
     createTabBar();
 
-    // The one help affordance: bottom-right, over the plot. SHIFT+7 opens the page.
-    if (!_casio) {
-        ui::HelpChip::create(_screen, SCREEN_W - 22, SCREEN_H - 18);
-    }
     Serial.println("[GRAPHER] exprPanel...");
     createExpressionsPanel();
     // Graph panel is created lazily on first tab switch
     Serial.println("[GRAPHER] tablePanel...");
     createTablePanel();
     Serial.println("[GRAPHER] panels OK");
+
+    // Created last and lifted: made before the panels it was covered by the plot
+    // area and never appeared. SHIFT+7 opens the page, AC closes it.
+    if (!_casio) {
+        ui::HelpChip::create(_screen, SCREEN_W - 22, SCREEN_H - 18);
+        if (lv_obj_t* chip = lv_obj_get_child(_screen, -1)) lv_obj_move_foreground(chip);
+    }
+}
+
+// ── Transient chip visibility ───────────────────────────────────────────────
+// The section chips are a control you look at while you change tabs, not a
+// permanent legend. They appear on any tab change and fade out of the way, which
+// is what buys the plot its full height. Only the input row and the "?" help chip
+// stay on screen at rest.
+static void chip_autohide_cb(lv_timer_t* t) {
+    lv_obj_t* wrap = (lv_obj_t*)lv_timer_get_user_data(t);
+    if (wrap && lv_obj_is_valid(wrap)) lv_obj_add_flag(wrap, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_pause(t);
+}
+
+void GrapherApp::revealChips() {
+    if (!_chipWrap) return;
+    lv_obj_remove_flag(_chipWrap, LV_OBJ_FLAG_HIDDEN);
+    if (!_chipTimer) {
+        _chipTimer = lv_timer_create(chip_autohide_cb, CHIP_VISIBLE_MS, _chipWrap);
+    } else {
+        lv_timer_reset(_chipTimer);
+        lv_timer_resume(_chipTimer);
+    }
 }
 
 // ── Tab bar (NumWorks yellow strip with rounded active pill) ─────────────
 void GrapherApp::createTabBar() {
     if (_casio) return;   // the split has no tab bar; the pane is always drawn
-    int y = BAR_H;
-    _tabBar = makeContainer(_screen, 0, y, SCREEN_W, TAB_H, COL_TAB_BG);
 
-    const char* titles[] = { "Expressions", "Graph", "Table" };
-    int tw = SCREEN_W / 3;
+    // Three 24x14 chips floating at the top-right. The band itself is transparent:
+    // the plot runs underneath, so the switcher costs no vertical space — the chips
+    // hold A8 masks, which have no line box to force the strip taller.
+    _tabBar = makeContainer(_screen, 0, BAR_H, SCREEN_W, TAB_H, COL_TAB_BG);
+    lv_obj_set_style_bg_opa(_tabBar, LV_OPA_TRANSP, LV_PART_MAIN);
+
+    static lv_image_dsc_t s_dsc[3];
+    const void* maps[3]  = { ui::kTabExprMap, ui::kTabGraphMap, ui::kTabTableMap };
+    const int   wpx[3]   = { ui::kTabExprW, ui::kTabGraphW, ui::kTabTableW };
+    const int   hpx[3]   = { ui::kTabExprH, ui::kTabGraphH, ui::kTabTableH };
+
+    // 26px wide so the glyph sits inside the chip instead of filling it: the chip
+    // frames the mark, it is not cropped to it.
+    constexpr int CHIP_W = 26, CHIP_H = 20, GAP = 2;
+    const int x0 = SCREEN_W - 4 - (CHIP_W * 3 + GAP * 2);
+
+    // One wrapper owns transient visibility: the whole switcher appears when you
+    // change tab and disappears again, so the plot is unobstructed the rest of the
+    // time. Input and the "?" chip are the only permanent chrome.
+    // Parented to the SCREEN, not to _tabBar: a child is clipped to its parent's
+    // box by default, and the bar is only TAB_H tall, which cropped the chips.
+    // Floated here they sit over the plot with no clipping and cost no band.
+    _chipWrap = lv_obj_create(_screen);
+    lv_obj_set_pos(_chipWrap, x0, BAR_H + 2);
+    lv_obj_set_size(_chipWrap, CHIP_W * 3 + GAP * 2, CHIP_H);
+    lv_obj_set_style_bg_opa(_chipWrap, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_chipWrap, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_chipWrap, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_chipWrap, LV_OBJ_FLAG_SCROLLABLE);
+
     for (int i = 0; i < 3; ++i) {
-        // Create a rounded pill bg for each tab label
-        lv_obj_t* pill = lv_obj_create(_tabBar);
-        lv_obj_set_size(pill, tw - 4, TAB_H - 2);
-        lv_obj_set_pos(pill, i * tw + 2, 1);
-        lv_obj_set_style_bg_color(pill, lv_color_hex(COL_TAB_BG), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(pill, LV_OPA_TRANSP, LV_PART_MAIN);
-        lv_obj_set_style_border_width(pill, 0, LV_PART_MAIN);
-        lv_obj_set_style_radius(pill, 3, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(pill, 0, LV_PART_MAIN);
-        lv_obj_remove_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
-        _tabPills[i] = pill;
+        lv_obj_t* chip = lv_obj_create(_chipWrap);
+        lv_obj_set_pos(chip, i * (CHIP_W + GAP), 0);
+        lv_obj_set_size(chip, CHIP_W, CHIP_H);
+        lv_obj_set_style_radius(chip, 3, LV_PART_MAIN);
+        lv_obj_set_style_border_width(chip, 1, LV_PART_MAIN);
+        lv_obj_set_style_border_color(chip, lv_color_hex(0xD8DDE4), LV_PART_MAIN);
+        lv_obj_set_style_pad_all(chip, 0, LV_PART_MAIN);
+        lv_obj_remove_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
+        _tabPills[i] = chip;
 
-        // Plain UI word per tab. montserrat_14 (line_height 16) fits the pill
-        // (TAB_H-6 = 22px) cleanly; the serif stix_math_18 (line_height 31)
-        // overflowed and clipped the descenders ("Expression" lost its bottom
-        // half). Fill the pill width + center on both axes so the label is
-        // correctly centred regardless of font metrics.
-        _tabLabels[i] = makeLabel(pill, 0, 0, titles[i], COL_TAB_TXT_I,
-                                   ui::fontUiSmall());
-        lv_obj_set_width(_tabLabels[i], tw - 4);
-        lv_obj_set_style_text_align(_tabLabels[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_center(_tabLabels[i]);
+        s_dsc[i] = lv_image_dsc_t{};
+        s_dsc[i].header.magic = LV_IMAGE_HEADER_MAGIC;
+        s_dsc[i].header.cf = LV_COLOR_FORMAT_A8;
+        s_dsc[i].header.w = wpx[i];
+        s_dsc[i].header.h = hpx[i];
+        s_dsc[i].header.stride = wpx[i];
+        s_dsc[i].data_size = (uint32_t)(wpx[i] * hpx[i]);
+        s_dsc[i].data = (const uint8_t*)maps[i];
+
+        _tabIcons[i] = lv_image_create(chip);
+        lv_image_set_src(_tabIcons[i], &s_dsc[i]);
+        lv_obj_center(_tabIcons[i]);
     }
+
+    revealChips();   // visible on entry, then it gets out of the way
 }
 
 // ── Notebook-lines callback for static background (NumWorks style) ──────
@@ -1115,6 +1176,7 @@ void GrapherApp::handleCasioKey(const KeyEvent& ev) {
 // ═══════════════════════════════════════════════════════════════════════
 
 void GrapherApp::switchTab(Tab t) {
+    revealChips();   // the switcher announces itself when it changes
     if (_casio) {
         // Two-pane split: the graph is ALWAYS live on the right; `t` only picks
         // what fills the LEFT column — the numbered list, or the value table.
@@ -1258,8 +1320,11 @@ void GrapherApp::refreshTabBar() {
             active ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
         lv_obj_set_style_bg_color(_tabPills[i],
             lv_color_hex(COL_TAB_ACT), LV_PART_MAIN);
-        lv_obj_set_style_text_color(_tabLabels[i],
-            lv_color_hex(active ? COL_TAB_TXT_A : COL_TAB_TXT_I), LV_PART_MAIN);
+        if (_tabIcons[i]) {
+            lv_obj_set_style_image_recolor(_tabIcons[i],
+                lv_color_hex(active ? 0xFFFFFF : 0x5A6470), LV_PART_MAIN);
+            lv_obj_set_style_image_recolor_opa(_tabIcons[i], LV_OPA_COVER, LV_PART_MAIN);
+        }
     }
     // Focus indicator: blue outline on focused tab pill
     if (_focus == Focus::TAB_BAR) {
@@ -1424,8 +1489,13 @@ void GrapherApp::rebuildLegend() {
         lv_obj_set_pos(dot, 13, 3 + i * LEGEND_ROW_H);
         lv_obj_set_style_bg_color(dot, lv_color_hex(_funcs[i].color), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
         lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        if (i == _selFunc) {   // selected: a ring, so the dot keeps its colour
+            lv_obj_set_style_border_width(dot, 2, LV_PART_MAIN);
+            lv_obj_set_style_border_color(dot, lv_color_hex(0x1A1A1A), LV_PART_MAIN);
+        } else {
+            lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
+        }
         lv_obj_set_style_pad_all(dot, 0, LV_PART_MAIN);
     }
 }
@@ -1490,6 +1560,7 @@ void GrapherApp::startEditing(int idx) {
     _exprCanvas[idx].setExpression(_exprASTRow[idx], &_exprCursor[idx]);
     _exprCanvas[idx].startCursorBlink();
     refreshVPAMExpr(idx);
+    openEditModal(idx);
 
     if (_exprHint)
         lv_label_set_text(_exprHint, "Type expression  ENTER=done  DEL=backspace");
@@ -1498,6 +1569,7 @@ void GrapherApp::startEditing(int idx) {
 }
 
 void GrapherApp::stopEditing() {
+    closeEditModal();
     _exprMode = ExprMode::LIST;
     int idx = _exprIdx;
     if (idx >= 0 && idx < _numFuncs) {
@@ -1516,6 +1588,101 @@ void GrapherApp::stopEditing() {
     if (_exprHint)
         lv_label_set_text(_exprHint, _casio ? "1-6 edit  EXE draw" : "ENTER=edit  AC=back");
     refreshExprList();
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// 0.6x editor — the MathCanvas is REPARENTED, not duplicated
+// ═══════════════════════════════════════════════════════════════════════
+// A second MathCanvas instance would mean a second AST binding, a second caret
+// and a second key route. Instead the slot's existing canvas is moved into a
+// 192x94 panel (0.6x of the 320x156 canvas) and moved back on close, so editing
+// behaves exactly as before while the screen only dims around it.
+void GrapherApp::openEditModal(int idx) {
+    if (_editModal || _casio || idx < 0 || idx >= _numFuncs) return;
+    if (_tab != Tab::GRAPH) return;   // the Expressions tab is already a full editor
+
+    lv_obj_t* cv = _exprCanvas[idx].obj();
+    if (!cv) return;
+
+    _editSlot     = idx;
+    _editHome     = lv_obj_get_parent(cv);
+    _editHomePos  = { lv_obj_get_x(cv), lv_obj_get_y(cv) };
+    _editHomeSize = { lv_obj_get_width(cv), lv_obj_get_height(cv) };
+
+    _editModal = lv_obj_create(_screen);
+    lv_obj_set_pos(_editModal, 64, 31);
+    lv_obj_set_size(_editModal, 192, 94);
+    lv_obj_set_style_bg_color(_editModal, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(_editModal, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(_editModal, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_editModal, lv_color_hex(0xB9C0C9), LV_PART_MAIN);
+    lv_obj_set_style_radius(_editModal, 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_editModal, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_editModal, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Colour dot chip, bottom-left: the function's identity, no "y2 =" label.
+    lv_obj_t* dotChip = lv_obj_create(_editModal);
+    lv_obj_set_pos(dotChip, 4, 4);
+    lv_obj_set_size(dotChip, 20, 12);
+    lv_obj_set_style_bg_color(dotChip, lv_color_hex(0xF2F4F7), LV_PART_MAIN);
+    lv_obj_set_style_border_width(dotChip, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(dotChip, lv_color_hex(0xD8DDE4), LV_PART_MAIN);
+    lv_obj_set_style_radius(dotChip, 3, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(dotChip, 0, LV_PART_MAIN);
+    {
+        lv_obj_t* dot = lv_obj_create(dotChip);
+        lv_obj_set_size(dot, 7, 7);
+        lv_obj_set_pos(dot, 6, 2);
+        lv_obj_set_style_bg_color(dot, lv_color_hex(_funcs[idx].color), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    }
+
+    // EXE + tick chip, bottom-right. The tick is drawn as a line because the
+    // ladder fonts carry no U+2713.
+    lv_obj_t* exeChip = lv_obj_create(_editModal);
+    lv_obj_set_pos(exeChip, 158, 4);
+    lv_obj_set_size(exeChip, 30, 12);
+    lv_obj_set_style_bg_color(exeChip, lv_color_hex(0xF2F4F7), LV_PART_MAIN);
+    lv_obj_set_style_border_width(exeChip, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(exeChip, lv_color_hex(0xD8DDE4), LV_PART_MAIN);
+    lv_obj_set_style_radius(exeChip, 3, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(exeChip, 0, LV_PART_MAIN);
+    {
+        lv_obj_t* t = lv_label_create(exeChip);
+        lv_label_set_text(t, "EXE");
+        lv_obj_set_style_text_font(t, ui::fontUiXSmall(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(t, lv_color_hex(0x3A4048), LV_PART_MAIN);
+        lv_obj_set_pos(t, 3, 1);
+
+        static lv_point_precise_t tick[3] = { {0, 3}, {2, 6}, {6, 0} };
+        lv_obj_t* l = lv_line_create(exeChip);
+        lv_line_set_points(l, tick, 3);
+        lv_obj_set_pos(l, 21, 3);
+        lv_obj_set_style_line_width(l, 1, LV_PART_MAIN);
+        lv_obj_set_style_line_color(l, lv_color_hex(COL_TB_SEL), LV_PART_MAIN);
+    }
+
+    // Move the live canvas in: same object, same AST, same caret.
+    lv_obj_set_parent(cv, _editModal);
+    lv_obj_set_pos(cv, 6, 22);
+    lv_obj_set_size(cv, 180, 46);
+}
+
+void GrapherApp::closeEditModal() {
+    if (!_editModal) return;
+    _selFunc = -1;
+    lv_obj_t* cv = (_editSlot >= 0 && _editSlot < MAX_FUNCS) ? _exprCanvas[_editSlot].obj() : nullptr;
+    if (cv && _editHome) {
+        lv_obj_set_parent(cv, _editHome);
+        lv_obj_set_pos(cv, _editHomePos.x, _editHomePos.y);
+        lv_obj_set_size(cv, _editHomeSize.x, _editHomeSize.y);
+    }
+    lv_obj_delete(_editModal);
+    _editModal = nullptr;
+    _editSlot = -1;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -3783,6 +3950,12 @@ void GrapherApp::handleGraphNav(const KeyEvent& ev) {
         break;
     }
     case KeyCode::EXE: {
+        // A highlighted function means "edit this one". No highlight keeps the old
+        // meaning of EXE (enter Trace), so nothing is taken away.
+        if (_selFunc >= 0 && _selFunc < _numFuncs) {
+            startEditing(_selFunc);
+            return;
+        }
         // Enter Trace on any traceable curve — explicit y=f(x), explicit x=f(y),
         // or a general implicit equation. Only an inequality-only graph has no
         // traceable curve; there, stay in Pan and say so.
@@ -3819,8 +3992,20 @@ void GrapherApp::handleGraphNav(const KeyEvent& ev) {
         refreshToolbar();
         updateInfoBar();
         break;
-    default:
+    default: {
+        // Numbers select a function; the same number twice opens its editor.
+        // Everything else keeps the previous behaviour.
+        const int d = keyCodeDigitValue(ev.code);
+        if (d >= 1 && d <= _numFuncs) {
+            const int idx = d - 1;
+            if (_selFunc == idx) { startEditing(idx); return; }
+            _selFunc = idx;
+            rebuildLegend();
+            if (_infoLabel) lv_label_set_text_fmt(_infoLabel, "f%d  EXE edit", idx + 1);
+            return;
+        }
         break;
+    }
     }
     if (_plotDirty) replot();
     lv_refr_now(NULL);  // Force synchronous screen update — bypasses LVGL timer delay

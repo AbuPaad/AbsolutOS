@@ -39,7 +39,7 @@ SRC = os.path.join(REPO, "assets", "images", "icons")
 OUT = os.path.join(REPO, "src", "ui", "generated", "StatusBarIcons.generated.h")
 
 ALPHA_CUTOFF = 96     # anything >= this is ink
-TARGET_H = 9          # pixels tall inside an 18px status bar
+TARGET_H = 32         # 32px master / 2
 
 STATES = [
     ("low",  "battery_low.png"),
@@ -48,7 +48,7 @@ STATES = [
 ]
 
 
-from pngmask import ALPHA_CUTOFF, decode_png_rgba, ink_bbox, resample  # noqa: E402
+from pngmask import ALPHA_CUTOFF, decode_png_rgba, ink_bbox, integer_scale, resample  # noqa: E402
 
 
 def build_header():
@@ -60,8 +60,8 @@ def build_header():
         w, h, rgba = decode_png_rgba(path)
         bbox = ink_bbox(w, h, rgba)
         bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        tw = max(1, round(TARGET_H * bw / bh))
-        masks.append((key, tw, TARGET_H, resample(w, h, rgba, bbox, tw, TARGET_H)))
+        tw, th = integer_scale(bw, bh, TARGET_H)
+        masks.append((key, tw, th, resample(w, h, rgba, bbox, tw, th)))
 
     widths = {m[1] for m in masks}
     height = masks[0][2]

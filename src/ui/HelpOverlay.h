@@ -25,8 +25,8 @@ public:
     /// Draw the chip at (x, y) inside @p parent. Coordinates are parent-relative.
     static void create(lv_obj_t* parent, int x, int y);
 
-    static constexpr int W = 16;
-    static constexpr int H = 14;
+    static constexpr int W = 18;
+    static constexpr int H = 16;
 };
 
 class HelpOverlay {
