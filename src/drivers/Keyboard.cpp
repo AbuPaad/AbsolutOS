@@ -225,23 +225,29 @@ uint16_t Keyboard::diagnosticActiveColumns(const uint8_t row) const {
 //  R3 (GPIO 42)   0          AC         ENTER
 //  R4 (GPIO 40)   +           -           ×
 //
-// Key mapping for the 9×6 matrix, transcribed verbatim from docs/input/mappings
-// (9 sensed rows × 6 driven columns, indexed [row][col]).
+// Key mapping for the 9x6 matrix, transcribed from keypad-map.json v1
+// (9 sensed rows x 6 driven columns, indexed [row][col]).
 //
-// TODO(human): the source table has gaps that look like typos — [6][2] and
-// [6][3] are both NUM_6, and NUM_3 / NUM_4 are not assigned anywhere. Left
-// exactly as supplied; fix the source table and re-transcribe if unintended.
+// TODO(human): four primary cells carry a command-style label in the JSON with no
+// KeyCode behind it yet, so they read NONE here until the action is implemented:
+//   [1][4] k11 x^-1 (reciprocal)   [3][2] k21 hyp      [4][1] k26 ENG      [4][5] k30 M+
+// [5][5]..[8][5] are unpopulated on the physical keypad.
+
 const KeyCode Keyboard::_map[Keyboard::ROWS][Keyboard::COLS] = {
-    // C0               C1                |C2               |C3              |C4                |C5
-    { KeyCode::SHIFT,   KeyCode::ALPHA,   KeyCode::UP,      KeyCode::RIGHT,   KeyCode::MODE,    KeyCode::ON    },  // Row 0
-    { KeyCode::NONE,    KeyCode::POW,     KeyCode::LEFT,    KeyCode::DOWN,    KeyCode::NONE,    KeyCode::NONE  },  // Row 1
-    { KeyCode::DIV,     KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE  },  // Row 2
-    { KeyCode::NONE,    KeyCode::NONE,    KeyCode::NONE,    KeyCode::SIN,     KeyCode::COS,     KeyCode::TAN   },  // Row 3
-    { KeyCode::NONE,    KeyCode::NONE,    KeyCode::LPAREN,  KeyCode::RPAREN,  KeyCode::NONE,    KeyCode::NONE  },  // Row 4
-    { KeyCode::NUM_7,   KeyCode::NUM_8,   KeyCode::NUM_9,   KeyCode::DEL,     KeyCode::AC,      KeyCode::NONE  },  // Row 5
-    { KeyCode::NONE,    KeyCode::NUM_5,   KeyCode::NUM_6,   KeyCode::NUM_6,   KeyCode::DIV,     KeyCode::NONE  },  // Row 6
-    { KeyCode::NUM_1,   KeyCode::NUM_2,   KeyCode::NONE,    KeyCode::ADD,     KeyCode::SUB,     KeyCode::NONE  },  // Row 7
-    { KeyCode::NUM_0,   KeyCode::DOT,     KeyCode::NONE,    KeyCode::EXE,     KeyCode::ENTER,   KeyCode::NONE  },  // Row 8
+    // Transcribed verbatim from keypad-map.json v1 (Casio fx-991ES PLUS 2nd Ed,
+    // KiCad R/C indices = hardware matrix.row / matrix.col). 9 sensed rows x 6
+    // driven columns, indexed [row][col]. Primary plane only; SHIFT/ALPHA
+    // planes are resolved above this table.
+    // C0                      C1                      C2                      C3                      C4                      C5
+    { KeyCode::SHIFT      , KeyCode::ALPHA      , KeyCode::UP         , KeyCode::RIGHT      , KeyCode::MODE       , KeyCode::ON          },  // Row 0
+    { KeyCode::SOLVE      , KeyCode::SHOW_STEPS , KeyCode::LEFT       , KeyCode::DOWN       , KeyCode::NONE       , KeyCode::LOG_BASE    },  // Row 1
+    { KeyCode::FRAC       , KeyCode::SQRT       , KeyCode::SQUARE     , KeyCode::POW        , KeyCode::LOG        , KeyCode::LN          },  // Row 2
+    { KeyCode::NEG        , KeyCode::DMS        , KeyCode::NONE       , KeyCode::SIN        , KeyCode::COS        , KeyCode::TAN         },  // Row 3
+    { KeyCode::VAR        , KeyCode::NONE       , KeyCode::LPAREN     , KeyCode::RPAREN     , KeyCode::FORMAT     , KeyCode::NONE        },  // Row 4
+    { KeyCode::NUM_7      , KeyCode::NUM_8      , KeyCode::NUM_9      , KeyCode::DEL        , KeyCode::AC         , KeyCode::NONE        },  // Row 5   C5 unpopulated
+    { KeyCode::NUM_4      , KeyCode::NUM_5      , KeyCode::NUM_6      , KeyCode::MUL        , KeyCode::DIV        , KeyCode::NONE        },  // Row 6   C5 unpopulated
+    { KeyCode::NUM_1      , KeyCode::NUM_2      , KeyCode::NUM_3      , KeyCode::ADD        , KeyCode::SUB        , KeyCode::NONE        },  // Row 7   C5 unpopulated
+    { KeyCode::NUM_0      , KeyCode::DOT        , KeyCode::EXP        , KeyCode::ANS        , KeyCode::EXE        , KeyCode::NONE        },  // Row 8   C5 unpopulated
 };
 
 namespace {

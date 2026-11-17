@@ -128,6 +128,8 @@ enum class KeyCode : uint8_t {
     COMMA,       // Comma token
     EQUAL,       // Equality token; distinct from FREE_EQ exact/decimal toggle
     EXP,         // Scientific exponent (×10^x) template
+    DMS,                   // Degrees/minutes/seconds entry (k20 primary)
+    TOGGLE_MIXED_IMPROPER, // Toggle result mixed/improper fraction (k29 shift)
 };
 
 // ── Mapeo de tecla numérica → valor de dígito ────────────────────────────

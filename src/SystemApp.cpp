@@ -727,6 +727,10 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
     // Consumers only ever see EXE from this point on.
     if (ev.code == KeyCode::ENTER) ev.code = KeyCode::EXE;
 
+    // Modifier state for the global chords below. Declared before the first
+    // chord handler so SHIFT+7 (help) and SHIFT+EXE (calculus chip) can read it.
+    auto& km = vpam::KeyboardManager::instance();
+
     // ── GLOBAL: SHIFT+7 opens the help page; AC closes it. This is the only
     //    documentation surface left after the hint bars were removed, so it is
     //    handled before mode dispatch and works on every screen.
@@ -765,8 +769,6 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
         Serial.printf("[KEY-HW] code=%d action=%d row=%d col=%d\n",
                       (int)ev.code, (int)ev.action, ev.row, ev.col);
     }
-
-    auto& km = vpam::KeyboardManager::instance();
 
     // Production HOME is a hard navigation boundary: release all logical
     // keys and clear modifiers before changing the active application.

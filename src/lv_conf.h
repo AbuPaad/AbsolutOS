@@ -224,7 +224,7 @@ extern const lv_font_t lv_font_montserrat_11;
 #define LV_FONT_UNSCII_8        1
 #define LV_FONT_MONTSERRAT_22   0
 #define LV_FONT_MONTSERRAT_24   0
-#define LV_FONT_MONTSERRAT_26   1
+#define LV_FONT_MONTSERRAT_26   0   /* repo supplies its own lv_font_montserrat_26 (NumOS wordmark, src/fonts) */
 #define LV_FONT_MONTSERRAT_28   0
 #define LV_FONT_MONTSERRAT_32   0
 #define LV_FONT_MONTSERRAT_36   0
