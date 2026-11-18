@@ -104,6 +104,24 @@ python3 scripts/add_font_provenance_header.py montserrat "${OUT_DIR}/lv_font_mon
 python3 scripts/add_font_provenance_header.py montserrat "${OUT_DIR}/lv_font_montserrat_11.c"
 python3 scripts/add_font_provenance_header.py montserrat "${OUT_DIR}/lv_font_montserrat_26.c"
 
+# The 26px wordmark face must not keep LVGL's own symbol name. LVGL ships
+# lv_font_montserrat_26 itself, so two definitions collide at link, and while
+# lv_conf keeps LV_FONT_MONTSERRAT_26 at 0 this file's `#if LV_FONT_MONTSERRAT_26`
+# guard would compile the whole font out. Rename the symbol and make the block
+# unconditional so the repo owns the only definition.
+python3 - "${OUT_DIR}/lv_font_montserrat_26.c" <<'RENAME_WORDMARK'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+s = s.replace('lv_font_montserrat_26', 'lv_font_numos_wordmark_26')
+s = s.replace('#if LV_FONT_MONTSERRAT_26\n',
+              '#if 1 /* renamed to lv_font_numos_wordmark_26: LVGL ships its own 26px face under the old name */\n', 1)
+s = s.replace('#endif /*#if LV_FONT_MONTSERRAT_26*/', '#endif /*repo-owned wordmark face*/')
+s = s.replace('#ifndef LV_FONT_MONTSERRAT_26\n#define LV_FONT_MONTSERRAT_26 1\n#endif\n', '')
+open(p, 'w').write(s)
+RENAME_WORDMARK
+
+
 echo "Generated:"
 echo "  ${OUT_DIR}/lv_font_montserrat_15.c  $(wc -c < "${OUT_DIR}/lv_font_montserrat_15.c") bytes"
 echo "  ${OUT_DIR}/lv_font_montserrat_11.c  $(wc -c < "${OUT_DIR}/lv_font_montserrat_11.c") bytes"

@@ -203,7 +203,7 @@ typedef struct _lv_font_t lv_font_t;
 extern const lv_font_t stix_math_18;
 extern const lv_font_t stix_math_12;
 extern const lv_font_t lv_font_montserrat_15;
-extern const lv_font_t lv_font_montserrat_26;
+extern const lv_font_t lv_font_numos_wordmark_26;
 extern const lv_font_t lv_font_montserrat_11;
 #ifdef __cplusplus
 }
@@ -224,7 +224,7 @@ extern const lv_font_t lv_font_montserrat_11;
 #define LV_FONT_UNSCII_8        1
 #define LV_FONT_MONTSERRAT_22   0
 #define LV_FONT_MONTSERRAT_24   0
-#define LV_FONT_MONTSERRAT_26   0   /* repo supplies its own lv_font_montserrat_26 (NumOS wordmark, src/fonts) */
+#define LV_FONT_MONTSERRAT_26   0   /* repo supplies its own lv_font_numos_wordmark_26 (NumOS wordmark, src/fonts) */
 #define LV_FONT_MONTSERRAT_28   0
 #define LV_FONT_MONTSERRAT_32   0
 #define LV_FONT_MONTSERRAT_36   0

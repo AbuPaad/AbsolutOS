@@ -52,7 +52,7 @@ inline const lv_font_t* fontDisplay() {
  * not a logo.
  */
 inline const lv_font_t* fontLogotype() {
-    return &lv_font_montserrat_26;
+    return &lv_font_numos_wordmark_26;
 }
 inline const lv_font_t* fontSymbol() {
     return &lv_font_montserrat_14;

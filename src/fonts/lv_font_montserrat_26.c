@@ -12,7 +12,7 @@
 /*******************************************************************************
  * Size: 26 px
  * Bpp: 4
- * Opts: --font assets/fonts/Montserrat-Regular.ttf --symbols 0x4E,0x75,0x6D,0x4F,0x53 --size 26 --bpp 4 --format lvgl --no-compress --lv-include lvgl.h -o src/fonts/lv_font_montserrat_26.c
+ * Opts: --font assets/fonts/Montserrat-Regular.ttf --symbols 0x4E,0x75,0x6D,0x4F,0x53 --size 26 --bpp 4 --format lvgl --no-compress --lv-include lvgl.h -o src/fonts/lv_font_numos_wordmark_26.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
@@ -21,11 +21,8 @@
 #include "lvgl.h"
 #endif
 
-#ifndef LV_FONT_MONTSERRAT_26
-#define LV_FONT_MONTSERRAT_26 1
-#endif
 
-#if LV_FONT_MONTSERRAT_26
+#if 1 /* renamed to lv_font_numos_wordmark_26: LVGL ships its own 26px face under the old name */
 
 /*-----------------
  *    BITMAPS
@@ -302,9 +299,9 @@ static lv_font_fmt_txt_dsc_t font_dsc = {
 
 /*Initialize a public general font descriptor*/
 #if LVGL_VERSION_MAJOR >= 8
-const lv_font_t lv_font_montserrat_26 = {
+const lv_font_t lv_font_numos_wordmark_26 = {
 #else
-lv_font_t lv_font_montserrat_26 = {
+lv_font_t lv_font_numos_wordmark_26 = {
 #endif
     .get_glyph_dsc = lv_font_get_glyph_dsc_fmt_txt,    /*Function pointer to get glyph's data*/
     .get_glyph_bitmap = lv_font_get_bitmap_fmt_txt,    /*Function pointer to get glyph's bitmap*/
@@ -326,5 +323,5 @@ lv_font_t lv_font_montserrat_26 = {
 
 
 
-#endif /*#if LV_FONT_MONTSERRAT_26*/
+#endif /*repo-owned wordmark face*/
 
