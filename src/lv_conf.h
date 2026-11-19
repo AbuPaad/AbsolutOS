@@ -202,14 +202,20 @@ struct _lv_font_t;
 typedef struct _lv_font_t lv_font_t;
 extern const lv_font_t stix_math_18;
 extern const lv_font_t stix_math_12;
+extern const lv_font_t lv_font_montserrat_15;
+extern const lv_font_t lv_font_numos_wordmark_26;
+extern const lv_font_t lv_font_montserrat_11;
 #ifdef __cplusplus
 }
 #endif
 #endif
 
+#define LV_FONT_MONTSERRAT_8    1
 #define LV_FONT_MONTSERRAT_10   1
+#define LV_FONT_MONTSERRAT_11   1
 #define LV_FONT_MONTSERRAT_12   1
 #define LV_FONT_MONTSERRAT_14   1
+#define LV_FONT_MONTSERRAT_15   1
 #define LV_FONT_MONTSERRAT_16   0
 #define LV_FONT_MONTSERRAT_18   0
 #define LV_FONT_MONTSERRAT_20   1
@@ -218,13 +224,14 @@ extern const lv_font_t stix_math_12;
 #define LV_FONT_UNSCII_8        1
 #define LV_FONT_MONTSERRAT_22   0
 #define LV_FONT_MONTSERRAT_24   0
+#define LV_FONT_MONTSERRAT_26   0   /* repo supplies its own lv_font_numos_wordmark_26 (NumOS wordmark, src/fonts) */
 #define LV_FONT_MONTSERRAT_28   0
 #define LV_FONT_MONTSERRAT_32   0
 #define LV_FONT_MONTSERRAT_36   0
 #define LV_FONT_MONTSERRAT_48   0
 
 /** Fuente que usan todos los widgets por defecto */
-#define LV_FONT_DEFAULT &lv_font_montserrat_14
+#define LV_FONT_DEFAULT &lv_font_montserrat_11
 
 #define LV_USE_FONT_PLACEHOLDER 1   /* Muestra '?' para glifos ausentes */
 

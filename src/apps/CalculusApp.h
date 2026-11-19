@@ -123,8 +123,15 @@ private:
     ui::StatusBar   _statusBar;
 
     // Mode tabs
-    lv_obj_t*       _tabDerivative;  ///< "d/dx" tab button
-    lv_obj_t*       _tabIntegral;    ///< "∫dx" tab button
+    lv_obj_t*       _modeRow;        ///< 18px row: label left, mode chip right
+    lv_obj_t*       _modeChip;       ///< transient chip: one glyph, sized to it
+    lv_timer_t*     _modeTimer;      ///< auto-hide timer for _modeChip
+    static constexpr uint32_t MODE_CHIP_VISIBLE_MS = 1400;
+    void            revealModeChip();
+    lv_obj_t*       _lblDeriv;       ///< "d/dx" set in type, not a mask
+    lv_obj_t*       _imgIntegral;    ///< integral A8 mask
+    lv_obj_t*       _tabDerivative;  ///< chip cell 1 (derivative)
+    lv_obj_t*       _tabIntegral;    ///< chip cell 2 (integral)
 
     // INPUT state
     lv_obj_t*       _inputContainer;
@@ -200,6 +207,9 @@ private:
 
     // ── Mode tab management ──────────────────────────────────────────
     void setMode(CalcMode mode);
+public:
+    void toggleMode();   // SHIFT+EXE target: flips derivative <-> integral
+private:
     void updateTabStyles();
     uint32_t accentColor() const;
 

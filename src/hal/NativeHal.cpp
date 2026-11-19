@@ -148,6 +148,7 @@
 #endif
 #include "../math/VariableManager.h"      // Phase 8B: assert_variable lee el singleton de variables
 #include "../math/AngleModeRuntime.h"     // AM-01: set/assert_angle_mode (runtime DEG/RAD truth)
+#include "../ui/HelpOverlay.h"    // SHIFT+7 page: emulator parity with SystemApp
 #include "../math/giac/GiacEngine.h"      // GIAC-C01: giac_reset script hook (opaque seam)
 #include "../display/DisplayDriver.h"
 #include "../ui/SplashScreen.h"
@@ -784,6 +785,40 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
     // never sees these events. Without the same rewrite a script's `key ENTER`
     // reaches an app that only listens for EXE and is silently dropped.
     if (kc == KeyCode::ENTER) kc = KeyCode::EXE;
+
+    // ── Global chords, mirroring SystemApp::handleKey ──────────────────────
+    // WHY here: this is a SECOND dispatch path. SystemApp::handleKey only runs on
+    // the firmware, so a chord implemented there alone never fires in the emulator —
+    // which is exactly how SHIFT+7 and SHIFT+EXE silently did nothing on PC while
+    // looking implemented. Both seams must resolve the same chords.
+    {
+        static ui::HelpOverlay s_help;
+        auto& km = vpam::KeyboardManager::instance();
+
+        auto helpIdForMode = [](AppMode m) -> int {
+            switch (m) {
+                case AppMode::CALCULATION: return 0;   // Calculation
+                case AppMode::GRAPHER:     return 1;
+                case AppMode::CALCULUS:    return 3;
+                case AppMode::EQUATIONS:   return 2;
+                case AppMode::MENU:
+                case AppMode::SPLASH:      return -1;  // Launcher
+                default:                   return -2;  // generic page
+            }
+        };
+
+        if (kc == KeyCode::AC && s_help.isOpen()) { s_help.close(); return; }
+        if (kc == KeyCode::NUM_7 && km.isShift()) {
+            if (!s_help.isOpen()) s_help.open(lv_screen_active(), helpIdForMode(g_mode));
+            km.reset();
+            return;
+        }
+        if (kc == KeyCode::EXE && km.isShift() && g_mode == AppMode::CALCULUS) {
+            if (g_calculusApp) g_calculusApp->toggleMode();
+            km.reset();
+            return;
+        }
+    }
 
     // Emulator parity for the demo recovery contract: BACK first unwinds the
     // app's topmost modal/state, then returns one level to the launcher.

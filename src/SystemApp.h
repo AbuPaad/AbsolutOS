@@ -44,6 +44,7 @@
 #include "apps/GrapherApp.h"
 #include "apps/EquationsApp.h"
 #include "apps/CalculusApp.h"
+#include "ui/HelpOverlay.h"
 #include "apps/SettingsApp.h"
 #include "apps/StatisticsApp.h"
 #include "apps/ProbabilityApp.h"
@@ -189,6 +190,7 @@ private:
     ui::ThemeId _pendingTheme;
     ui::ThemeId _appliedThemeId;
     bool        _themeRequested = false;
+    ui::HelpOverlay _help;
     int         _activeAppId = -1;   // last launched app id, for theme reloads
 
     // Grid Menu state

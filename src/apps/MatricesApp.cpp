@@ -241,7 +241,7 @@ void MatricesApp::createManagerView() {
     // Hint
     _managerHint = lv_label_create(_managerPanel);
     lv_label_set_text(_managerHint,
-        LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Select  ENTER Open/Run  " LV_SYMBOL_UP LV_SYMBOL_DOWN " Row");
+        "Select  ENTER Open/Run  Row");
     lv_obj_set_style_text_font(_managerHint, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_managerHint, lv_color_hex(COL_HINT), LV_PART_MAIN);
     lv_obj_set_pos(_managerHint, 6, panelH - 18);
@@ -433,7 +433,7 @@ void MatricesApp::updateManagerStyles() {
         lv_label_set_text(_managerHint, "Select second matrix (A/B/C) then ENTER");
     } else if (_managerHint) {
         lv_label_set_text(_managerHint,
-            LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Select  ENTER Open/Run  " LV_SYMBOL_UP LV_SYMBOL_DOWN " Row");
+            "Select  ENTER Open/Run  Row");
     }
 }
 

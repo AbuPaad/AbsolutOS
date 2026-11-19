@@ -43,11 +43,12 @@ namespace ui {
 class StatusBar {
 public:
     // ── Constantes de diseño ─────────────────────────────────────────────
-    static constexpr int HEIGHT     = 24;
+    static constexpr int HEIGHT     = 18;
     static constexpr int SCREEN_W   = 320;
     static constexpr uint32_t COL_BG   = 0x1A1A1A;  ///< Fondo oscuro
     static constexpr uint32_t COL_TEXT = 0xCCCCCC;   ///< Texto gris claro
-    static constexpr uint32_t COL_SEP  = 0x333333;   ///< Línea inferior
+    static constexpr uint32_t COL_SEP  = 0x333333;  ///< Línea inferior
+    static constexpr uint32_t COL_BAT  = 0x66CC66;  ///< Celdas de carga   ///< Línea inferior
 
     // ── Ciclo de vida ────────────────────────────────────────────────────
     StatusBar() = default;

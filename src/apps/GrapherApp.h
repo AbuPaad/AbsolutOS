@@ -102,13 +102,13 @@ public:
 
 private:
     // ── Constants ────────────────────────────────────────────────────
-    static constexpr int MAX_FUNCS    = 6;
+    static constexpr int MAX_FUNCS    = 5;   // dynamic list, hard cap 5
     static constexpr int SCREEN_W     = 320;
     static constexpr int SCREEN_H     = SCREEN_HEIGHT;  // canvas (Config.h)
-    static constexpr int BAR_H        = 25;   // StatusBar::HEIGHT + 1
-    static constexpr int TAB_H        = 28;   // Tab header strip
-    static constexpr int TOOLBAR_H    = 24;   // Graph toolbar strip
-    static constexpr int INFO_BAR_H   = 20;   // Bottom info bar (x= y=)
+    static constexpr int BAR_H        = 19;   // StatusBar::HEIGHT + 1 (18 + separator)
+    static constexpr int TAB_H        = 14;   // thin tab strip (was 28)
+    static constexpr int TOOLBAR_H    = 0;    // gone: Auto/Axes/Pan/Trace live in help
+    static constexpr int INFO_BAR_H   = 12;   // coords overlay at the plot's foot
     static constexpr int PAD          = 6;
     static constexpr int ROW_H        = 32;   // Expression row height
     static constexpr int ROW_GAP      = 2;
@@ -151,7 +151,6 @@ private:
         0x009900,  // Green
         0xCC6600,  // Orange
         0x6600CC,  // Purple
-        0x009999,  // Teal
     };
 
     // ── Enums (declared before any member that uses them) ────────────
@@ -230,6 +229,27 @@ private:
     // ── Kandinsky canvas constants (compile-time) ────────────────────
     static constexpr int GRAPH_CANVAS_W = SCREEN_W;
     static constexpr int GRAPH_CANVAS_H = SCREEN_H - BAR_H - TAB_H - TOOLBAR_H - INFO_BAR_H;
+
+    // ── Floating legend (left edge of the plot, vertically centred) ───
+    // One row per DEFINED function: its number plus the colour its curve is drawn
+    // in. It floats over the grid instead of stealing a column from the plot.
+    static constexpr int LEGEND_W      = 26;
+    static constexpr int LEGEND_ROW_H  = 13;
+    lv_obj_t*       _legend;            // container, nullptr when no functions
+    lv_obj_t*       _tabIcons[3];       // A8 masks inside the tab chips
+    lv_obj_t*       _chipWrap;          // transient wrapper: hidden at rest
+    lv_timer_t*     _chipTimer;         // auto-hide timer for _chipWrap
+    static constexpr uint32_t CHIP_VISIBLE_MS = 1400;
+    void            revealChips();
+    lv_obj_t*       _editModal;         // 192x94 editor panel (GRAPH tab only)
+    lv_obj_t*       _editHome;          // canvas' original parent
+    lv_point_t      _editHomePos;
+    lv_point_t      _editHomeSize;
+    int             _editSlot;
+    int             _selFunc;           // highlighted function on the GRAPH tab, -1 = none
+    void openEditModal(int idx);
+    void closeEditModal();
+    void rebuildLegend();
 
     // ── Graph panel widgets ──────────────────────────────────────────
     lv_obj_t*       _graphToolbar;

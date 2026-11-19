@@ -726,7 +726,7 @@ void EquationsApp::createUI() {
     int addY = 8;  // Position updated dynamically in showEqList()
     _addRow = createRowContainer(_listContainer, addY, rowW, ROW_H, COL_ROW_BG_HEX);
     _addLabel = lv_label_create(_addRow);
-    lv_label_set_text(_addLabel, LV_SYMBOL_PLUS "  Add an equation");
+    lv_label_set_text(_addLabel, "Add an equation");
     lv_obj_set_style_text_font(_addLabel, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_addLabel, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
     lv_obj_align(_addLabel, LV_ALIGN_LEFT_MID, 10, 0);
@@ -741,7 +741,7 @@ void EquationsApp::createUI() {
 
     // Hint at bottom
     _listHint = lv_label_create(_listContainer);
-    lv_label_set_text(_listHint, LV_SYMBOL_UP LV_SYMBOL_DOWN " Navigate   ENTER Select   DEL Remove");
+    lv_label_set_text(_listHint, "Navigate   ENTER Select   DEL Remove");
     lv_obj_set_style_text_font(_listHint, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_listHint, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
     lv_obj_set_pos(_listHint, PAD, SCREEN_H - BAR_H - 20);
@@ -827,8 +827,7 @@ void EquationsApp::createUI() {
     lv_obj_set_size(_editCanvas.obj(), SCREEN_W - 2 * PAD - 8, 120);
 
     _editHint = lv_label_create(_editContainer);
-    lv_label_set_text(_editHint, LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Move   "
-                                  "= Equals   ENTER Confirm   AC Cancel");
+    lv_label_set_text(_editHint, "Move   = Equals   ENTER Confirm   AC Cancel");
     lv_obj_set_style_text_font(_editHint, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_editHint, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
     lv_obj_set_pos(_editHint, PAD, SCREEN_H - BAR_H - 20);
@@ -1226,7 +1225,7 @@ void EquationsApp::update() {
         lv_obj_t* hintLbl = lv_label_create(_stepsContainer);
         if (!hintLbl) return false;
         lv_label_set_text(hintLbl,
-                          LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
+                          "Scroll    AC: Back");
         lv_obj_set_style_text_font(hintLbl, &stix_math_18, LV_PART_MAIN);
         lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX),
                                     LV_PART_MAIN);
@@ -2925,7 +2924,7 @@ void EquationsApp::buildStepsDisplay() {
         return;
     }
     lv_label_set_text(hintLbl,
-                      LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
+                      "Scroll    AC: Back");
     lv_obj_set_style_text_font(hintLbl, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX),
                                 LV_PART_MAIN);
@@ -3160,7 +3159,7 @@ void EquationsApp::buildCASStepsDisplay() {
             appendMemoryLimitReached(steps.size());
             return;
         }
-        lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
+        lv_label_set_text(hintLbl, "Scroll    AC: Back");
         lv_obj_set_style_text_font(hintLbl, &stix_math_18, LV_PART_MAIN);
         lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX),
                                     LV_PART_MAIN);
@@ -3381,7 +3380,7 @@ void EquationsApp::buildSystemCASStepsDisplay() {
             appendMemoryLimitReached(result.steps.size());
             return;
         }
-        lv_label_set_text(hintLbl, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll    AC: Back");
+        lv_label_set_text(hintLbl, "Scroll    AC: Back");
         lv_obj_set_style_text_font(hintLbl, &stix_math_18, LV_PART_MAIN);
         lv_obj_set_style_text_color(hintLbl, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
     }
