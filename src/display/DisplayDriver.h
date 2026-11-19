@@ -178,6 +178,9 @@ private:
     // the bars stay empty glass instead of being drawn by app code.
     int16_t     _xOffset             = 0;
     int16_t     _yOffset             = 0;
+
+    /** Same role as the production branch: repaint after a live placement change. */
+    void invalidateLvglFrame();
 #endif
     #endif
 
