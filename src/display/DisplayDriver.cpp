@@ -381,20 +381,6 @@ bool DisplayDriver::configureProductionController(
     return true;
 }
 
-bool DisplayDriver::applyCanvasPlacement(int16_t xOffset, int16_t yOffset, uint8_t rotation) {
-    _tft.setRotation(rotation);
-    _xOffset = xOffset;
-    _yOffset = yOffset;
-    _tft.invertDisplay(false);
-    invalidateLvglFrame();
-    return true;
-}
-
-void DisplayDriver::invalidateLvglFrame() {
-    if (_lvDisp != nullptr && lv_screen_active() != nullptr) {
-        lv_obj_invalidate(lv_screen_active());
-    }
-}
 
 bool DisplayDriver::applyProductionDisplayProfile(
     const numos::display::ProductionDisplayProfile& profile,
@@ -543,7 +529,22 @@ void DisplayDriver::runBoundedProductionDisplayDiagnostic() {
     invalidateLvglFrame();
 }
 
-#endif
+#endif  // NUMOS_BOARD_PROD_WROOM1U_N16R8 — placement/flush invalidation exist on every device build
+
+bool DisplayDriver::applyCanvasPlacement(int16_t xOffset, int16_t yOffset, uint8_t rotation) {
+    _tft.setRotation(rotation);
+    _xOffset = xOffset;
+    _yOffset = yOffset;
+    _tft.invertDisplay(false);
+    invalidateLvglFrame();
+    return true;
+}
+
+void DisplayDriver::invalidateLvglFrame() {
+    if (_lvDisp != nullptr && lv_screen_active() != nullptr) {
+        lv_obj_invalidate(lv_screen_active());
+    }
+}
 
 void DisplayDriver::lvglFlushCb(lv_display_t* disp,
                                 const lv_area_t* area,

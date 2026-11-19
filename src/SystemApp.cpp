@@ -684,7 +684,7 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
     // ── GLOBAL: SHIFT+7 opens the help page; AC closes it. This is the only
     //    documentation surface left after the hint bars were removed, so it is
     //    handled before mode dispatch and works on every screen.
-    if (_mode != Mode::APP_GAMEBOY && ev.action == KeyAction::PRESS) {
+    if (ev.action == KeyAction::PRESS) {
         if (km.isShift() && ev.code == KeyCode::NUM_7) {
             if (!_help.isOpen()) {
                 lv_obj_t* parent = lv_screen_active();
