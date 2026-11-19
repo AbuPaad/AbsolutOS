@@ -1,0 +1,18 @@
+APP: Chemistry
+SCRIPT: tests/emulator/scripts/screenshots/chemistry.numos
+RUN EXIT: 0
+SHOTS:
+  /assets/img/apps/chemistry-1.webp  ->  out/shots-chemistry-1.ppm   ASSERTED-BY: (none — app not launched)   FAIL
+  /assets/img/apps/chemistry-2.webp  ->  out/shots-chemistry-2.ppm   ASSERTED-BY: (none — app not launched)   FAIL
+  /assets/img/apps/chemistry-3.webp  ->  out/shots-chemistry-3.ppm   ASSERTED-BY: (none — app not launched)   FAIL
+COULD NOT CAPTURE:
+  - chemistry-1 (Tungsten detail) — Emulator binary lacks Chemistry app (PeriodicTableApp) support in launchApp(); "App 11 no implementado en simulador"
+  - chemistry-2 (Mercury deep-dive) — Same root cause: Chemistry app never launches; ENTER key launches Settings instead
+  - chemistry-3 (Balancer Fe+O2=Fe2O3) — Same root cause plus: emulator script has no SOLVE key name for '=' and no ALPHA_A..ALPHA_F KeyCodes for full element alphabet
+NOTES:
+  - The emulator binary (NativeHal.cpp) does not have a case 11 in launchApp() for PeriodicTableApp, nor entries in canonicalAppName()/scriptAppNameToId() for "chemistry"/"periodictable"
+  - Menu navigation reaches app_id=11 correctly (logs show "Card focused: app_id=11"), but pressing ENTER prints "App 11 no implementado en simulador" and stays in Menu
+  - Subsequent arrow keys continue navigating the Menu; the ENTER meant for deep-dive launches Settings (app_id=10) because focus wrapped to it
+  - Screenshots captured are of Menu and Settings, not Chemistry app — deleted to avoid shipping wrong images
+  - Shot 3 additionally requires typing element symbols (O, H, N, C, etc.) but emulator script system only exposes A-F via ALPHA modifier; SOLVE key (for '=' in balancer) has no script key name
+  - To capture these shots, the emulator binary must be rebuilt with Chemistry app support in NativeHal.cpp (add case 11 to launchApp, add "chemistry" to canonicalAppName/scriptAppNameToId, add "solve" to scriptNameToKeyCode, add ALPHA_G..ALPHA_Z key names or TEXTINPUT support for letters)

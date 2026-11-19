@@ -756,6 +756,29 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
             changed = false;
             break;
 
+        // ── Casio v1 keypad-map (keypad-map.json) — stubs (TODO) ──────────
+        // Anything not already defined is left commented out here; uncomment
+        // and implement as the feature lands. See keypad-map.json newActions.
+        //
+        // case KeyCode::DMS:                 // TODO: degrees/minutes/seconds entry (k20 primary)
+        // case KeyCode::TOGGLE_MIXED_IMPROPER:// TODO: toggle result mixed/improper fraction (k29 shift)
+        // case KeyCode::NEG:                 // TODO: insert negative sign in calc (handled in Calculus; missing here)
+        // case KeyCode::SHOW_STEPS:          // TODO: insert integral template "\\int_{¶}^{}" (k08 primary)
+        // case KeyCode::LOG_BASE:            // TODO: already handled above; keep for reference
+        // Templates without a CursorController helper yet (need insert* or generic template insert):
+        //   derivative "\\frac{d}{dx}(¶)" (k08 shift)
+        //   summation "\\sum_{¶}( )" (k12 shift)
+        //   cube root "\\sqrt[3]{¶}" (k14 shift)
+        //   nth root "\\sqrt[¶]{ }" (k16 shift)
+        //   10^x "10^{¶}" (k17 shift)
+        //   reciprocal "^{-1}" (k11 primary)
+        //   leftarrow "\\leftarrow" (k20/k26 shift) -> cursor move, not text
+        // Command-style, text-only entries needing new code paths:
+        //   hyp (k21 primary) -> hyperbolic prefix
+        //   ENG (k26 primary) -> engineering notation toggle
+        //   M+ / M- / M (k30) -> memory store/add/subtract/recall
+        //   % (k27 shift) -> percent operator
+        //   OFF (k35 shift) -> deep-sleep power off
         default:
             changed = false;
             break;

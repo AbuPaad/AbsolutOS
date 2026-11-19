@@ -1,0 +1,17 @@
+{
+  "name": "z8lua",
+  "version": "e692857",
+  "description": "z8lua (MIT): PICO-8 flavoured Lua 5.2 runtime for fake-08, built as C++ with jump tables.",
+  "build": {
+    "srcDir": "src",
+    "flags": [
+      "-I.",
+      "-Isrc",
+      "-fjump-tables",
+      "-fpermissive",
+      "-Wno-all"
+    ]
+  },
+  "frameworks": "*",
+  "platforms": "*"
+}

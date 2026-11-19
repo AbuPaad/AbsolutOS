@@ -190,6 +190,8 @@ void DisplayDriver::begin() {
     // NOT centred — 54 px bar above, 30 px below — so the flush is shifted down
     // by SCREEN_OFFSET_Y, not by half the remainder.  The bars come from this
     // offset - never from app-drawn pixels.
+    Serial.printf("[TFT] rotation=%u madctl=0x%02X inverted=false xOffset=0 yOffset=%u\\n",
+                  (unsigned)SCREEN_ROTATION, 0xA8, (unsigned)SCREEN_OFFSET_Y);
     _xOffset = 0;
     _yOffset = static_cast<int16_t>(SCREEN_OFFSET_Y);
 #endif
@@ -376,6 +378,15 @@ bool DisplayDriver::configureProductionController(
     _tft.writedata(madctl);
     _tft.endWrite();
     _tft.invertDisplay(profile.inverted);
+    return true;
+}
+
+bool DisplayDriver::applyCanvasPlacement(int16_t xOffset, int16_t yOffset, uint8_t rotation) {
+    _tft.setRotation(rotation);
+    _xOffset = xOffset;
+    _yOffset = yOffset;
+    _tft.invertDisplay(false);
+    invalidateLvglFrame();
     return true;
 }
 

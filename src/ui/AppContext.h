@@ -51,6 +51,7 @@ enum class Ctx : uint8_t {
     Regression,
     Sequences,
     GameBoy,
+    Games,
     Notes,
     Ai,
     Settings,
@@ -80,6 +81,7 @@ inline const char* ctxName(Ctx ctx)
         case Ctx::Regression:   return "Regression";
         case Ctx::Sequences:    return "Sequences";
         case Ctx::GameBoy:      return "Game Boy";
+        case Ctx::Games:        return "Games";
         case Ctx::Notes:        return "Notes";
         case Ctx::Ai:           return "AI";
         case Ctx::Settings:     return "Settings";
@@ -111,6 +113,7 @@ inline const char* ctxSlug(Ctx ctx)
         case Ctx::Regression:   return "regression";
         case Ctx::Sequences:    return "sequences";
         case Ctx::GameBoy:      return "gameboy";
+        case Ctx::Games:        return "games";
         case Ctx::Notes:        return "notes";
         case Ctx::Ai:           return "ai";
         case Ctx::Settings:     return "settings";

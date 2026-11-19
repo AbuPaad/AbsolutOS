@@ -106,27 +106,30 @@ inline constexpr ProductionBoardProfile kProductionBoard = {
     8U * 1024U * 1024U,
     {
         // Display pins follow the bench ILI9341 bring-up wiring, which is the
-        // display source of truth for this hardware.  The backlight is tied to
-        // a fixed rail, so there is no backlight GPIO (-1).
+        // display source of truth for this hardware.  Backlight is now driven on
+        // GPIO42 (module pad 35, MTMS) via PWM — new PCB routes the LED string
+        // through a low-side switch on that pin.  Pin is not a strapping pin;
+        // using it disables JTAG while driven.
         320,
         // Logical canvas height (MEASURED 2026-10-02): the fx-82 shell exposes
-        // 156 of the panel's 240 rows — 54 px of bar above, 30 px below, applied
+        // 156 of the panel's 240 rows — 20 px of bar above, 64 px below after the
+        // 2026-11-15 180 deg re-fit, applied
         // as a flush offset, not drawn in app code.  Now equal to
         // kLogicalDisplayHeight, so enabling the production branch no longer
         // detonates the DisplayDriver static_assert.  Keep in step with
         // kLogicalDisplayHeight in display/ProductionDisplayProfile.h.
         156,
         40'000'000U,
-        {"LCD CS", 10, Direction::Output, ActiveLevel::Low, Pull::None},
-        {"LCD SCLK", 12, Direction::Output, ActiveLevel::None, Pull::None},
-        {"LCD DC", 4, Direction::Output, ActiveLevel::None, Pull::None},
-        {"LCD MOSI/SDI", 11, Direction::Output, ActiveLevel::None, Pull::None},
+        {"LCD CS", 2, Direction::Output, ActiveLevel::Low, Pull::None},
+        {"LCD SCLK", 41, Direction::Output, ActiveLevel::None, Pull::None},
+        {"LCD DC", 40, Direction::Output, ActiveLevel::None, Pull::None},
+        {"LCD MOSI/SDI", 39, Direction::Output, ActiveLevel::None, Pull::None},
         {"LCD MISO/SDO", 13, Direction::Input, ActiveLevel::None, Pull::None},
-        {"LCD reset", 5, Direction::Output, ActiveLevel::Low, Pull::None},
-        {"LCD backlight", -1, Direction::Output, ActiveLevel::High, Pull::None},
+        {"LCD reset", 38, Direction::Output, ActiveLevel::Low, Pull::None},
+        {"LCD backlight", 42, Direction::Output, ActiveLevel::High, Pull::None},
         false,
         false,
-        0x68,   // bench-proven landscape MADCTL (MX|MV|BGR)
+        0xA8,   // 0xA0 (MY|MV) | BGR: bench fit, panel now mounted 180 deg
         true
     },
     {
@@ -213,7 +216,7 @@ constexpr bool allUnique(const std::array<int8_t, N>& values) {
 
 // Only the display pins are assigned now that the keypad matrix is wiped.
 inline constexpr std::array<int8_t, 6> kProductionNormalPeripheralGpios = {
-    10, 12, 4, 11, 13, 5
+    2, 41, 40, 39, 13, 38
 };
 
 static_assert(kProductionBoard.electricalMatrix.rowOutputs.size() == 5);

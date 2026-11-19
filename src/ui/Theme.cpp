@@ -58,6 +58,22 @@ const AppSurface kNUMOSSurfaces[] = {
         /* borderWidth  */ 0,
     },
     {
+        /* appId        */ appid::kGames,
+        /* bg           */ 0x000000,   // black letterbox
+        /* pane         */ 0x000000,
+        /* row          */ 0x1C1C1C,
+        /* rowFocus     */ 0x1565C0,
+        /* text         */ 0xFFFFFF,
+        /* textDim      */ 0x9E9E9E,
+        /* title        */ 0xFFFFFF,
+        /* textOnFocus  */ 0xFFFFFF,
+        /* accent       */ 0x4FC3F7,
+        /* iconInk      */ 0xFFFFFF,   // numos rows are dark: the mark stays white
+        /* radiusRow    */ 4,
+        /* radiusPane   */ 4,
+        /* borderWidth  */ 0,
+    },
+    {
         /* appId        */ appid::kAi,
         /* bg           */ 0x000000,
         /* pane         */ 0x101418,   // the Ask input box

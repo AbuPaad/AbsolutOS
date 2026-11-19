@@ -7,14 +7,14 @@
 // Driver selection
 #define ILI9341_DRIVER
 
-// Pinout (match platformio.ini -DTFT_xxx)
-#define TFT_MISO -1
-#define TFT_MOSI 13
-#define TFT_SCLK 12
-#define TFT_CS   10
-#define TFT_DC   4
-#define TFT_RST  5
-#define TFT_BL   45
+// Pinout (match platformio.ini -DTFT_xxx) — v2 board (Cfx-port-1.25x)
+#define TFT_MISO 13
+#define TFT_MOSI 39
+#define TFT_SCLK 41
+#define TFT_CS   2
+#define TFT_DC   40
+#define TFT_RST  38
+#define TFT_BL   42
 
 // Display resolution
 #define TFT_WIDTH  240

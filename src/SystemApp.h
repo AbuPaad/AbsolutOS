@@ -49,18 +49,9 @@
 #include "apps/ProbabilityApp.h"
 #include "apps/RegressionApp.h"
 #include "apps/MatricesApp.h"
-#include "apps/PythonApp.h"
 #include "apps/SequencesApp.h"
-#include "apps/PeriodicTableApp.h"
-#include "apps/BridgeDesignerApp.h"
-#include "apps/CircuitCoreApp.h"
-#include "apps/Fluid2DApp.h"
-#include "apps/ParticleLabApp.h"
-#include "apps/NeuralLabApp.h"
-#include "apps/OpticsLabApp.h"
-#include "apps/NeoLanguageApp.h"
 #include "apps/FractalApp.h"
-#include "apps/GameBoyApp.h"        // Game Boy / GBC front-end (Walnut-CGB)
+#include "apps/GamesApp.h"          // Games front-end (Home / List / Play)
 #include "apps/AiApp.h"             // AI wrapper (ask / capture / answer, mdrender)
 #if defined(NUMOS_MATH_VISUAL_VERIFY)
 #define NUMOS_MATH_VISUAL_APP_ENABLED 1
@@ -88,17 +79,8 @@ enum class Mode : uint8_t {
     APP_MATRICES,      // Matrix algebra (LVGL-native)
     APP_REGRESSION,    // Regression analysis (LVGL-native)
     APP_SEQUENCES,     // Sequences & series
-    APP_PYTHON,        // Python shell (placeholder)
-    APP_PERIODIC_TABLE, // Periodic table & chemistry
-    APP_BRIDGE_DESIGNER, // Bridge structural simulator
-    APP_CIRCUIT_CORE,    // Circuit simulator (SPICE-like)
-    APP_FLUID_2D,        // 2D fluid simulator (Stable Fluids)
-    APP_PARTICLE_LAB,    // Falling-sand particle simulator
-    APP_NEURAL_LAB,      // Neural network playground
-    APP_OPTICS_LAB,      // 2D optical ray-tracing simulator
-    APP_NEO_LANGUAGE,    // NeoLanguage compiler frontend IDE
     APP_FRACTAL,         // Mandelbrot Fractal Explorer
-    APP_GAMEBOY,         // Game Boy / GBC front-end (Walnut-CGB core)
+    APP_GAMES,           // Games front-end: Home / List / Play (LVGL-native)
     APP_AI_WRAPPER,      // AI wrapper: ask / capture / recent answers / settings
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     APP_MATH_VISUAL,     // Math renderer hardware verification screen
@@ -161,18 +143,9 @@ private:
     ProbabilityApp* _probabilityApp;
     RegressionApp*  _regressionApp;
     MatricesApp*    _matricesApp;
-    PythonApp*      _pythonApp;
     SequencesApp*   _sequencesApp;
-    PeriodicTableApp* _periodicTableApp;
-    BridgeDesignerApp* _bridgeDesignerApp;
-    CircuitCoreApp*    _circuitCoreApp;
-    Fluid2DApp*        _fluid2DApp;
-    ParticleLabApp*    _particleLabApp;
-    NeuralLabApp*      _neuralLabApp;
-    OpticsLabApp*      _opticsLabApp;
-    NeoLanguageApp*    _neoLangApp;
     FractalApp*        _fractalApp;
-    GameBoyApp*        _gameboyApp;
+    GamesApp*          _gamesApp;
     AiApp*             _aiApp;
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
     MathRenderVisualTestApp* _mathVisualApp;

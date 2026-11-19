@@ -43,6 +43,15 @@
 
 class DisplayDriver;
 
+// Screen fit is device-only: it moves the real canvas through
+// DisplayDriver::applyCanvasPlacement(), which the host and web builds do not
+// have. Everything it adds is behind this switch.
+#if defined(ARDUINO)
+#define NUMOS_SETTINGS_SCREEN_FIT 1
+#else
+#define NUMOS_SETTINGS_SCREEN_FIT 0
+#endif
+
 class SettingsApp {
 public:
     explicit SettingsApp(DisplayDriver* display = nullptr);
@@ -77,10 +86,14 @@ private:
     // existing row indexes before it never shift.
     static constexpr int THEME_ROW =
         NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 5 : 4;
+    // Screen fit sits immediately after Theme and BEFORE the two appended
+    // screens, so WIFI_ROW/UPDATE_ROW (defined relative to NUM_ITEMS below)
+    // keep their meaning and every index above THEME_ROW simply shifts by one.
+    static constexpr int FIT_ROW = THEME_ROW + 1;
     // A "System Update" row is appended AFTER Wi-Fi so Wi-Fi keeps its existing
     // index: closeWifiView() and the keymap both name WIFI_ROW explicitly.
     static constexpr int NUM_ITEMS =
-        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 8 : 7;
+        (NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 8 : 7) + NUMOS_SETTINGS_SCREEN_FIT;
     static constexpr int WIFI_ROW = NUM_ITEMS - 2;
     static constexpr int UPDATE_ROW = NUM_ITEMS - 1;
     static constexpr int SCREEN_W  = 320;
@@ -105,7 +118,17 @@ private:
     static constexpr int UPDATE_ROWS_MAX = 4;
     static constexpr int UPDATE_LIST_H   = 32;
 
-    enum class View { Main, Wifi, Update };
+    enum class View { Main, Wifi, Update, Fit };
+
+#if NUMOS_SETTINGS_SCREEN_FIT
+
+    /// The Screen Fit screen: the calibration rig, in-product. Four rows, and the
+    /// value under the cursor is adjusted with LEFT/RIGHT so the whole loop is
+    /// keypad-only. The canvas SIZE is NOT adjustable here because LVGL is
+    /// created at 320x156 at boot (kLogicalDisplayWidth/Height) — what this
+    /// screen tunes is what the profile actually stores: offsets + rotation.
+    static constexpr int FIT_ROWS = 4;   ///< Offset Y, Offset X, Rotation, Save
+#endif
 
     lv_obj_t*       _screen;
     ui::StatusBar   _statusBar;
@@ -127,6 +150,20 @@ private:
     uint32_t        _lastPollMs   = 0;
 
     // System Update screen widgets (created on entry, destroyed on exit)
+#if NUMOS_SETTINGS_SCREEN_FIT
+    // Screen Fit widgets (created on entry, destroyed on exit)
+    lv_obj_t*       _fitRows[FIT_ROWS];
+    lv_obj_t*       _fitLabels[FIT_ROWS];
+    lv_obj_t*       _fitValues[FIT_ROWS];
+    lv_obj_t*       _fitFrame = nullptr;   ///< canvas-edge reference on the glass
+    int             _fitY = 0;
+    int             _fitX = 0;
+    int             _fitRot = 1;
+    int             _fitOpenY = 0;         ///< values as they were on entry ...
+    int             _fitOpenX = 0;         ///< ... so AC can put them back
+    int             _fitOpenRot = 1;
+#endif
+
     lv_obj_t*       _updateRows[UPDATE_ROWS_MAX];
     lv_obj_t*       _updateLabels[UPDATE_ROWS_MAX];
     lv_obj_t*       _updateValues[UPDATE_ROWS_MAX];
@@ -157,4 +194,14 @@ private:
     void closeUpdateView();     ///< leave: rebuilds them
     void refreshUpdateView();   ///< status + focus highlight
     void updateUpdateFocus();
+
+#if NUMOS_SETTINGS_SCREEN_FIT
+    // ── Screen Fit screen ───────────────────────────────────────────────────
+    void buildFitView();        ///< enter: tears the Settings rows down
+    void closeFitView(bool keepChanges);  ///< leave: rebuilds them
+    void refreshFitView();      ///< numbers + focus highlight + frame
+    void updateFitFocus();
+    void adjustFit(int delta);  ///< LEFT/RIGHT on the focused row
+    bool applyFitProfile(bool save);  ///< push the live profile to the driver
+#endif
 };

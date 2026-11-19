@@ -5,9 +5,9 @@
 #include <cstring>
 #include <limits>
 
-#if !defined(ARDUINO) || \
-    (defined(NUMOS_BOARD_PROD_WROOM1U_N16R8) && \
-     NUMOS_BOARD_PROD_WROOM1U_N16R8)
+// Pure C++ (record codec, validation, MADCTL decoding) -- nothing here touches a
+// driver, so it is compiled for EVERY target. It used to be prod-only, which is
+// why the CAM build could not validate or persist a display profile at all.
 
 uint32_t numos_display_write_spi_hz =
     numos::display::kSafeDisplayProfile.writeSpiHz;
@@ -534,4 +534,4 @@ const char* commandParseResultName(const CommandParseResult result) {
 
 } // namespace numos::display
 
-#endif
+

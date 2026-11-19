@@ -25,6 +25,7 @@
 #include "../ui/ThemeFonts.h"
 #include "../Config.h"
 #include "../display/DisplayDriver.h"
+#include "../display/ProductionDisplayRuntime.h"
 #include "../math/AngleModeRuntime.h"
 #include "../net/Portal.h"
 #include "../ui/ThemeManager.h"
@@ -280,6 +281,9 @@ void SettingsApp::load() {
     // the container is torn down on teardown, so _view has to agree with it.
     if (_view == View::Wifi) closeWifiView();
     else if (_view == View::Update) closeUpdateView();
+#if NUMOS_SETTINGS_SCREEN_FIT
+    else if (_view == View::Fit) closeFitView(true);
+#endif
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     _brightnessSession.begin(setting_brightness);
     setting_brightness = _brightnessSession.runtimeBrightness();
@@ -378,6 +382,11 @@ void SettingsApp::createRows() {
         "Brightness",
 #endif
         "Theme",               // row THEME_ROW — calls ThemeManager::activate()
+#if NUMOS_SETTINGS_SCREEN_FIT
+        // The calibration rig, in-product: offsets + rotation against the real
+        // glass, applied live and persisted through ProductionDisplayRuntime.
+        "Screen fit",          // row FIT_ROW
+#endif
         // Opens the Wi-Fi screen: saved networks, signal, connect/forget, and the
         // provisioning portal that puts networks on the list in the first place.
         "Wi-Fi",
@@ -509,6 +518,19 @@ void SettingsApp::updateValues() {
                                     lv_color_hex(COL_VALUE), LV_PART_MAIN);
     }
 
+#if NUMOS_SETTINGS_SCREEN_FIT
+    // Screen fit row: the two numbers the rig exists to produce, so the current
+    // fit is readable without opening the screen.
+    {
+        const auto& dp = numos::display::activeProductionDisplayProfile();
+        char fbuf[24];
+        std::snprintf(fbuf, sizeof(fbuf), "y%+d x%+d", (int)dp.yOffset,
+                      (int)dp.xOffset);
+        lv_label_set_text(_values[FIT_ROW], fbuf);
+        lv_obj_set_style_text_color(_values[FIT_ROW], lv_color_hex(COL_VALUE), LV_PART_MAIN);
+    }
+#endif
+
     // Wi-Fi row. Deliberately short: the SSID itself belongs on the Wi-Fi screen
     // and in the hint strip, which have more room than this row's value field.
     {
@@ -632,6 +654,17 @@ void SettingsApp::refreshHint() {
         lv_label_set_text(_hintLabel, buf);
         return;
     }
+
+#if NUMOS_SETTINGS_SCREEN_FIT
+    if (_view == View::Fit) {
+        // The rig's own instruction block, one line, because the numbers are on
+        // the rows: adjust, then save.
+        std::snprintf(buf, sizeof(buf),
+                      "LEFT/RIGHT adjust  UP/DOWN row  EXE save  AC cancel");
+        lv_label_set_text(_hintLabel, buf);
+        return;
+    }
+#endif
 
     // Main Settings screen: how to get in, or what the device is doing. The AP
     // credentials are one level down (the Wi-Fi row) and are not duplicated here.
@@ -956,6 +989,192 @@ void SettingsApp::refreshUpdateView() {
     updateUpdateFocus();
 }
 
+#if NUMOS_SETTINGS_SCREEN_FIT
+// ════════════════════════════════════════════════════════════════════════════
+// Screen Fit screen — the calibration rig, in-product
+// ════════════════════════════════════════════════════════════════════════════
+//
+// What this screen can and cannot do, and why:
+//   * It CAN move the canvas (x/y flush offset) and flip the panel 180 degrees.
+//     Those are exactly the fields ProductionDisplayProfile stores, so what the
+//     user tunes here is what the device boots with next time.
+//   * It CANNOT resize the canvas. LVGL is created at kLogicalDisplayWidth x
+//     kLogicalDisplayHeight (320x156) before any app runs; a different canvas is
+//     a rebuild, not a setting. The numbers on this screen are the fit, not a
+//     substitute for the standalone rig's spec probing.
+//   * Changes are applied live through DisplayDriver, with the identifier forced
+//     to Custom -- validateDisplayProfile() rejects a preset whose fields drifted
+//     (PresetModified), so keeping the Safe id here would fail every apply.
+
+void SettingsApp::buildFitView() {
+    _view  = View::Fit;
+    _focus = 0;
+
+    const auto& cur = numos::display::activeProductionDisplayProfile();
+    _fitY   = cur.yOffset;
+    _fitX   = cur.xOffset;
+    _fitRot = cur.rotation;
+    _fitOpenY   = _fitY;
+    _fitOpenX   = _fitX;
+    _fitOpenRot = _fitRot;
+
+    lv_obj_clean(_container);
+    for (int i = 0; i < NUM_ITEMS; ++i) {
+        _rows[i]   = nullptr;
+        _labels[i] = nullptr;
+        _values[i] = nullptr;
+    }
+    _brightnessSlider = nullptr;
+
+    // Reference frame: the exact rect LVGL owns. If this frame is not inside the
+    // shell's cut-out, the fit is wrong no matter what the numbers say.
+    _fitFrame = lv_obj_create(_screen);
+    lv_obj_set_size(_fitFrame, SCREEN_W, SCREEN_H);
+    lv_obj_set_pos(_fitFrame, 0, 0);
+    lv_obj_set_style_bg_opa(_fitFrame, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_color(_fitFrame, lv_color_hex(COL_FOCUS_BD), LV_PART_MAIN);
+    lv_obj_set_style_border_width(_fitFrame, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(_fitFrame, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(_fitFrame, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(_fitFrame, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(_fitFrame, LV_OBJ_FLAG_SCROLLABLE);
+
+    for (int i = 0; i < FIT_ROWS; ++i) {
+        const int y = 4 + i * (UPDATE_LIST_H + ROW_GAP);
+        _fitRows[i] = lv_obj_create(_container);
+        lv_obj_set_size(_fitRows[i], SCREEN_W - 2 * PAD, UPDATE_LIST_H);
+        lv_obj_set_pos(_fitRows[i], PAD, y);
+        lv_obj_set_style_bg_color(_fitRows[i], lv_color_hex(COL_ROW_BG), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(_fitRows[i], LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_color(_fitRows[i], lv_color_hex(COL_BORDER), LV_PART_MAIN);
+        lv_obj_set_style_border_width(_fitRows[i], 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(_fitRows[i], 6, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(_fitRows[i], 0, LV_PART_MAIN);
+        lv_obj_remove_flag(_fitRows[i], LV_OBJ_FLAG_SCROLLABLE);
+
+        _fitLabels[i] = lv_label_create(_fitRows[i]);
+        lv_obj_set_style_text_font(_fitLabels[i], ui::fontUi(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(_fitLabels[i], lv_color_hex(COL_TEXT), LV_PART_MAIN);
+        lv_obj_align(_fitLabels[i], LV_ALIGN_LEFT_MID, 10, 0);
+
+        _fitValues[i] = lv_label_create(_fitRows[i]);
+        lv_obj_set_style_text_font(_fitValues[i], ui::fontUiSmall(), LV_PART_MAIN);
+        lv_obj_align(_fitValues[i], LV_ALIGN_RIGHT_MID, -10, 0);
+    }
+
+    refreshFitView();
+    refreshHint();
+}
+
+void SettingsApp::closeFitView(const bool keepChanges) {
+    if (!keepChanges) {
+        // Put the profile back exactly as it was when the screen opened.
+        _fitY   = _fitOpenY;
+        _fitX   = _fitOpenX;
+        _fitRot = _fitOpenRot;
+        (void)applyFitProfile(false);
+    }
+    if (_fitFrame != nullptr) {
+        lv_obj_delete(_fitFrame);
+        _fitFrame = nullptr;
+    }
+    _view  = View::Main;
+    _focus = FIT_ROW;      // come back with the cursor on the row that opened it
+    createRows();
+    refreshHint();
+    lv_obj_invalidate(_screen);
+}
+
+void SettingsApp::updateFitFocus() {
+    for (int i = 0; i < FIT_ROWS; ++i) {
+        if (_fitRows[i] == nullptr) continue;
+        if (i == _focus) {
+            lv_obj_set_style_bg_color(_fitRows[i], lv_color_hex(COL_ROW_FOCUS), LV_PART_MAIN);
+            lv_obj_set_style_border_color(_fitRows[i], lv_color_hex(COL_FOCUS_BD), LV_PART_MAIN);
+            lv_obj_set_style_border_width(_fitRows[i], 2, LV_PART_MAIN);
+        } else {
+            lv_obj_set_style_bg_color(_fitRows[i], lv_color_hex(COL_ROW_BG), LV_PART_MAIN);
+            lv_obj_set_style_border_color(_fitRows[i], lv_color_hex(COL_BORDER), LV_PART_MAIN);
+            lv_obj_set_style_border_width(_fitRows[i], 1, LV_PART_MAIN);
+        }
+    }
+    if (_fitRows[_focus]) lv_obj_scroll_to_view(_fitRows[_focus], LV_ANIM_OFF);
+    lv_obj_invalidate(_screen);
+}
+
+void SettingsApp::refreshFitView() {
+    if (_view != View::Fit || _fitRows[0] == nullptr) return;
+
+    char v[16];
+    lv_label_set_text(_fitLabels[0], "Offset Y");
+    std::snprintf(v, sizeof(v), "%+d px", _fitY);
+    lv_label_set_text(_fitValues[0], v);
+    lv_obj_set_style_text_color(_fitValues[0], lv_color_hex(COL_VALUE), LV_PART_MAIN);
+
+    lv_label_set_text(_fitLabels[1], "Offset X");
+    std::snprintf(v, sizeof(v), "%+d px", _fitX);
+    lv_label_set_text(_fitValues[1], v);
+    lv_obj_set_style_text_color(_fitValues[1], lv_color_hex(COL_VALUE), LV_PART_MAIN);
+
+    lv_label_set_text(_fitLabels[2], "Rotation");
+    std::snprintf(v, sizeof(v), "%s", _fitRot == 3 ? "180" : "0");
+    lv_label_set_text(_fitValues[2], v);
+    lv_obj_set_style_text_color(_fitValues[2], lv_color_hex(COL_VALUE), LV_PART_MAIN);
+
+    lv_label_set_text(_fitLabels[3], "Save & close");
+    lv_label_set_text(_fitValues[3], "");
+    lv_obj_set_style_text_color(_fitValues[3], lv_color_hex(COL_HINT), LV_PART_MAIN);
+
+    updateFitFocus();
+}
+
+bool SettingsApp::applyFitProfile(const bool save) {
+    if (_display == nullptr) return false;
+
+    // The live effect goes through the driver on every device build; the record
+    // that survives a reboot only exists on the production target (the CAM build
+    // has no ProductionDisplayRuntime, so setActive/save are documented no-ops
+    // there and the fit lasts until reboot).
+    if (!_display->applyCanvasPlacement(static_cast<int16_t>(_fitX),
+                                        static_cast<int16_t>(_fitY),
+                                        static_cast<uint8_t>(_fitRot))) {
+        return false;
+    }
+
+    numos::display::ProductionDisplayProfile prof =
+        numos::display::activeProductionDisplayProfile();
+    prof.identifier = numos::display::ProfileId::Custom;
+    prof.rotation   = static_cast<uint8_t>(_fitRot);
+    prof.colorOrder = numos::display::ColorOrder::Bgr;
+    prof.xOffset    = static_cast<int16_t>(_fitX);
+    prof.yOffset    = static_cast<int16_t>(_fitY);
+    if (!numos::display::setActiveProductionDisplayProfile(prof)) return false;
+    if (save) numos::display::saveActiveProductionDisplayProfile();
+    return true;
+}
+
+void SettingsApp::adjustFit(const int delta) {
+    // Offer a SECOND range so a screen fitted in the field can be nudged even
+    // when only one row is in play. Clamped by the profile validator's own caps.
+    if (_focus == 0) {
+        _fitY += delta;
+        if (_fitY < numos::display::kMinimumOffset) _fitY = numos::display::kMinimumOffset;
+        if (_fitY > numos::display::kMaximumOffset) _fitY = numos::display::kMaximumOffset;
+    } else if (_focus == 1) {
+        _fitX += delta;
+        if (_fitX < numos::display::kMinimumOffset) _fitX = numos::display::kMinimumOffset;
+        if (_fitX > numos::display::kMaximumOffset) _fitX = numos::display::kMaximumOffset;
+    } else if (_focus == 2) {
+        _fitRot = (delta > 0) ? 3 : 1;
+    } else {
+        return;   // Save row: nothing to adjust
+    }
+    (void)applyFitProfile(false);
+    refreshFitView();
+}
+
+#endif  // NUMOS_SETTINGS_SCREEN_FIT
+
 void SettingsApp::update() {
     const uint32_t now = lv_tick_get();
     // The update screen shows byte progress, so it refreshes faster than the
@@ -1006,11 +1225,13 @@ void SettingsApp::toggleCurrent() {
         case 0:  // Angle mode toggle: writes the runtime truth, badge follows
             numos::setAngleMode(numos::angleModeIsDeg() ? vpam::AngleMode::RAD
                                                         : vpam::AngleMode::DEG);
+            Serial.printf("[SETTINGS] angleMode=%s\n", numos::angleModeIsDeg() ? "DEG" : "RAD");
             _statusBar.update();   // repaint this screen's DEG/RAD badge now (§E.3.4)
             break;
 
         case 1:  // Complex numbers toggle
             setting_complex_enabled = !setting_complex_enabled;
+            Serial.printf("[SETTINGS] complex=%d\n", (int)setting_complex_enabled);
             break;
 
         case 2: {  // Decimal precision cycle: 6 → 8 → 10 → 12 → 6
@@ -1023,11 +1244,13 @@ void SettingsApp::toggleCurrent() {
             }
             idx = (idx + 1) % NUM_PREC;
             setting_decimal_precision = PRECISIONS[idx];
+            Serial.printf("[SETTINGS] precision=%d\n", setting_decimal_precision);
             break;
         }
 
         case 3:  // Step-by-step educational mode toggle
             setting_edu_steps = !setting_edu_steps;
+            Serial.printf("[SETTINGS] eduSteps=%d\n", (int)setting_edu_steps);
             break;
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
@@ -1054,6 +1277,11 @@ void SettingsApp::toggleCurrent() {
             break;
         }
 
+#if NUMOS_SETTINGS_SCREEN_FIT
+        case FIT_ROW:   // opens the Screen Fit screen; persistence happens there
+            buildFitView();
+            return;     // the rows this function would refresh were just deleted
+#endif
         case WIFI_ROW:  // opens the Wi-Fi screen; nothing to persist here
             buildWifiView();
             return;     // the rows this function would refresh were just deleted
@@ -1132,6 +1360,37 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
         }
     }
 
+#if NUMOS_SETTINGS_SCREEN_FIT
+    // ── the Screen Fit screen has its own keymap ────────────────────────────
+    // Applied LIVE on every adjust (the point is watching the rectangle move on
+    // the glass), persisted only by EXE on the Save row. AC puts the profile back
+    // the way it was, so a fit that lands off-screen cannot strand the display.
+    if (_view == View::Fit) {
+        switch (ev.code) {
+            case KeyCode::UP:
+                if (_focus > 0) { --_focus; updateFitFocus(); }
+                return;
+            case KeyCode::DOWN:
+                if (_focus + 1 < FIT_ROWS) { ++_focus; updateFitFocus(); }
+                return;
+            case KeyCode::LEFT:
+                adjustFit(-1);
+                return;
+            case KeyCode::RIGHT:
+                adjustFit(+1);
+                return;
+            case KeyCode::AC:
+                closeFitView(false);   // restore
+                return;
+            case KeyCode::EXE:
+                if (_focus == FIT_ROWS - 1) closeFitView(true);   // save + leave
+                return;
+            default:
+                return;
+        }
+    }
+#endif
+
     // ── the System Update screen has its own keymap ─────────────────────────
     if (_view == View::Update) {
         switch (ev.code) {
@@ -1164,6 +1423,7 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
             if (_focus > 0) {
                 --_focus;
                 updateFocus();
+                Serial.printf("[SETTINGS] focus=%d\n", _focus);
             }
             break;
 
@@ -1171,6 +1431,7 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
             if (_focus < NUM_ITEMS - 1) {
                 ++_focus;
                 updateFocus();
+                Serial.printf("[SETTINGS] focus=%d\n", _focus);
             }
             break;
 

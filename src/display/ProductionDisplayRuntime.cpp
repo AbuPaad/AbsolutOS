@@ -1,8 +1,7 @@
 #include "ProductionDisplayRuntime.h"
 #include "ProductionDisplayRuntimeConfig.h"
 
-#if defined(ARDUINO) && defined(NUMOS_BOARD_PROD_WROOM1U_N16R8) && \
-    NUMOS_BOARD_PROD_WROOM1U_N16R8
+#if defined(ARDUINO)
 
 #include <Preferences.h>
 #include <esp_attr.h>

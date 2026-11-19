@@ -66,18 +66,9 @@ SystemApp::SystemApp(DisplayDriver &display, Keyboard &keypad)
       _probabilityApp(nullptr),
       _regressionApp(nullptr),
       _matricesApp(nullptr),
-      _pythonApp(nullptr),
       _sequencesApp(nullptr),
-      _periodicTableApp(nullptr),
-      _bridgeDesignerApp(nullptr),
-      _circuitCoreApp(nullptr),
-      _fluid2DApp(nullptr),
-      _particleLabApp(nullptr),
-      _neuralLabApp(nullptr),
-      _opticsLabApp(nullptr),
-      _neoLangApp(nullptr),
       _fractalApp(nullptr),
-      _gameboyApp(nullptr),
+      _gamesApp(nullptr),
     _aiApp(nullptr),
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
       _mathVisualApp(nullptr),
@@ -174,18 +165,9 @@ void SystemApp::begin() {
     _probabilityApp = new ProbabilityApp();
     _regressionApp = new RegressionApp();
     _matricesApp   = new MatricesApp();
-    _pythonApp     = new PythonApp();
     _sequencesApp  = new SequencesApp();
-    _periodicTableApp = new PeriodicTableApp();
-    _bridgeDesignerApp = new BridgeDesignerApp();
-    _circuitCoreApp = new CircuitCoreApp();
-    _fluid2DApp = new Fluid2DApp();
-    _particleLabApp = new ParticleLabApp();
-    _neuralLabApp = new NeuralLabApp();
-    _opticsLabApp = new OpticsLabApp();
-    _neoLangApp   = new NeoLanguageApp();
     _fractalApp   = new FractalApp();
-    _gameboyApp   = new GameBoyApp();
+    _gamesApp     = new GamesApp();
     // Constructed with the recents repo empty; it allocates its LVGL widgets and
     // loads the model catalog in load(), not here (boot-heap discipline above).
     _aiApp        = new AiApp();
@@ -323,7 +305,6 @@ void SystemApp::initApps() {
     _apps.emplace_back(5,  "Probability",  icon_Distributions);
     _apps.emplace_back(6,  "Regression",   icon_Regression);
     _apps.emplace_back(7,  "Sequences",    icon_Sequences);
-    _apps.emplace_back(8,  "Python",       icon_Python);
     _apps.emplace_back(9,  "Matrices",     icon_Inference);
     _apps.emplace_back(10, "Settings",     icon_Settings);
     // 11-18 are hidden/experimental LVGL apps 
@@ -346,18 +327,9 @@ void SystemApp::teardownModeNow(Mode mode) {
         case Mode::APP_PROBABILITY:    if (_probabilityApp)  _probabilityApp->end();  break;
         case Mode::APP_REGRESSION:     if (_regressionApp)   _regressionApp->end();   break;
         case Mode::APP_MATRICES:       if (_matricesApp)     _matricesApp->end();     break;
-        case Mode::APP_PYTHON:         if (_pythonApp)       _pythonApp->end();       break;
         case Mode::APP_SEQUENCES:      if (_sequencesApp)    _sequencesApp->end();    break;
-        case Mode::APP_PERIODIC_TABLE: if (_periodicTableApp) _periodicTableApp->end(); break;
-        case Mode::APP_BRIDGE_DESIGNER: if (_bridgeDesignerApp) _bridgeDesignerApp->end(); break;
-        case Mode::APP_CIRCUIT_CORE:   if (_circuitCoreApp)  _circuitCoreApp->end();  break;
-        case Mode::APP_FLUID_2D:       if (_fluid2DApp)      _fluid2DApp->end();      break;
-        case Mode::APP_PARTICLE_LAB:   if (_particleLabApp)  _particleLabApp->end();  break;
-        case Mode::APP_NEURAL_LAB:     if (_neuralLabApp)    _neuralLabApp->end();    break;
-        case Mode::APP_OPTICS_LAB:     if (_opticsLabApp)    _opticsLabApp->end();    break;
-        case Mode::APP_NEO_LANGUAGE:   if (_neoLangApp)      _neoLangApp->end();      break;
         case Mode::APP_FRACTAL:        if (_fractalApp)      _fractalApp->end();      break;
-        case Mode::APP_GAMEBOY:        if (_gameboyApp)      _gameboyApp->end();      break;
+        case Mode::APP_GAMES:          if (_gamesApp)        _gamesApp->end();        break;
         case Mode::APP_AI_WRAPPER:     if (_aiApp)           _aiApp->end();           break;
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
         case Mode::APP_MATH_VISUAL:     if (_mathVisualApp)   _mathVisualApp->end();   break;
@@ -461,24 +433,12 @@ void SystemApp::update() {
         // LVGL handles StatisticsApp rendering
     } else if (_mode == Mode::APP_PROBABILITY) {
         // LVGL handles ProbabilityApp rendering
-    } else if (_mode == Mode::APP_PERIODIC_TABLE) {
-        // LVGL handles PeriodicTableApp rendering
-    } else if (_mode == Mode::APP_CIRCUIT_CORE) {
-        // LVGL handles CircuitCoreApp rendering
-    } else if (_mode == Mode::APP_FLUID_2D) {
-        // LVGL handles Fluid2DApp rendering
-    } else if (_mode == Mode::APP_NEURAL_LAB) {
-        // LVGL handles NeuralLabApp rendering
-    } else if (_mode == Mode::APP_OPTICS_LAB) {
-        // LVGL handles OpticsLabApp rendering
-    } else if (_mode == Mode::APP_NEO_LANGUAGE) {
-        // LVGL handles NeoLanguageApp rendering
     } else if (_mode == Mode::APP_FRACTAL) {
         // FractalApp has a small update state machine (safe transitions + render polling).
         if (_fractalApp) _fractalApp->update();
-    } else if (_mode == Mode::APP_GAMEBOY) {
-        // GameBoyApp paces itself: exactly one emulated frame per loop pass.
-        if (_gameboyApp && _gameboyApp->isActive()) _gameboyApp->update();
+    } else if (_mode == Mode::APP_GAMES) {
+        // Frontend only: the frame meter runs while the Play screen is up.
+        if (_gamesApp && _gamesApp->isActive()) _gamesApp->update();
     } else if (_mode == Mode::APP_AI_WRAPPER) {
         // AiApp::update() pumps the transport stream (and nothing else) while a
         // request is in flight; it is a no-op when idle.
@@ -548,17 +508,9 @@ void SystemApp::render() {
         case Mode::APP_PROBABILITY: break;  // LVGL-native — no-op
         case Mode::APP_REGRESSION:  break;  // LVGL-native — no-op
         case Mode::APP_MATRICES:    break;  // LVGL-native — no-op
-        case Mode::APP_PYTHON:      break;  // LVGL-native — no-op
-        case Mode::APP_PERIODIC_TABLE: break; // LVGL-native — no-op
-        case Mode::APP_BRIDGE_DESIGNER: break; // LVGL-native — no-op
-        case Mode::APP_CIRCUIT_CORE: break;    // LVGL-native — no-op
         case Mode::APP_SEQUENCES:    break;    // LVGL-native — no-op
-        case Mode::APP_PARTICLE_LAB: break;    // LVGL-native — no-op
-        case Mode::APP_NEURAL_LAB:   break;    // LVGL-native — no-op
-        case Mode::APP_OPTICS_LAB:   break;    // LVGL-native — no-op
-        case Mode::APP_NEO_LANGUAGE: break;    // LVGL-native — no-op
         case Mode::APP_FRACTAL:      break;    // LVGL-native — no-op
-        case Mode::APP_GAMEBOY:      break;    // LVGL-native — no-op
+        case Mode::APP_GAMES:        break;    // LVGL-native — no-op
         case Mode::APP_AI_WRAPPER:   break;    // LVGL-native — no-op
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
         case Mode::APP_MATH_VISUAL:  break;    // LVGL-native — no-op
@@ -698,9 +650,7 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
     if (ev.row >= 0) {
         numos::input::InputContext context =
             numos::input::InputContext::Math;
-        if (_mode == Mode::APP_PYTHON ||
-            _mode == Mode::APP_NEO_LANGUAGE ||
-            _mode == Mode::APP_CIRCUIT_CORE) {
+        if (_mode == Mode::APP_FRACTAL) {
             context = numos::input::InputContext::Code;
         }
         const auto resolved = numos::input::KeySemanticResolver::resolve(
@@ -761,9 +711,7 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
     // ── SHIFT + AC → Apagado del sistema (DESACTIVADO mientras USB conectado) ──
     // Deep sleep deshabilitado temporalmente: con cable USB conectado
     // el sistema debe permanecer encendido al 100%.
-    // GameBoyApp is exempt: AC is its B button (and SHIFT its Select), so a
-    // Select+B combo would otherwise be swallowed here and never reach the core.
-    if (_mode != Mode::APP_GAMEBOY && km.isShift() && ev.code == KeyCode::AC) {
+    if (km.isShift() && ev.code == KeyCode::AC) {
         Serial.println("[SYSTEM] SHIFT+AC detected — deep sleep DISABLED (USB mode)");
         km.reset();
         _shiftActive = false;
@@ -775,7 +723,7 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
     //    Must run before mode dispatch so it fires in every mode. We only set
     //    intent; update() performs activate() + recreate at a safe point
     //    (never mutate a live canvas mid-frame). Plain AC still clears.
-    if (ev.action == KeyAction::PRESS && _mode != Mode::APP_GAMEBOY &&
+    if (ev.action == KeyAction::PRESS &&
         km.isAlpha() && ev.code == KeyCode::AC) {
         const bool isCasio =
             ui::ThemeManager::instance().id() == ui::ThemeId::Casio;
@@ -790,17 +738,16 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
     }
 
     // ── SHIFT/ALPHA gestión global (CalculationApp y CalculusApp tienen su propia) ──
-    // GameBoyApp needs the raw SHIFT/ALPHA edges as Game Boy Start/Select, so it
-    // is exempt like Calculation/Calculus (otherwise both are swallowed here and
-    // never reach the app — the device analogue of NativeHal::appOwnsModifiers).
+    // Calculation/Calculus own the raw modifier edges; every other app sees the
+    // sticky SHIFT/ALPHA state that this block maintains.
     if (ev.code == KeyCode::SHIFT && _mode != Mode::APP_CALCULATION &&
-        _mode != Mode::APP_CALCULUS && _mode != Mode::APP_GAMEBOY) {
+        _mode != Mode::APP_CALCULUS) {
         _shiftActive = !_shiftActive;
         km.pressShift();
         return;
     }
     if (ev.code == KeyCode::ALPHA && _mode != Mode::APP_CALCULATION &&
-        _mode != Mode::APP_CALCULUS && _mode != Mode::APP_GAMEBOY) {
+        _mode != Mode::APP_CALCULUS) {
         _alphaActive = !_alphaActive;
         km.pressAlpha();
         return;
@@ -881,84 +828,6 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
                 _sequencesApp->handleKey(ev);
             }
             break;
-        // PythonApp is LVGL-native
-        case Mode::APP_PYTHON:
-            if (ev.code == KeyCode::MODE) {
-                returnToMenu();
-            } else if (_pythonApp) {
-                _pythonApp->handleKey(ev);
-            }
-            break;
-        // PeriodicTableApp is LVGL-native
-        case Mode::APP_PERIODIC_TABLE:
-            if (ev.code == KeyCode::MODE || ev.code == KeyCode::AC) {
-                returnToMenu();
-            } else if (_periodicTableApp) {
-                _periodicTableApp->handleKey(ev);
-            }
-            break;
-        // BridgeDesignerApp is LVGL-native
-        case Mode::APP_BRIDGE_DESIGNER:
-            if (ev.code == KeyCode::MODE) {
-                returnToMenu();
-            } else if (_bridgeDesignerApp) {
-                _bridgeDesignerApp->handleKey(ev);
-            }
-            break;
-        // CircuitCoreApp is LVGL-native
-        case Mode::APP_CIRCUIT_CORE:
-            if (ev.code == KeyCode::MODE) {
-                if (_circuitCoreApp) _circuitCoreApp->autoSave();
-                returnToMenu();
-            } else if (ev.code == KeyCode::AC && _circuitCoreApp &&
-                       _circuitCoreApp->isToolbarFocused()) {
-                _circuitCoreApp->autoSave();
-                returnToMenu();
-            } else if (_circuitCoreApp) {
-                _circuitCoreApp->handleKey(ev);
-            }
-            break;
-        // Fluid2DApp is LVGL-native
-        case Mode::APP_FLUID_2D:
-            if (ev.code == KeyCode::MODE) {
-                if (_fluid2DApp) _fluid2DApp->autoSave();
-                returnToMenu();
-            } else if (_fluid2DApp) {
-                _fluid2DApp->handleKey(ev);
-            }
-            break;
-        // ParticleLabApp is LVGL-native
-        case Mode::APP_PARTICLE_LAB:
-            if (ev.code == KeyCode::MODE) {
-                returnToMenu();
-            } else if (_particleLabApp) {
-                _particleLabApp->handleKey(ev);
-            }
-            break;
-        // NeuralLabApp is LVGL-native
-        case Mode::APP_NEURAL_LAB:
-            if (ev.code == KeyCode::MODE) {
-                returnToMenu();
-            } else if (_neuralLabApp) {
-                _neuralLabApp->handleKey(ev);
-            }
-            break;
-        // OpticsLabApp is LVGL-native
-        case Mode::APP_OPTICS_LAB:
-            if (ev.code == KeyCode::MODE) {
-                returnToMenu();
-            } else if (_opticsLabApp) {
-                _opticsLabApp->handleKey(ev);
-            }
-            break;
-        // NeoLanguageApp is LVGL-native
-        case Mode::APP_NEO_LANGUAGE:
-            if (ev.code == KeyCode::MODE) {
-                returnToMenu();
-            } else if (_neoLangApp) {
-                _neoLangApp->handleKey(ev);
-            }
-            break;
         // FractalApp is LVGL-native
         case Mode::APP_FRACTAL:
             if (ev.code == KeyCode::AC) {
@@ -970,16 +839,14 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
                 }
             }
             break;
-        // GameBoyApp is LVGL-native (Walnut-CGB front-end). MODE leaves the app;
-        // AC is NOT intercepted — it is the Game Boy B button while playing, and
-        // the app's own exit key from the picker/error screens (EXE backs out of
-        // a running game to the ROM list).
-        case Mode::APP_GAMEBOY:
+        // GamesApp is LVGL-native. AC is a system key here (it is not a PICO-8
+        // button until the runtime is linked), so only MODE/EXE leave the app.
+        case Mode::APP_GAMES:
             if (ev.code == KeyCode::MODE) {
                 returnToMenu();
-            } else if (_gameboyApp) {
-                _gameboyApp->handleKey(ev);
-                if (_gameboyApp->consumeExitRequest()) {
+            } else if (_gamesApp) {
+                _gamesApp->handleKey(ev);
+                if (_gamesApp->consumeExitRequest()) {
                     returnToMenu();
                 }
             }
@@ -1159,11 +1026,6 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_sequencesApp) _sequencesApp->load();
-    } else if (id == 8) {
-        // PythonApp es LVGL-native
-        g_lvglActive = true;
-        switchApp(id);
-        if (_pythonApp) _pythonApp->load();
     } else if (id == 9) {
         // MatricesApp es LVGL-native
         g_lvglActive = true;
@@ -1174,56 +1036,16 @@ void SystemApp::launchApp(int id) {
         g_lvglActive = true;
         switchApp(id);
         if (_settingsApp) _settingsApp->load();
-    } else if (id == 11) {
-        // PeriodicTableApp es LVGL-native
-        g_lvglActive = true;
-        switchApp(id);
-        if (_periodicTableApp) _periodicTableApp->load();
-    } else if (id == 12) {
-        // BridgeDesignerApp es LVGL-native
-        g_lvglActive = true;
-        switchApp(id);
-        if (_bridgeDesignerApp) _bridgeDesignerApp->load();
-    } else if (id == 13) {
-        // CircuitCoreApp es LVGL-native
-        g_lvglActive = true;
-        switchApp(id);
-        if (_circuitCoreApp) _circuitCoreApp->load();
-    } else if (id == 14) {
-        // Fluid2DApp es LVGL-native
-        g_lvglActive = true;
-        switchApp(id);
-        if (_fluid2DApp) _fluid2DApp->load();
-    } else if (id == 15) {
-        // ParticleLabApp es LVGL-native
-        g_lvglActive = true;
-        switchApp(id);
-        if (_particleLabApp) _particleLabApp->load();
-    } else if (id == 16) {
-        // NeuralLabApp es LVGL-native
-        g_lvglActive = true;
-        switchApp(id);
-        if (_neuralLabApp) _neuralLabApp->load();
-    } else if (id == 17) {
-        // OpticsLabApp es LVGL-native
-        g_lvglActive = true;
-        switchApp(id);
-        if (_opticsLabApp) _opticsLabApp->load();
-    } else if (id == 18) {
-        // NeoLanguageApp es LVGL-native
-        g_lvglActive = true;
-        switchApp(id);
-        if (_neoLangApp) _neoLangApp->load();
     } else if (id == 19) {
         // FractalApp es LVGL-native
         g_lvglActive = true;
         switchApp(id);
         if (_fractalApp) _fractalApp->load();
-    } else if (id == 21) {
-        // GameBoyApp es LVGL-native (front-end del core Walnut-CGB)
+    } else if (id == 24) {
+        // GamesApp es LVGL-native (Home / List / Play)
         g_lvglActive = true;
         switchApp(id);
-        if (_gameboyApp) _gameboyApp->load();
+        if (_gamesApp) _gamesApp->load();
     } else if (id == 23) {
         // AiApp es LVGL-native (wrapper de IA: ask / capture / recent answers)
         g_lvglActive = true;
@@ -1351,19 +1173,10 @@ void SystemApp::switchApp(int id) {
         case 5:  _mode = Mode::APP_PROBABILITY; break;
         case 6:  _mode = Mode::APP_REGRESSION;  break;
         case 7:  _mode = Mode::APP_SEQUENCES;   break;
-        case 8:  _mode = Mode::APP_PYTHON;      break;
         case 9:  _mode = Mode::APP_MATRICES;    break;
         case 10: _mode = Mode::APP_SETTINGS;    break;
-        case 11: _mode = Mode::APP_PERIODIC_TABLE; break;
-        case 12: _mode = Mode::APP_BRIDGE_DESIGNER; break;
-        case 13: _mode = Mode::APP_CIRCUIT_CORE; break;
-        case 14: _mode = Mode::APP_FLUID_2D;    break;
-        case 15: _mode = Mode::APP_PARTICLE_LAB; break;
-        case 16: _mode = Mode::APP_NEURAL_LAB; break;
-        case 17: _mode = Mode::APP_OPTICS_LAB; break;
-        case 18: _mode = Mode::APP_NEO_LANGUAGE; break;
         case 19: _mode = Mode::APP_FRACTAL;    break;
-        case 21: _mode = Mode::APP_GAMEBOY;    break;
+        case 24: _mode = Mode::APP_GAMES;      break;
         case 23: _mode = Mode::APP_AI_WRAPPER;  break;
 #if defined(NUMOS_MATH_VISUAL_APP_ENABLED)
         case 20: _mode = Mode::APP_MATH_VISUAL; break;

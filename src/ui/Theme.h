@@ -100,6 +100,7 @@ enum class ThemeId : uint8_t {
 namespace appid {
 constexpr int kGrapher = 1;
 constexpr int kGameBoy = 21;
+constexpr int kGames   = 24;   // Games front-end (Home / List / Play)
 constexpr int kAi      = 23;
 } // namespace appid
 

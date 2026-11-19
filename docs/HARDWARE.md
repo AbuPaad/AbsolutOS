@@ -86,7 +86,7 @@ flashing any image at offset zero. ESP32-S3 ROM cannot load a QIO header.
 _tft.init();                    // FSPI @ 10 MHz
 _tft.invertDisplay(true);       // REQUIRED for IPS panel — without this colors are inverted
 _tft.setRotation(1);            // Landscape: 320 wide × 240 tall
-pinMode(PIN_TFT_BL, INPUT);     // BL hardwired to 3.3V — never OUTPUT
+pinMode(PIN_TFT_BL, OUTPUT);   // BL on GPIO42 (pad 35) — PWM via analogWrite
 _tft.fillScreen(0x0000);        // Clear GRAM with black
 ```
 

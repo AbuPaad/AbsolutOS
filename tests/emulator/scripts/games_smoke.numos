@@ -1,0 +1,129 @@
+# games_smoke.numos — Games front-end tour with one capture per screen.
+#
+# Drives GamesApp (app id 24) through the same dispatch path as live SDL input.
+# Frontend-only build: the Play screen states that no runtime is linked, and the
+# Wi-Fi screen states that the radio path is not in this app yet. Both are
+# intentional states, not failures.
+#
+# Key map on this device: ENTER (the emulator delivers it as EXE) confirms,
+# AC goes back, MODE leaves the app, F1 opens Manage storage from the list.
+#
+# Run:
+#   program --headless --deterministic --fs-root tests/emulator/fs-games \
+#       --script tests/emulator/scripts/games_smoke.numos --frames 3000 \
+#       --screenshot out/games_home.ppm
+# Exit codes: 0 ok · 2 script/parse error · 3 screenshot write error · 4 assertion failure.
+#
+# NOTE: step "ENTER delete" really deletes from --fs-root. Re-copy
+# tests/emulator/fs-games before a repeat run, or point --fs-root at a copy.
+
+log "games: waiting for launcher"
+wait 220
+
+log "games: opening Games (id 24)"
+open_app Games
+wait 120
+assert_app Games
+screenshot out/games_01_home.ppm
+
+# Home: Local → Settings → Local
+key RIGHT
+wait 10
+screenshot out/games_02_home_settings_focus.ppm
+key LEFT
+wait 10
+
+# List
+key ENTER
+wait 60
+screenshot out/games_03_list.ppm
+key DOWN
+wait 10
+screenshot out/games_04_list_row2.ppm
+key UP
+wait 10
+
+# Play: row 0 is the Game Boy ROM, row 1 is a PICO-8 cart (fake-08 boots it)
+key DOWN
+wait 10
+key ENTER
+wait 420
+screenshot out/games_05_play.ppm
+
+# X (AC) starts the cart; DEL is O. Both are forwarded to the VM while playing.
+# Held for a few frames: a press+release inside one frame never reaches the VM.
+keydown AC
+wait 20
+keyup AC
+wait 60
+keydown DEL
+wait 20
+keyup DEL
+wait 420
+screenshot out/games_05b_playing.ppm
+
+# Pause overlay, then resume and come back
+key ENTER
+wait 40
+screenshot out/games_06_pause.ppm
+key ENTER
+wait 30
+# leave Play through the pause menu: Resume is row 1, Exit to list is row 3
+key ENTER
+wait 20
+key DOWN
+key DOWN
+key ENTER
+wait 40
+
+# Game Boy: Walnut now lives in Games. Row 0 is the .gb ROM.
+key UP
+wait 20
+key ENTER
+wait 220
+screenshot out/games_05c_gameboy.ppm
+key EXE
+wait 40
+
+# Manage storage from the list header, arm, delete
+key F1
+wait 40
+screenshot out/games_07_storage.ppm
+key ENTER
+wait 20
+screenshot out/games_08_storage_armed.ppm
+key ENTER
+wait 40
+screenshot out/games_09_storage_deleted.ppm
+key AC
+wait 30
+
+# Settings hub
+screenshot out/games_10_settings.ppm
+
+# Settings rows: 0 Wi-Fi, 1 Storage, 2 Keymap, 3 About
+key DOWN
+key DOWN
+key ENTER
+wait 40
+screenshot out/games_11_keymap.ppm
+key AC
+wait 20
+
+key DOWN
+key ENTER
+wait 30
+screenshot out/games_12_about.ppm
+key ENTER
+wait 10
+
+# Wi-Fi view
+key UP
+key UP
+key UP
+key ENTER
+wait 40
+screenshot out/games_13_wifi.ppm
+
+log "games: tour complete"
+assert_no_error

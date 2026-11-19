@@ -5,11 +5,22 @@
 
 #include <Arduino.h>
 #include "BoardProfile.h"
+#include "soc/io_mux_reg.h"
+#include "soc/gpio_periph.h"
 
 namespace numos::hardware {
 
 void applyProductionSafeStartup() {
     constexpr auto& display = kProductionBoard.display;
+
+    // The display uses the JTAG pins (GPIO39-42). After reset these pins are
+    // in JTAG function, so reconfigure them to GPIO before any pinMode/
+    // analogWrite touches them. Non-destructive; no EFUSE burn required.
+    for (const int gpio : {39, 40, 41, 42}) {
+        if (gpio >= 0 && gpio < SOC_GPIO_PIN_COUNT) {
+            PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[gpio], PIN_FUNC_GPIO);
+        }
+    }
 
     // WHY: Assert inactive levels before switching to OUTPUT so CS and the
     // transistor-driven backlight cannot glitch during framework startup.

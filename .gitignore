@@ -66,3 +66,8 @@ tests/emulator/fs-check/
 openrouter.key
 *openrouter*.key
 .ai-keys/
+
+# EEZ Studio raw exports (staging ground, never committed)
+staging/
+# EEZ Studio project source (optional; commit under docs/eez-projects/ instead)
+*.eez-project

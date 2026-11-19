@@ -52,9 +52,9 @@ uint8_t setting_theme = 0;              // ThemeId::NumOS
 #include "net/Portal.h"        // provisioning + file portal (Settings -> Wi-Fi)
 #include "net/OtaUpdater.h"    // GitHub Releases OTA (Settings -> System Update)
 
+#include "display/ProductionDisplayRuntime.h"   // stored display profile, all targets
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
 #include "hardware/ProductionSafeStartup.h"
-#include "display/ProductionDisplayRuntime.h"
 #endif
 
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8 && defined(NUMOS_PRODUCTION_BRINGUP)
@@ -332,11 +332,10 @@ void setup() {
     g_splash.destroy();
 #endif
 
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
     // A saved profile is considered bootable only after the launcher has
-    // rendered and the splash/transition lifetime is complete.
+    // rendered and the splash/transition lifetime is complete. Runs on every
+    // device build now that the profile record is compiled for all of them.
     numos::display::markProductionDisplayBootUsable();
-#endif
 
 #if NUMOS_PRODUCTION_DEMO_PROFILE
     lv_timer_handler();

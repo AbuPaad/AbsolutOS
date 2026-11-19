@@ -1,0 +1,30 @@
+# casio_colour_probe.numos — capture the casio skin on the screens the geometry
+# pass is rebuilding so their colours can be measured from the PPM itself.
+# Run:
+#   PLATFORMIO_BUILD_DIR="C:/.piobuild/numOS" \
+#   ./"C:/.piobuild/numOS/emulator_pc/program" --headless --deterministic \
+#   --script tests/emulator/scripts/casio_colour_probe.numos \
+#   --fs-root tests/emulator/fs --frames 1400 --quiet
+log "casio_colour_probe: waiting for launcher"
+wait 200
+
+assert_app Menu
+
+keydown alpha
+key ac
+keyup alpha
+assert_theme casio
+wait 90
+screenshot out/probe_casio_menu.ppm
+
+open_app calculus
+wait 90
+assert_app Calculus
+screenshot out/probe_casio_calculus.ppm
+
+open_app grapher
+wait 90
+assert_app Grapher
+screenshot out/probe_casio_grapher.ppm
+
+log "casio_colour_probe: done"

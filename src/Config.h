@@ -97,7 +97,7 @@ inline constexpr uint16_t SCREEN_WIDTH =
     numos::hardware::kProductionBoard.display.logicalWidth;
 inline constexpr uint16_t SCREEN_HEIGHT =
     numos::hardware::kProductionBoard.display.logicalHeight;
-inline constexpr uint8_t SCREEN_ROTATION = 1;
+inline constexpr uint8_t SCREEN_ROTATION = 3;   // 180 deg from the rotation-1 fit
 
 // Electrical coordinates remain independent from the generated visual/logical
 // map. GPIO ownership stays in BoardProfile.
@@ -167,12 +167,12 @@ static_assert(NUMOS_BACKLIGHT_LOW_LEVEL ==
 // bring-up (fuente de verdad).  BL no es un GPIO: la retroiluminación va a un
 // rail fijo, así que no hay PIN_TFT_BL.
 static const int PIN_TFT_MISO =  13;   // declarado, no cableado
-static const int PIN_TFT_MOSI =  11;
-static const int PIN_TFT_SCLK =  12;
-static const int PIN_TFT_CS   =  10;
-static const int PIN_TFT_DC   =   4;
-static const int PIN_TFT_RST  =   5;
-static const int PIN_TFT_BL   =  -1;   // backlight en rail fijo, sin GPIO
+static const int PIN_TFT_MOSI =  39;
+static const int PIN_TFT_SCLK =  41;
+static const int PIN_TFT_CS   =   2;
+static const int PIN_TFT_DC   =  40;
+static const int PIN_TFT_RST  =  38;
+static const int PIN_TFT_BL   =  42;   // backlight on GPIO42 (active high)
 
 // Tamaño lógico del FIRMWARE después de la rotación 1 (landscape: 320 w × 156 h).
 // (Los runtimes host — emulador PC y WASM — NO usan este bloque: ver la rama
@@ -204,14 +204,14 @@ inline constexpr uint16_t SCREEN_OFFSET_Y = 0;    // sin recorte del shell en ho
 #else
 inline constexpr uint16_t SCREEN_WIDTH    = 320;
 inline constexpr uint16_t SCREEN_HEIGHT   = 156;
-inline constexpr uint16_t SCREEN_OFFSET_Y = 54;   // medido por el rig (NO es (240-156)/2 = 42)
+inline constexpr uint16_t SCREEN_OFFSET_Y = 54;   // medido en el rig: barra superior 54, inferior 30 (NO es (240-156)/2 = 42)
 #endif
 #else
 inline constexpr uint16_t SCREEN_WIDTH    = 320;
 inline constexpr uint16_t SCREEN_HEIGHT   = 156;
-inline constexpr uint16_t SCREEN_OFFSET_Y = 54;   // medido por el rig (NO es (240-156)/2 = 42)
+inline constexpr uint16_t SCREEN_OFFSET_Y = 54;   // medido en el rig: barra superior 54, inferior 30 (NO es (240-156)/2 = 42)
 #endif
-static const uint8_t  SCREEN_ROTATION = 1;
+static const uint8_t  SCREEN_ROTATION = 3;   // 180 deg from the rotation-1 fit
 
 // ── Teclado físico 5×10 — hardware actual (PCB en progreso) ────────────────
 //

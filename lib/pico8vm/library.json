@@ -1,0 +1,14 @@
+{
+  "name": "pico8vm",
+  "version": "814991a",
+  "description": "fake-08 PICO-8 VM (MIT), vendored: VM, graphics, Lua API, cart loader, lodepng, miniz, SimpleIni.",
+  "build": {
+    "srcDir": "src",
+    "flags": [
+      "-I.", "-Isrc", "-I../z8lua/src",
+      "-fpermissive", "-Wno-all", "-Wno-deprecated-declarations"
+    ]
+  },
+  "frameworks": "*",
+  "platforms": "*"
+}

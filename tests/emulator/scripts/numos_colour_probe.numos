@@ -1,0 +1,21 @@
+# numos_colour_probe.numos — the same three screens under the default numos
+# theme, so every surface can be diffed against the casio capture.
+log "numos_colour_probe: waiting for launcher"
+wait 200
+
+assert_app Menu
+assert_theme numos
+wait 60
+screenshot out/probe_numos_menu.ppm
+
+open_app calculus
+wait 90
+assert_app Calculus
+screenshot out/probe_numos_calculus.ppm
+
+open_app grapher
+wait 90
+assert_app Grapher
+screenshot out/probe_numos_grapher.ppm
+
+log "numos_colour_probe: done"

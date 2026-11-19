@@ -140,7 +140,7 @@
 #include "../apps/MatricesApp.h"
 #include "../apps/BridgeDesignerApp.h"
 #include "../apps/Fluid2DApp.h" // Candidate-only renderer verification
-#include "../apps/GameBoyApp.h"             // Game Boy / GBC front-end (Walnut-CGB)
+#include "../apps/GamesApp.h"               // Games front-end (Home / List / Play)
 #include "../apps/NotesApp.h"         // Shared Markdown renderer demo host (mdrender)
 #include "../apps/AiApp.h"             // AI wrapper (ai/AiClient + shared mdrender)
 #if defined(NUMOS_NEO_APP_SMOKE)
@@ -295,7 +295,7 @@ enum class AppMode : uint8_t {
     SEQUENCES,      // Secuencias (LVGL-native; Phase 7A, emulador)
     REGRESSION,     // Regresion (LVGL-native; Phase 7C, emulador)
     GRAPHER,        // Grapher (LVGL-native; Phase 8G, emulador)
-    GAMEBOY,        // Game Boy / GBC front-end (Walnut-CGB; emulador)
+    GAMES,          // Games front-end: Home / List / Play (emulador)
     NOTES_READER,   // Shared Markdown render module demo host (mdrender)
     AI_WRAPPER,     // AI wrapper: action menu, ask/capture, streaming answer
     MATH_VISUAL,    // Full MathRenderer verification canvas
@@ -392,7 +392,7 @@ static BridgeDesignerApp* g_bridgeApp  = nullptr;
 static Fluid2DApp*       g_fluid2dApp = nullptr;
 static GrapherApp*      g_grapherApp = nullptr;    // Phase 8G (emulador)
 static MathRenderVisualTestApp* g_mathVisualApp = nullptr;
-static GameBoyApp*      g_gameboyApp   = nullptr;   // Game Boy front-end (emulador)
+static GamesApp*        g_gamesApp     = nullptr;   // Games front-end (emulador)
 static NotesApp*  g_notesApp     = nullptr;   // mdrender demo host (emulador)
 static AiApp*     g_aiApp        = nullptr;   // AI wrapper (emulador)
 #if defined(NUMOS_NEO_APP_SMOKE)
@@ -744,6 +744,27 @@ static KeyCode scriptNameToKeyCode(const std::string& raw)
     if (n == "lt" || n == "less")             return KeyCode::LESS;     // KeyCodes.h LESS
     if (n == "gt" || n == "greater")          return KeyCode::GREATER;  // KeyCodes.h GREATER
 
+    // Casio v1 keypad-map (keypad-map.json) — aliases (TODO). Uncomment as the
+    // corresponding KeyCode/handler lands. New enum tokens added: DMS,
+    // TOGGLE_MIXED_IMPROPER.
+    // if (n == "dms")                          return KeyCode::DMS;                 // TODO
+    // if (n == "mixed" || n == "improper")     return KeyCode::TOGGLE_MIXED_IMPROPER; // TODO
+    // if (n == "hyp")                          return KeyCode::NONE;                // TODO: hyperbolic prefix
+    // if (n == "eng")                          return KeyCode::NONE;                // TODO: engineering notation
+    // if (n == "m+" || n == "mplus")           return KeyCode::NONE;                // TODO: memory add
+    // if (n == "m-" || n == "mminus")          return KeyCode::NONE;                // TODO: memory subtract
+    // if (n == "mem" || n == "m")              return KeyCode::NONE;                // TODO: memory recall
+    // if (n == "percent" || n == "%")          return KeyCode::NONE;                // TODO: percent operator
+    // if (n == "off")                          return KeyCode::NONE;                // TODO: deep-sleep power off
+    // if (n == "integral" || n == "int")       return KeyCode::SHOW_STEPS;          // TODO: calc insert \\int
+    // if (n == "derivative" || n == "deriv")   return KeyCode::NONE;                // TODO: \\frac{d}{dx}()
+    // if (n == "sum" || n == "summation")      return KeyCode::NONE;                // TODO: \\sum_{¶}()
+    // if (n == "cuberoot" || n == "cbrt")      return KeyCode::NONE;                // TODO: \\sqrt[3]{¶}
+    // if (n == "nthroot")                      return KeyCode::NONE;                // TODO: \\sqrt[¶]{}
+    // if (n == "pow10" || n == "10^")          return KeyCode::NONE;                // TODO: 10^{¶}
+    // if (n == "reciprocal" || n == "inv")     return KeyCode::NONE;                // TODO: ^{-1}
+    // if (n == "leftarrow")                    return KeyCode::LEFT;                // TODO: cursor left
+
     return KeyCode::NONE;
 }
 
@@ -793,8 +814,7 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
     const bool appOwnsModifiers =
         g_mode == AppMode::CALCULATION ||
         g_mode == AppMode::CALCULUS ||
-        g_mode == AppMode::EQUATIONS ||
-        g_mode == AppMode::GAMEBOY;    // SHIFT/ALPHA = Game Boy Start/Select
+        g_mode == AppMode::EQUATIONS;
     if (isDown && !appOwnsModifiers && kc == KeyCode::SHIFT) {
         vpam::KeyboardManager::instance().pressShift();
         return;
@@ -1073,23 +1093,21 @@ static void dispatchKey(KeyCode kc, KeyAction action, bool isDown)
             }
             break;
 
-        case AppMode::GAMEBOY:
-            // Game Boy front-end: MODE vuelve al launcher; el resto (PRESS,
-            // REPEAT y RELEASE — un D-pad mantenido debe seguir pulsado) se
-            // reenvia a GameBoyApp::handleKey. AC dentro del juego abre la
-            // lista de ROMs; desde la lista, la app pide salir.
+        case AppMode::GAMES:
+            // Games front-end: MODE returns to the launcher, everything else is
+            // forwarded (PRESS, REPEAT and RELEASE).
             if (isDown && kc == KeyCode::MODE) {
                 returnToMenu();
                 break;
             }
-            if (g_gameboyApp) {
+            if (g_gamesApp) {
                 KeyEvent ke;
                 ke.code   = kc;
                 ke.action = action;
                 ke.row    = -1;
                 ke.col    = -1;
-                g_gameboyApp->handleKey(ke);
-                if (g_gameboyApp->consumeExitRequest()) returnToMenu();
+                g_gamesApp->handleKey(ke);
+                if (g_gamesApp->consumeExitRequest()) returnToMenu();
             }
             break;
 
@@ -1354,7 +1372,7 @@ static void transitionToMenu()
     // se crea en el primer load() (GrapherApp::load() llama a begin() si hace falta).
     g_grapherApp = new GrapherApp();
     g_mathVisualApp = new MathRenderVisualTestApp();
-    g_gameboyApp    = new GameBoyApp();
+    g_gamesApp      = new GamesApp();
     g_notesApp      = new NotesApp();
     g_aiApp         = new AiApp();
 #if defined(NUMOS_NEO_APP_SMOKE)
@@ -1463,14 +1481,6 @@ static void launchApp(int appId)
             }
             break;
 
-        case 21: // Game Boy / Game Boy Color front-end (vendored Walnut-CGB core)
-            if (g_gameboyApp) {
-                g_gameboyApp->load();
-                g_mode = AppMode::GAMEBOY;
-                std::printf("[APP] GameBoyApp activa\n");
-            }
-            break;
-
         case 22: // Shared Markdown render module demo host (mdrender)
             if (g_notesApp) {
                 g_notesApp->load();
@@ -1512,6 +1522,14 @@ static void launchApp(int appId)
             }
             break;
 #endif
+
+        case 24: // Games front-end (Home / List / Play)
+            if (g_gamesApp) {
+                g_gamesApp->load();
+                g_mode = AppMode::GAMES;
+                std::printf("[APP] GamesApp activa\n");
+            }
+            break;
 
         case APPID_MATH_SHOWCASE: // Math Showcase (solo emulador)
             showcaseLoad();
@@ -1578,9 +1596,8 @@ static void performAppTeardown(AppMode m)
         case AppMode::MATH_VISUAL:
             if (g_mathVisualApp) g_mathVisualApp->end();
             break;
-        case AppMode::GAMEBOY:
-            // GameBoyApp::load() vuelve a llamar begin() perezosamente.
-            if (g_gameboyApp) g_gameboyApp->end();
+        case AppMode::GAMES:
+            if (g_gamesApp) g_gamesApp->end();
             break;
         case AppMode::NOTES_READER:
             // NotesApp::load() vuelve a llamar begin() perezosamente.
@@ -1638,7 +1655,7 @@ static void reloadActiveView()
         case AppMode::SEQUENCES:   if (g_seqApp) g_seqApp->load(); break;
         case AppMode::REGRESSION:  if (g_regApp) g_regApp->load(); break;
         case AppMode::MATH_VISUAL: if (g_mathVisualApp) g_mathVisualApp->load(); break;
-        case AppMode::GAMEBOY:     if (g_gameboyApp) g_gameboyApp->load(); break;
+        case AppMode::GAMES:       if (g_gamesApp) g_gamesApp->load(); break;
         case AppMode::NOTES_READER: if (g_notesApp) g_notesApp->load(); break;
         case AppMode::AI_WRAPPER:  if (g_aiApp) g_aiApp->load(); break;
         case AppMode::MATH_SHOWCASE: showcaseLoad(); break;
@@ -2279,8 +2296,7 @@ static const char* canonicalAppName(const std::string& name)
     if (lc == "bridge" || lc == "bridgedesigner")   return "Bridge";
     if (lc == "fluid2d" || lc == "fluid_2d")        return "Fluid 2D";
     if (lc == "grapher" || lc == "graph")         return "Grapher";         // Phase 8G
-    if (lc == "gameboy" || lc == "gb" ||
-        lc == "game_boy")                         return "Game Boy";
+    if (lc == "games" || lc == "game")            return "Games";
     if (lc == "notes" || lc == "notesreader" ||
         lc == "mdrender")                         return "Notes";
     if (lc == "ai" || lc == "aiwrapper" ||
@@ -2312,8 +2328,8 @@ static int scriptAppNameToId(const std::string& name)
     if (lc == "fluid2d" || lc == "fluid_2d")                          return 14;
     if (lc == "grapher" || lc == "graph")                             return 1;   // Phase 8G
     if (lc == "settings")                                             return 10;
-    if (lc == "gameboy" || lc == "gb" || lc == "game_boy")            return 21;   // Walnut-CGB front-end
     if (lc == "notes" || lc == "notesreader" || lc == "mdrender")     return 22;   // mdrender demo host
+    if (lc == "games" || lc == "game")                               return 24;   // Games front-end
     if (lc == "ai" || lc == "aiwrapper" || lc == "aiapp")             return 23;   // AI wrapper
 #if defined(NUMOS_NEO_APP_SMOKE)
     if (lc == "neolanguage" || lc == "neolang" || lc == "neo")         return 18;
@@ -3141,7 +3157,7 @@ static numos::Ctx currentCtx()
         case AppMode::PROBABILITY:   return numos::Ctx::Probability;
         case AppMode::REGRESSION:    return numos::Ctx::Regression;
         case AppMode::SEQUENCES:     return numos::Ctx::Sequences;
-        case AppMode::GAMEBOY:       return numos::Ctx::GameBoy;
+        case AppMode::GAMES:         return numos::Ctx::Games;
         case AppMode::NOTES_READER:  return numos::Ctx::Notes;
         case AppMode::AI_WRAPPER:    return numos::Ctx::Ai;
         case AppMode::SETTINGS:      return numos::Ctx::Settings;
@@ -4309,8 +4325,9 @@ static void emulatorRunFrame()
         }
         // Game Boy front-end: un frame emulado por iteracion del bucle (pacing
         // del emulador de escritorio; el firmware necesitara un acumulador).
-        if (g_mode == AppMode::GAMEBOY && g_gameboyApp) {
-            g_gameboyApp->update();
+        // Games front-end: the frame meter only runs on the Play screen.
+        if (g_mode == AppMode::GAMES && g_gamesApp) {
+            g_gamesApp->update();
         }
         // AI wrapper: bombea el stream (transporte -> escaner -> tarjeta viva).
         if (g_mode == AppMode::AI_WRAPPER && g_aiApp) {

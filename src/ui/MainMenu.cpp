@@ -134,7 +134,7 @@ const MainMenu::AppEntry MainMenu::APPS[] = {
     { 17, "OpticsLab",  0x00BCD4,   0x80DEEA },   // Cyan/Teal (Optics)
     { 18, "NeoLang",    0x4CAF50,   0xA5D6A7 },   // Terminal Green (Language/IDE)
     { 19, "Fractals",   0x3F51B5,   0x7986CB },   // Indigo (Math)
-    { 21, "Game Boy",   0x8E24AA,   0xC77DD8 },   // Purple (Walnut-CGB front-end)
+    { 24, "Games",      0x00695C,   0x4DB6AC },   // Teal (Games: Home / List / Play)
     { 23, "AI",         0x00897B,   0x4DB6AC },   // Teal (AI wrapper: ask / capture / answer)
 #if defined(NUMOS_MATH_VISUAL_VERIFY)
     { 20, "Math Visual", 0x1565C0,   0x5E9CE0 },   // Renderer hardware verification
@@ -1319,8 +1319,12 @@ void MainMenu::onCardFocused(lv_event_t* e) {
     lv_obj_t* card = lv_event_get_target_obj(e);
     int appId = static_cast<int>(
                     reinterpret_cast<intptr_t>(lv_obj_get_user_data(card)));
-    Serial.printf("[GUI] Card focused: %p (app_id=%d)\n",
-                  (void*)card, appId);
+    const char* name = "?";
+    for (const auto& a : APPS) {
+        if (a.id == appId) { name = a.name; break; }
+    }
+    Serial.printf("[GUI] Card focused: app_id=%d (%s)\n",
+                  appId, name);
 
     // Auto-scroll the grid so the focused card is always visible
     lv_obj_scroll_to_view(card, LV_ANIM_ON);

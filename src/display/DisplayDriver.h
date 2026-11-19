@@ -68,6 +68,17 @@ public:
      */
     void initLvgl(void* buf1, void* buf2, uint32_t bufBytes);
 
+#ifdef ARDUINO
+    /**
+     * Move the logical canvas on the glass: flush offsets + a 180-degree panel
+     * flip, applied live. Exists on every device build because both display
+     * paths honour _xOffset/_yOffset at flush time; only the production target
+     * can persist the result (ProductionDisplayRuntime), so on the CAM build the
+     * change lasts until reboot. Values are clamped by the profile bounds.
+     */
+    bool applyCanvasPlacement(int16_t xOffset, int16_t yOffset, uint8_t rotation);
+#endif
+
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     /** Force the active-high production backlight fully off. */
     void forceBacklightOff();

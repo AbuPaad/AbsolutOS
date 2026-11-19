@@ -109,8 +109,8 @@ void executeAndVerify(const ClippedFlushPlan& plan,
 } // namespace
 
 int main() {
-    static_assert(kSafeDisplayProfile.rotation == 1);
-    static_assert(displayMadctl(kSafeDisplayProfile) == 0x68);
+    static_assert(kSafeDisplayProfile.rotation == 3);
+    static_assert(displayMadctl(kSafeDisplayProfile) == 0xA8);
     static_assert(kSafeDisplayProfile.writeSpiHz == 40'000'000U);
     static_assert(kSafeDisplayProfile.xOffset == 0);
     static_assert(kSafeDisplayProfile.yOffset == kLogicalDisplayOffsetY);
@@ -126,7 +126,7 @@ int main() {
     // The fitted geometry: 320x156 canvas, top flush offset 54 px (measured).
     static_assert(kLogicalDisplayWidth == 320);
     static_assert(kLogicalDisplayHeight == 156);
-    static_assert(kLogicalDisplayOffsetY == 54);
+    static_assert(kLogicalDisplayOffsetY == 20);
     static_assert(kLogicalDisplayOffsetY + kLogicalDisplayHeight <= kPanelHeight);
 
     assert(validateDisplayProfile(kSafeDisplayProfile) ==
