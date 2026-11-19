@@ -49,7 +49,7 @@
 /*
 ** add 1 to char to allow index -1 (EOZ)
 */
-#define testprop(c,p)	(luai_ctype_[(c)+1] & (p))
+#define testprop(c,p)	(z8_luai_ctype_[(c)+1] & (p))
 
 /*
 ** 'lalpha' (Lua alphabetic) and 'lalnum' (Lua alphanumeric) both include '_'
@@ -68,7 +68,7 @@
 
 
 /* two more entries for 0 and -1 (EOZ) */
-LUAI_DDEC const lu_byte luai_ctype_[UCHAR_MAX + 2];
+LUAI_DDEC const lu_byte z8_luai_ctype_[UCHAR_MAX + 2];
 
 
 #else			/* }{ */

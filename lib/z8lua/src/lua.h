@@ -122,7 +122,7 @@ typedef LUA_UNSIGNED lua_Unsigned;
 /*
 ** RCS ident string
 */
-extern const char lua_ident[];
+extern const char z8_lua_ident[];
 
 
 /*
