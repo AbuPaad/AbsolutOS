@@ -120,6 +120,13 @@ public:
     static bool startProvisioningAp(const char* ssid, const char* pass);
     static void stopProvisioningAp();
 
+    /**
+     * Abandon a scan that is in flight. The radio is shared: softAP() cannot be
+     * raised while a scan owns it, and the explicit-hotspot path can reach
+     * raiseAp() straight from a UI press that arrived mid-scan.
+     */
+    static void cancelScan();
+
     // ── Saved networks, in priority order (index 0 is tried first) ──────────
     // We keep the list ourselves rather than leaning on the driver's one-shot
     // store: that is what buys priority ordering, failover and "forget", and it

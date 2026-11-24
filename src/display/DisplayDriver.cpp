@@ -317,22 +317,24 @@ void DisplayDriver::initLvgl(void* buf1, void* buf2, uint32_t bufBytes) {
     Serial.printf("[LVGL] Buffers asignados: %u bytes cada uno\n", (unsigned)bufBytes);
 }
 
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
-
 void DisplayDriver::forceBacklightOff() {
 #if defined(TFT_BL) && (TFT_BL >= 0)
     analogWrite(TFT_BL, 0);
     digitalWrite(TFT_BL, LOW);
     pinMode(TFT_BL, OUTPUT);
 #endif
-    // Backlight on a fixed rail: nothing to drive, but keep the tracked level
-    // meaningful for the UI/reporting.
     _backlightLevel = 0;
 }
 
 void DisplayDriver::setBacklightLevel(uint8_t level) {
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
     const uint8_t maximum =
         numos::display::activeProductionDisplayProfile().maximumBacklight;
+#else
+    // The CAM bench build boots the hardcoded safe profile, so the bound is the
+    // compile-time maximum the Settings slider offers.
+    const uint8_t maximum = numos::display::kMaximumBacklight;
+#endif
     const uint8_t bounded =
         level > maximum ? maximum : level;
 #if defined(TFT_BL) && (TFT_BL >= 0)
@@ -341,6 +343,8 @@ void DisplayDriver::setBacklightLevel(uint8_t level) {
 #endif
     _backlightLevel = bounded;
 }
+
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
 
 void DisplayDriver::resetProductionController(
     const numos::display::ProductionDisplayProfile& profile) {

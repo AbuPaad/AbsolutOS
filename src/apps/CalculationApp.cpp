@@ -590,8 +590,15 @@ void CalculationApp::handleKey(const KeyEvent& ev) {
         case KeyCode::RPAREN: clearResult(); _cursor.moveRight();      break;
         case KeyCode::COMMA:  clearResult(); _cursor.insertVariable(','); break;
         case KeyCode::EQUAL:
-            clearResult();
-            _cursor.insertOperator(vpam::OpKind::Eq);
+            // The production keypad's "=" (ProductionKeypadMap row 2,col 5,
+            // SemanticId::equal) sits in the number block where a Casio fx-82 has
+            // its execute key, and that is what it must do: evaluate. It used to
+            // insert OpKind::Eq into the expression instead, so pressing "=" after
+            // "2+3" edited the expression ("2+3=") and produced no result at all.
+            // Equation entry belongs to the Grapher editor (its own handler) and
+            // the Equations app; the Calculation app computes.
+            evaluateExpression();
+            changed = false;
             break;
         case KeyCode::EXP:
             clearResult();

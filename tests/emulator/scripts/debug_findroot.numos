@@ -1,0 +1,42 @@
+# debug_findroot.numos — stress the Grapher Calculate menu's "Find Root" path.
+# y = x^2 - 4 has real roots at x = ±2, so Find Root must land on one of them.
+log "findroot: launcher"
+wait 200
+open_app Grapher
+wait 60
+
+# y = x^2 - 4 into slot 1. `right` leaves the exponent before the "- 4".
+key down
+key enter
+key y
+key =
+key x
+key ^
+key 2
+key right
+key -
+key 4
+key enter
+wait 80
+
+# Graph tab (TRACE mode), then ENTER opens the Calculate menu
+key graph
+wait 120
+screenshot out/findroot_01_graph.ppm
+key enter
+wait 120
+screenshot out/findroot_02_menu.ppm
+log "findroot: menu should be on screen"
+
+# ENTER again executes the highlighted item = "Find Root"
+key enter
+wait 200
+screenshot out/findroot_03_result.ppm
+log "findroot: executed"
+
+# Move the cursor once: a root jump must leave the app alive and traceable
+key right
+wait 60
+screenshot out/findroot_04_after.ppm
+assert_app Grapher
+log "findroot: done"

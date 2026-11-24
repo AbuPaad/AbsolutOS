@@ -89,7 +89,10 @@ struct PortalState {
 class Portal {
 public:
     /// Raise the AP, start the file/config server and the captive DNS.
-    static bool start();
+    /// `forceAp` = the user asked for the hotspot. That request must raise the
+    /// AP and nothing else: the pre-scan/pre-join path can end in a silent STA
+    /// join, which looks exactly like "the hotspot never turns on".
+    static bool start(bool forceAp = false);
 
     /// Tear the portal down. Honours Wi-Fi intent: if credentials are stored,
     /// the STA joins as the AP goes away.

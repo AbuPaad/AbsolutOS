@@ -142,6 +142,12 @@ private:
     static constexpr float POI_SNAP_THRESHOLD_PX = 8.0f; // Magnetic snap radius in screen pixels
     static constexpr int TBL_HDR_H    = 22;   // Sticky table header height
     static constexpr float TRACE_IMPLICIT_STEP_PX = 4.0f; // Implicit trace arc-length per arrow (px)
+    // World-unit trace grid. One arrow press = one step, and the cursor snaps onto
+    // the grid so the readout is 0.10 / 0.20 / 1.30 instead of a pixel-derived
+    // float tail. Applies to y=f(x) (x grid) and x=f(y) (y grid); implicit curves
+    // keep arc-length stepping because they have no axis parameter.
+    static constexpr float TRACE_STEP_X = 0.1f;
+    static constexpr float TRACE_STEP_Y = 0.1f;
     static constexpr int   TRACE_NEWTON_ITERS     = 8;    // Corrector iterations onto G(x,y)=0
 
     // Function colours (NumWorks palette)
@@ -208,7 +214,6 @@ private:
     vpam::CursorController _exprCursor[MAX_FUNCS];  // Cursor per slot
     lv_obj_t*       _addRow;
     lv_obj_t*       _addLabel;
-    lv_obj_t*       _exprHint;
     lv_obj_t*       _plotBtn;           // "Plot graph"
     lv_obj_t*       _tableBtn;          // "Display values"
     lv_obj_t*       _tplBtns[MAX_FUNCS]; // Per-row "Templates" buttons
@@ -237,15 +242,15 @@ private:
     static constexpr int LEGEND_ROW_H  = 13;
     lv_obj_t*       _legend;            // container, nullptr when no functions
     lv_obj_t*       _tabIcons[3];       // A8 masks inside the tab chips
-    lv_obj_t*       _chipWrap;          // transient wrapper: hidden at rest
-    lv_timer_t*     _chipTimer;         // auto-hide timer for _chipWrap
+    lv_obj_t*       _chipWrap = nullptr;   // transient wrapper: hidden at rest
+    lv_timer_t*     _chipTimer = nullptr;  // auto-hide timer for _chipWrap
     static constexpr uint32_t CHIP_VISIBLE_MS = 1400;
     void            revealChips();
     lv_obj_t*       _editModal;         // 192x94 editor panel (GRAPH tab only)
-    lv_obj_t*       _editHome;          // canvas' original parent
-    lv_point_t      _editHomePos;
-    lv_point_t      _editHomeSize;
-    int             _editSlot;
+    lv_obj_t*       _editHome = nullptr;  // canvas' original parent
+    lv_point_t      _editHomePos  = { 0, 0 };
+    lv_point_t      _editHomeSize = { 0, 0 };
+    int             _editSlot = -1;
     int             _selFunc;           // highlighted function on the GRAPH tab, -1 = none
     void openEditModal(int idx);
     void closeEditModal();
@@ -263,9 +268,10 @@ private:
     lv_obj_t*       _traceLineV;        // Crosshair vertical lv_line
     lv_point_precise_t _traceHPts[2];   // Crosshair H points
     lv_point_precise_t _traceVPts[2];   // Crosshair V points
-    lv_obj_t*       _tracePill;         // Floating bottom pill container
-    lv_obj_t*       _tracePillDot;      // Color dot in pill
-    lv_obj_t*       _tracePillLabel;    // "x: ... y: ..." label in pill
+    // One-shot line for compute-menu results (Root/Min/Max/Intersect/Area/
+    // Tangent). Surfaced by updateInfoBar() until the next trace move, replacing
+    // the old floating pill that sat over the plot.
+    char            _infoNote[48];
     lv_obj_t*       _infoBar;           // bottom bar
     lv_obj_t*       _infoLabel;
     lv_obj_t*       _modeBadge;         // Mode indicator "[Trace]" / "[Pan]"

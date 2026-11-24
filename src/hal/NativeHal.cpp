@@ -188,6 +188,11 @@ DisplayDriver::~DisplayDriver() {}
 void DisplayDriver::begin() {}
 void DisplayDriver::initLvgl(void*, void*, uint32_t) {}
 void DisplayDriver::lvglFlushCb(lv_display_t*, const lv_area_t*, uint8_t*) {}
+// Backlight is firmware-only; the host build compiles the Settings Brightness
+// row only when the layout probe forces -DNUMOS_SETTINGS_BRIGHTNESS=1, and this
+// keeps that probe linkable. No pixels change.
+void DisplayDriver::forceBacklightOff() {}
+void DisplayDriver::setBacklightLevel(uint8_t) {}
 
 // ════════════════════════════════════════════════════════════════════════════
 // Constantes
@@ -717,6 +722,11 @@ static KeyCode scriptNameToKeyCode(const std::string& raw)
     if (n == "alpha")                         return KeyCode::ALPHA;
     if (n == "sto")                           return KeyCode::STO;
     if (n == "freeeq" || n == "sd")           return KeyCode::FREE_EQ;
+    // Production keypad's "=" key (ProductionKeypadMap row 2,col 5 ->
+    // SemanticId::equal -> KeyCode::EQUAL). Distinct from FREE_EQ: the physical
+    // key is the execute key on the Casio layout, so it needs its own script name
+    // to be testable at all.
+    if (n == "equal" || n == "equals")        return KeyCode::EQUAL;
 
     // Phase 8B: alias inofensivos hacia KeyCodes que YA existen en KeyCodes.h. No
     // anaden conducta nueva a ninguna app (CalculationApp no maneja EXE/TABLE/F1..F5,

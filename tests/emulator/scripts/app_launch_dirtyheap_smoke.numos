@@ -1,0 +1,45 @@
+# app_launch_dirtyheap_smoke.numos — every lazy-built app must survive a DIRTY heap.
+#
+# Regression guard for the uninitialised raw-LVGL-pointer class of bug: a
+# `new`'d app object is not zeroed, so a member like `lv_timer_t* _chipTimer`
+# that only gets written inside the build path reads garbage on entry. On a
+# fresh glibc page that garbage happens to be 0 (so the bug hides here), and on
+# the ESP32-S3 it is whatever the heap last held (so the device crashes).
+#
+# Run it with a perturbed allocator, which is the emulator's dirty-heap:
+#   MALLOC_PERTURB_=165 program --headless --deterministic \
+#     --script tests/emulator/scripts/app_launch_dirtyheap_smoke.numos \
+#     --fs-root tests/emulator/fs --frames 1400 --quiet
+# Without MALLOC_PERTURB_ this script passes either way — the perturbed run is
+# the one that means something.
+#
+# Exit codes: 0 ok · 2 parse · 4 assertion failure · 139 = SIGSEGV (the bug).
+
+log "dirtyheap: waiting for launcher"
+wait 200
+assert_app Menu
+
+# Grapher: createTabBar() -> revealChips() consumes _chipTimer on entry.
+open_app Grapher
+wait 90
+assert_app Grapher
+key mode
+wait 60
+assert_app Menu
+
+# Calculus: createUI() -> revealModeChip() consumes _modeTimer on entry.
+open_app Calculus
+wait 90
+assert_app Calculus
+key mode
+wait 60
+assert_app Menu
+
+# PeriodicTable: detail panel consumed _detCategory before it was assigned.
+open_app Statistics
+wait 60
+key mode
+wait 60
+assert_app Menu
+
+log "dirtyheap: all lazy-built apps launched and returned"

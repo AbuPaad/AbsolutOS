@@ -251,13 +251,31 @@ void SystemApp::begin() {
             auto f = LittleFS.open("/vars.dat", "w");
             if (f) { f.write(static_cast<uint8_t>(0)); f.close(); }
         }
-        if (vpam::VariableManager::instance().loadFromFlash()) {
-            Serial.println("[SYSTEM] LittleFS OK, variables loaded");
-        } else {
-            Serial.println("[SYSTEM] LittleFS OK, vars.dat empty (first boot)");
+        auto& variables = vpam::VariableManager::instance();
+        const bool variablesLoaded = variables.loadFromFlash();
+        const auto variableStatus = variables.lastLoadStatus();
+        if (variableStatus == vpam::VariableManager::PersistentLoadStatus::Corrupt ||
+            variableStatus == vpam::VariableManager::PersistentLoadStatus::UnsupportedVersion) {
+            LittleFS.remove("/vars.bad");
+            if (LittleFS.rename("/vars.dat", "/vars.bad")) {
+                Serial.println("[FS] vars=corrupt action=quarantine path=/vars.bad");
+            } else {
+                Serial.println("[FS] vars=corrupt action=preserve-in-place");
+            }
         }
+        Serial.printf("[SYSTEM] LittleFS OK, vars=%s\n",
+                      variablesLoaded ? "loaded" : "defaults");
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
+        const bool settingsExisted = LittleFS.exists("/settings.dat");
         const bool settingsLoaded = SettingsApp::loadPersistentState();
+        if (settingsExisted && !settingsLoaded) {
+            LittleFS.remove("/settings.bad");
+            if (LittleFS.rename("/settings.dat", "/settings.bad")) {
+                Serial.println("[FS] settings=corrupt action=quarantine path=/settings.bad");
+            } else {
+                Serial.println("[FS] settings=corrupt action=preserve-in-place");
+            }
+        }
         _display.setBacklightLevel(setting_brightness);
         Serial.printf("[SYSTEM] Settings %s, brightness=%u/%u\n",
                       settingsLoaded ? "loaded" : "defaults",
@@ -699,6 +717,30 @@ void SystemApp::handleKey(const KeyEvent &rawEvent) {
             km.reset();
             return;
         }
+    }
+
+    // ── GLOBAL: ON key → restore the display to the safe/fallback profile.
+    //    Recovery path for a white screen: resets offsets/rotation to the
+    //    hardcoded safe values and forces a full LVGL repaint.
+    if (ev.action == KeyAction::PRESS && ev.code == KeyCode::ON) {
+#if defined(ARDUINO)
+        // Full display-controller re-init (hardware reset + vendor table + rotation
+        // + MADCTL + GRAM clear) so a panel that white-screens on a cold boot
+        // can be recovered without rebooting the whole device.
+        _display.begin();
+        // Re-apply the tracked PWM level instead of forcing the pin high: the
+        // ON key must not silently reset a dimmed backlight on either target.
+        _display.setBacklightLevel(setting_brightness);
+        _display.clear(TFT_BLACK);
+#endif
+        if (lv_screen_active() != nullptr) {
+            lv_obj_invalidate(lv_screen_active());
+        }
+        Serial.println("[DISPLAY] ON key: full display re-init");
+        km.reset();
+        _shiftActive = false;
+        _alphaActive = false;
+        return;
     }
 
     // ── GLOBAL: SHIFT+EXE toggles the Calculus mode chip (derivative <-> integral).

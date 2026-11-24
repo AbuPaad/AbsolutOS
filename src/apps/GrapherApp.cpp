@@ -65,7 +65,6 @@ static void formatInvalidReason(const grapher::CartesianFunction& f, char* out, 
     else
         snprintf(out, n, "%s", grapher::invalidReasonText(f.invalidReason));
 }
-static constexpr uint32_t COL_HINT      = 0x999999;
 static constexpr uint32_t COL_ADD_TXT   = 0x888888;  // "Add element" muted
 static constexpr uint32_t COL_BTN_BG    = 0x4A90E2;  // Action buttons (blue)
 static constexpr uint32_t COL_BTN_TXT   = 0xFFFFFF;
@@ -116,11 +115,11 @@ GrapherApp::GrapherApp()
     , _legend(nullptr)
     , _panelExpr(nullptr), _panelGraph(nullptr), _panelTable(nullptr)
     , _addRow(nullptr), _addLabel(nullptr)
-    , _exprHint(nullptr), _plotBtn(nullptr), _tableBtn(nullptr)
+    , _plotBtn(nullptr), _tableBtn(nullptr)
     , _graphToolbar(nullptr), _graphArea(nullptr)
     , _graphCanvas(nullptr), _graphBuf(), _graphImgDsc{}
     , _traceDot(nullptr), _traceLineH(nullptr), _traceLineV(nullptr)
-    , _tracePill(nullptr), _tracePillDot(nullptr), _tracePillLabel(nullptr)
+
     , _infoBar(nullptr), _infoLabel(nullptr)
     , _calcMenu(nullptr), _calcMenuIdx(0), _calcMenuOpen(false)
     , _shadingActive(false), _shadingFuncIdx(-1), _shadingX0(0.0f), _shadingX1(0.0f), _shadingAlongY(false)
@@ -236,11 +235,11 @@ void GrapherApp::end() {
         _panelGraph = nullptr;
         _panelTable = nullptr;
         _addRow = nullptr; _addLabel = nullptr;
-        _exprHint = nullptr; _plotBtn = nullptr; _tableBtn = nullptr;
+        _plotBtn = nullptr; _tableBtn = nullptr;
         _graphToolbar = nullptr; _graphArea = nullptr;
         _graphCanvas = nullptr;
         _traceDot = nullptr; _traceLineH = nullptr; _traceLineV = nullptr;
-        _tracePill = nullptr; _tracePillDot = nullptr; _tracePillLabel = nullptr;
+        _infoNote[0] = '\0';
         _infoBar = nullptr; _infoLabel = nullptr;
         _calcMenu = nullptr; _calcMenuOpen = false;
         for (int i = 0; i < CALC_MENU_ITEMS; ++i) _calcMenuRows[i] = nullptr;
@@ -478,11 +477,10 @@ void GrapherApp::createExpressionsPanel() {
     lv_obj_remove_flag(_bgExpr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(_bgExpr, notebookLinesCb, LV_EVENT_DRAW_MAIN_BEGIN, nullptr);
 
-    // Scrollable expression panel on top — transparent background. Its height is
-    // reduced by HINT_H so the bottom strip stays clear for the fixed footer hint
-    // (otherwise the scrolled list would slide under/over it).
-    static constexpr int HINT_H = 20;
-    _panelExpr = makeContainer(_screen, 0, topY, SCREEN_W, panelH - HINT_H);
+    // Scrollable expression panel on top — transparent background. It owns the
+    // full panel height: the old fixed footer hint strip is gone (no instructional
+    // text on screen), so the list gets those 20 px back.
+    _panelExpr = makeContainer(_screen, 0, topY, SCREEN_W, panelH);
     lv_obj_set_style_bg_opa(_panelExpr, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_add_flag(_panelExpr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(_panelExpr, LV_DIR_VER);
@@ -576,13 +574,8 @@ void GrapherApp::createExpressionsPanel() {
     lv_obj_set_style_radius(_tableBtn, 10, LV_PART_MAIN);
     makeLabel(_tableBtn, 10, (ROW_H - 14) / 2, "Display values", COL_BTN_TXT, ui::fontUi());
 
-    // Bottom hint — fixed footer on the non-scrollable background strip below the
-    // (shortened) list, so it never scrolls with the expressions nor overlaps a
-    // row. As a child of _bgExpr it is shown/hidden with the Expressions tab.
-    // y derived from HINT_H (not a bare literal) so the reserved strip and the
-    // hint position can never drift apart if HINT_H is retuned.
-    _exprHint = makeLabel(_bgExpr, PAD, panelH - HINT_H + 2,
-                           "ENTER=edit  AC=back", COL_HINT, ui::fontUi());
+    // No footer hint: a permanent "ENTER=edit  AC=back" line read as a 20 px tax
+    // on a 156 px canvas for something the buttons already imply.
 
     refreshExprList();
 }
@@ -704,6 +697,10 @@ void GrapherApp::createGraphPanel() {
 #endif
         // Initialize GraphView with the buffer
         new (&_view) grapher::GraphView(_graphBuf.data(), GRAPH_CANVAS_W, GRAPH_CANVAS_H);
+        // Stroke width from the theme profile. Without this the numos panel kept
+        // GraphView's default hairline no matter what the theme's graphLineWidth
+        // said — only the casio panel inherited the token.
+        _view.setCurveWidth(_curveW);
     } else {
         Serial.printf("[GRAPHER] FAIL: Kandinsky PSRAM alloc %u bytes\n", (unsigned)bufSz);
         // ── PSRAM Safety Net: graceful degradation with user-visible warning ──
@@ -909,45 +906,10 @@ void GrapherApp::createTraceOverlay(lv_obj_t* parent, int pillW) {
     _traceVPts[0] = {0, 0}; _traceVPts[1] = {0, 0};
     lv_line_set_points(_traceLineV, _traceVPts, 2);
 
-    // Floating bottom pill for trace info
-    _tracePill = lv_obj_create(parent);
-    lv_obj_set_size(_tracePill, pillW, 26);
-    lv_obj_set_align(_tracePill, LV_ALIGN_BOTTOM_MID);
-    lv_obj_set_style_translate_y(_tracePill, -6, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(_tracePill, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(_tracePill, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(_tracePill, 13, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_tracePill, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(_tracePill, lv_color_hex(0xD1D1D1), LV_PART_MAIN);
-    lv_obj_set_style_shadow_width(_tracePill, 8, LV_PART_MAIN);
-    lv_obj_set_style_shadow_spread(_tracePill, 1, LV_PART_MAIN);
-    lv_obj_set_style_shadow_opa(_tracePill, 30, LV_PART_MAIN);
-    lv_obj_set_style_shadow_color(_tracePill, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_pad_left(_tracePill, 8, LV_PART_MAIN);
-    lv_obj_set_style_pad_right(_tracePill, 8, LV_PART_MAIN);
-    lv_obj_set_style_pad_top(_tracePill, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_bottom(_tracePill, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_tracePill, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
-
-    // Color dot inside pill
-    _tracePillDot = lv_obj_create(_tracePill);
-    lv_obj_set_size(_tracePillDot, 10, 10);
-    lv_obj_set_pos(_tracePillDot, 0, 7);
-    lv_obj_set_style_bg_color(_tracePillDot, lv_color_hex(0xCC0000), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(_tracePillDot, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(_tracePillDot, 5, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_tracePillDot, 0, LV_PART_MAIN);
-    lv_obj_remove_flag(_tracePillDot, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Label inside pill
-    _tracePillLabel = lv_label_create(_tracePill);
-    lv_obj_set_pos(_tracePillLabel, 14, 5);
-    lv_label_set_text(_tracePillLabel, "");
-    lv_obj_set_style_text_color(_tracePillLabel, lv_color_hex(0x000000), LV_PART_MAIN);
-    // Plain-prose trace readout ("x: .. y: .." / POI labels, drawTraceCursor) uses
-    // the UI face: the math face has no U+0020 glyph, so the spaces would tofu.
-    lv_obj_set_style_text_font(_tracePillLabel, ui::fontUi(), LV_PART_MAIN);
+    // No floating chip: trace coordinates are reported by the info bar. The
+    // `pillW` parameter stays in the signature (callers still pass the plot
+    // width) but the chip it used to size no longer exists.
+    (void)pillW;
 }
 
 void GrapherApp::createCasioUI() {
@@ -1198,10 +1160,8 @@ void GrapherApp::switchTab(Tab t) {
         if (table) {
             _tblFuncIdx = (_exprIdx >= 0 && _exprIdx < _numFuncs) ? _exprIdx : 0;
             rebuildTable();
-            if (_exprHint) lv_label_set_text(_exprHint, "ALPHA back  AC=menu");
         } else {
             refreshCasioList();
-            if (_exprHint) lv_label_set_text(_exprHint, "1-6 edit  EXE draw");
             replot();
         }
         updateInfoBar();
@@ -1430,22 +1390,8 @@ void GrapherApp::refreshExprFocus() {
         lv_obj_set_style_bg_color(_tableBtn, lv_color_hex(0x3A7BD5), LV_PART_MAIN);
     }
 
-    // Selected-row refusal hint: when the focused slot was rejected, the hint
-    // bar says WHY ("Invalid: one-sided relation", "Invalid: unknown: xy") so
-    // the refusal is explicit, not a mysteriously blank plot. On valid/other
-    // rows the hint reverts to the LIST default. Only in LIST mode (the editor
-    // owns the hint while editing).
-    if (_exprHint && _exprMode == ExprMode::LIST) {
-        if (_exprIdx < _numFuncs && _funcs[_exprIdx].len > 0 && !_funcs[_exprIdx].valid) {
-            char reason[32];
-            formatInvalidReason(_funcs[_exprIdx], reason, sizeof(reason));
-            char hint[64];
-            snprintf(hint, sizeof(hint), "Invalid: %s  ENTER=edit", reason);
-            lv_label_set_text(_exprHint, hint);
-        } else {
-            lv_label_set_text(_exprHint, "ENTER=edit  AC=back");
-        }
-    }
+    // A rejected slot is signalled by its own red pill border (see the row styling
+    // above), not by a footer sentence: the text reason is gone with the hint bar.
 
     // Keep the focused item on-screen. Snap with no animation so the list never
     // lags behind the cursor or jitters with momentum/elastic overscroll — the
@@ -1562,8 +1508,6 @@ void GrapherApp::startEditing(int idx) {
     refreshVPAMExpr(idx);
     openEditModal(idx);
 
-    if (_exprHint)
-        lv_label_set_text(_exprHint, "Type expression  ENTER=done  DEL=backspace");
     refreshExprFocus();
     refreshTemplateButtons();
 }
@@ -1585,8 +1529,6 @@ void GrapherApp::stopEditing() {
         preCacheFuncRPN(idx);
     }
     _plotDirty = true;
-    if (_exprHint)
-        lv_label_set_text(_exprHint, _casio ? "1-6 edit  EXE draw" : "ENTER=edit  AC=back");
     refreshExprList();
 }
 
@@ -2530,12 +2472,17 @@ void GrapherApp::ensureTraceSeed() {
 // Walk the active curve one step. dir = -1 (LEFT) / +1 (RIGHT).
 void GrapherApp::traceStep(int dir) {
     ensureTraceSeed();
+    // A keypress moves the cursor one TRACE_STEP_* unit and lands exactly ON that
+    // grid, so the readout shows 0.10, 0.20, … instead of a pixel-derived float
+    // tail (".137"). Pixel-precise stepping produced unusable coordinates on a
+    // 320 px canvas whose x-range is dozens of units wide.
+    _infoNote[0] = '\0';
     switch (traceKind(_traceFn)) {
     case TraceKind::ExplicitX: {
-        // Legacy y=f(x): pixel-precise x move, POI snap, locked camera.
-        const float step = (_xMax - _xMin) / SCREEN_W;
+        // y=f(x): quantised x move, POI snap, locked camera.
+        const float step = TRACE_STEP_X;
         const bool wasSnapped = _snappedToPOI;
-        _traceX += (float)dir * step;
+        _traceX = std::round((_traceX + (float)dir * step) / step) * step;
         if (_traceX < _xMin) _traceX = _xMin;
         if (_traceX > _xMax) _traceX = _xMax;
         if (wasSnapped) {
@@ -2554,9 +2501,9 @@ void GrapherApp::traceStep(int dir) {
         break;
     }
     case TraceKind::ExplicitY: {
-        // x=f(y): pixel-precise y move along the curve, exact x = f(y).
-        const float stepY = (_yMax - _yMin) / SCREEN_H;
-        _traceY += (float)dir * stepY;
+        // x=f(y): quantised y move along the curve, exact x = f(y).
+        const float stepY = TRACE_STEP_Y;
+        _traceY = std::round((_traceY + (float)dir * stepY) / stepY) * stepY;
         float xv = _model.evalAtY(_funcs[_traceFn], _traceY);
         _traceValid = !(std::isnan(xv) || std::isinf(xv));
         _traceX = _traceValid ? xv : (_xMin + _xMax) * 0.5f;   // see ExplicitX note
@@ -2908,7 +2855,6 @@ void GrapherApp::drawTraceCursor() {
         if (_traceDot)   lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
         if (_traceLineH) lv_obj_add_flag(_traceLineH, LV_OBJ_FLAG_HIDDEN);
         if (_traceLineV) lv_obj_add_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
-        if (_tracePill)  lv_obj_add_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
         return;
     }
 
@@ -2937,57 +2883,48 @@ void GrapherApp::drawTraceCursor() {
     lv_line_set_points(_traceLineV, _traceVPts, 2);
     lv_obj_remove_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
 
-    // Floating pill — show function color + x/y values, or POI label if snapped
-    lv_obj_remove_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_bg_color(_tracePillDot, lv_color_hex(_funcs[_traceFn].color), LV_PART_MAIN);
-
-    char pillBuf[80];
-    // Check if we're snapped to a POI
-    const char* poiLabel = (_snappedToPOI && _snappedPOIIdx >= 0 && _snappedPOIIdx < _numPOIs)
-        ? _pois[_snappedPOIIdx].label
-        : nullptr;
-    if (poiLabel) {
-        snprintf(pillBuf, sizeof(pillBuf), "%s: (%.3f, %.3f)", poiLabel, (double)wx, (double)wy);
-    } else {
-        snprintf(pillBuf, sizeof(pillBuf), "x: %.3f   y: %.3f", (double)wx, (double)wy);
-    }
-    lv_label_set_text(_tracePillLabel, pillBuf);
+    // No floating chip: the coordinate readout lives in the info bar only. A chip
+    // over the plot covered the curve it was describing.
 }
 
 void GrapherApp::updateInfoBar() {
     if (!_infoLabel) return;
     char buf[64];
-    if (_grMode == GrMode::TRACE && _traceFn >= 0 && _traceFn < _numFuncs &&
+    if (_infoNote[0]) {
+        // One-shot compute-menu result (Root/Min/Max/Intersect/Area/Tangent) or a
+        // "not found" report. Cleared by the next trace move.
+        snprintf(buf, sizeof(buf), "%s", _infoNote);
+    } else if (_grMode == GrMode::TRACE && _traceFn >= 0 && _traceFn < _numFuncs &&
         _funcs[_traceFn].isExplicit()) {
         float y = evalAt(_traceFn, _traceX);
         if (std::isnan(y) || std::isinf(y)) {
             // Off-domain (e.g. tan asymptote, log of negative): never show "nan".
-            snprintf(buf, sizeof(buf), "Trace: x=%.3f  y=---  (off domain)", (double)_traceX);
+            snprintf(buf, sizeof(buf), "Trace: x=%.2f  y=---  (off domain)", (double)_traceX);
         } else if (_snappedToPOI && _snappedPOIIdx >= 0 && _snappedPOIIdx < _numPOIs) {
-            snprintf(buf, sizeof(buf), "Trace [%s]: x=%.3f  y=%.3f",
+            snprintf(buf, sizeof(buf), "Trace [%s]: x=%.2f  y=%.2f",
                      _pois[_snappedPOIIdx].label, (double)_traceX, (double)y);
         } else {
-            snprintf(buf, sizeof(buf), "Trace: x=%.3f  y=%.3f", (double)_traceX, (double)y);
+            snprintf(buf, sizeof(buf), "Trace: x=%.2f  y=%.2f", (double)_traceX, (double)y);
         }
     } else if (_grMode == GrMode::TRACE && traceKind(_traceFn) == TraceKind::ExplicitY) {
         // x = f(y): report the exact (x,y) on the curve, parametrised by y.
         ensureTraceSeed();
         if (!_traceValid)
-            snprintf(buf, sizeof(buf), "Trace: y=%.3f  x=---  (off domain)", (double)_traceY);
+            snprintf(buf, sizeof(buf), "Trace: y=%.2f  x=---  (off domain)", (double)_traceY);
         else
-            snprintf(buf, sizeof(buf), "Trace: x=%.3f  y=%.3f", (double)_traceX, (double)_traceY);
+            snprintf(buf, sizeof(buf), "Trace: x=%.2f  y=%.2f", (double)_traceX, (double)_traceY);
     } else if (_grMode == GrMode::TRACE && traceKind(_traceFn) == TraceKind::Implicit) {
         // General implicit contour: report the point we are sitting on.
         ensureTraceSeed();
         if (!_traceValid)
             snprintf(buf, sizeof(buf), "Trace: curve not in view");
         else
-            snprintf(buf, sizeof(buf), "Trace: x=%.3f  y=%.3f", (double)_traceX, (double)_traceY);
+            snprintf(buf, sizeof(buf), "Trace: x=%.2f  y=%.2f", (double)_traceX, (double)_traceY);
     } else if (_grMode == GrMode::TRACE) {
         // Defensive: trace somehow active with no traceable target.
         snprintf(buf, sizeof(buf), "Trace n/a: inequality");
     } else {
-        snprintf(buf, sizeof(buf), "x:[%.2g,%.2g] y:[%.2g,%.2g]  ENTER=trace",
+        snprintf(buf, sizeof(buf), "x:[%.2g,%.2g] y:[%.2g,%.2g]",
                  (double)_xMin, (double)_xMax, (double)_yMin, (double)_yMax);
     }
     lv_label_set_text(_infoLabel, buf);
@@ -3074,6 +3011,10 @@ void GrapherApp::appendPOIsForFunction(int fi) {
     float yPrev = (float)evalAt(fi, (float)_xMin);
     float yPrev2 = yPrev;
     for (int i = 1; i <= N && _numPOIs < MAX_POIS - 2; ++i) {
+        // Every evalAt() is a Giac numeric evaluation (GraphModel::evalAt), so a
+        // whole-sweep loop with no yield starves the IDLE task and trips the task
+        // watchdog on the device. Same idiom as sampleFuncAdaptive/plotImplicit.
+        if ((i & 7) == 0) yield();
         const float x1 = (i == N) ? (float)_xMax : ((float)_xMin + (float)i * step);
         const float y1 = (float)evalAt(fi, x1);
 
@@ -4117,7 +4058,6 @@ void GrapherApp::handleGraphTrace(const KeyEvent& ev) {
         if (_traceDot)   lv_obj_add_flag(_traceDot, LV_OBJ_FLAG_HIDDEN);
         if (_traceLineH) lv_obj_add_flag(_traceLineH, LV_OBJ_FLAG_HIDDEN);
         if (_traceLineV) lv_obj_add_flag(_traceLineV, LV_OBJ_FLAG_HIDDEN);
-        if (_tracePill)  lv_obj_add_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
         _grMode = GrMode::NAVIGATE;  // AC from trace → pan mode
         _snappedToPOI = false;
         _snappedPOIIdx = -1;
@@ -4237,23 +4177,19 @@ void GrapherApp::restyleCalcMenu() {
 void GrapherApp::openCalcMenu() {
     if (_calcMenuOpen || !_graphArea) return;
 
-    // GRBUG-002: POIs (roots/extrema/intersections) used to be seeded only by
-    // trace NAVIGATION, so Find Intersection invoked right after graphing (no
-    // arrow pressed yet) searched an empty POI set → "No intersection found".
-    // Seed them SYNCHRONOUSLY here: menu-open is a modal pause, the sweep is
-    // bounded (≤ MAX_FUNCS slots × fixed sampling), and doing it inline (not
-    // via the async timer) guarantees the set is ready even if ENTER lands on
-    // "Find Intersection" on the very next frame. Flows that never open this
-    // menu are untouched (pixel-identical goldens).
+    // POIs (roots/extrema/intersections) are seeded for the menu (GRBUG-002:
+    // "Find Intersection" invoked right after graphing used to search an empty
+    // set). The sweep is bounded but every sample is a Giac numeric evaluation,
+    // so it used to run BEFORE anything was on screen: several seconds of a
+    // frozen UI on the device, with the IDLE task starved long enough to trip
+    // the task watchdog and reboot the calculator. The menu is therefore built
+    // and painted FIRST, and the seeding runs after it is visible.
     if (_poiAsyncTimer) {
         lv_timer_delete(_poiAsyncTimer);
         _poiAsyncTimer = nullptr;
         _poiAsyncFi = -1;
     }
     _numPOIs = 0;
-    for (int i = 0; i < _numFuncs; ++i) {
-        if (_funcs[i].valid && _funcs[i].visible) appendPOIsForFunction(i);
-    }
 
     _calcMenuOpen = true;
 
@@ -4318,6 +4254,13 @@ void GrapherApp::openCalcMenu() {
 
     // Paint selected/idle/disabled states now that all rows exist.
     restyleCalcMenu();
+    lv_refr_now(NULL);   // the menu is on screen before the sweep below
+
+    // Seed every function now that the menu is visible; appendPOIsForFunction
+    // yields between samples, so this no longer starves the IDLE task.
+    for (int i = 0; i < _numFuncs; ++i) {
+        if (_funcs[i].valid && _funcs[i].visible) appendPOIsForFunction(i);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -4430,7 +4373,13 @@ void GrapherApp::executeCalcOption(int option) {
     // independent coordinate. After solving, map the result back to a screen point.
     const TraceKind kind = traceKind(_traceFn);
     const bool alongY = (kind == TraceKind::ExplicitY);
-    auto evalFunc = [this, alongY](double t) -> double {
+    // Yield every few samples. math::findRoot/findExtremum/numericalIntegral call
+    // this once per probe (up to ~250 probes each), and every call is a Giac
+    // numeric evaluation: unyielded, one "Find Root" press starves the IDLE task
+    // and reboots the device on the task watchdog before the answer prints.
+    int probes = 0;
+    auto evalFunc = [this, alongY, &probes](double t) -> double {
+        if ((++probes & 7) == 0) yield();
         return alongY ? (double)_model.evalAtY(_funcs[_traceFn], (float)t)
                       : (double)evalAt(_traceFn, (float)t);
     };
@@ -4450,7 +4399,7 @@ void GrapherApp::executeCalcOption(int option) {
             if (alongY) { px = 0.0f;            py = (float)res.x; }  // x=f(y): x=0 at y=res.x
             else        { px = (float)res.x;    py = 0.0f;        }  // y=f(x): y=0 at x=res.x
             movePoint = true;
-            snprintf(pillBuf, sizeof(pillBuf), "Root: x=%.4f y=%.4f", (double)px, (double)py);
+            snprintf(pillBuf, sizeof(pillBuf), "Root: x=%.2f y=%.2f", (double)px, (double)py);
         }
         break;
     }
@@ -4463,7 +4412,7 @@ void GrapherApp::executeCalcOption(int option) {
             if (alongY) { px = (float)res.y;    py = (float)res.x; }
             else        { px = (float)res.x;    py = (float)res.y; }
             movePoint = true;
-            snprintf(pillBuf, sizeof(pillBuf), "%s: x=%.4f y=%.4f",
+            snprintf(pillBuf, sizeof(pillBuf), "%s: x=%.2f y=%.2f",
                      findMax ? "Max" : "Min", (double)px, (double)py);
         }
         break;
@@ -4481,8 +4430,8 @@ void GrapherApp::executeCalcOption(int option) {
             if (d < bestd) { bestd = d; best = i; }
         }
         if (best < 0) {
-            if (_tracePillLabel) lv_label_set_text(_tracePillLabel, "No intersection found");
-            if (_tracePill) lv_obj_remove_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
+            snprintf(_infoNote, sizeof(_infoNote), "No intersection");
+            updateInfoBar();
             return;
         }
         _traceX = _pois[best].x;
@@ -4493,7 +4442,7 @@ void GrapherApp::executeCalcOption(int option) {
         if (traceKind(_traceFn) != TraceKind::ExplicitX)
             syncViewportToCursor();   // keep the control point centred on the jump
         res.found = true; res.x = (double)_traceX; res.y = (double)_traceY;
-        snprintf(pillBuf, sizeof(pillBuf), "Intersect: x=%.4f y=%.4f",
+        snprintf(pillBuf, sizeof(pillBuf), "Intersect: x=%.2f y=%.2f",
                  (double)_traceX, (double)_traceY);
         break;
     }
@@ -4515,10 +4464,10 @@ void GrapherApp::executeCalcOption(int option) {
     case 5: { // Draw Tangent — slope line for y=f(x); ⟂∇G line for implicit / x=f(y).
         if (traceKind(_traceFn) == TraceKind::ExplicitX) {
             drawTangentOverlay(_traceFn, _traceX);
-            snprintf(pillBuf, sizeof(pillBuf), "Tangent at x=%.4f", (double)_traceX);
+            snprintf(pillBuf, sizeof(pillBuf), "Tangent at x=%.2f", (double)_traceX);
         } else {
             drawImplicitTangent(_traceFn, _traceX, _traceY);
-            snprintf(pillBuf, sizeof(pillBuf), "Tangent at (%.3f, %.3f)",
+            snprintf(pillBuf, sizeof(pillBuf), "Tangent at (%.2f, %.2f)",
                      (double)_traceX, (double)_traceY);
         }
         _plotDirty = true;
@@ -4545,19 +4494,9 @@ void GrapherApp::executeCalcOption(int option) {
 
     if (res.found) {
         drawTraceCursor();
-
-        // Update pill with special text
-        if (_tracePillLabel) {
-            lv_label_set_text(_tracePillLabel, pillBuf);
-        }
-        if (_tracePill) {
-            lv_obj_remove_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
-        }
+        snprintf(_infoNote, sizeof(_infoNote), "%s", pillBuf);
     } else {
-        if (_tracePillLabel)
-            lv_label_set_text(_tracePillLabel, "Not found in range");
-        if (_tracePill)
-            lv_obj_remove_flag(_tracePill, LV_OBJ_FLAG_HIDDEN);
+        snprintf(_infoNote, sizeof(_infoNote), "Not found in range");
     }
     updateInfoBar();
 }

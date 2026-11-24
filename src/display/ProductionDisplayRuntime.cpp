@@ -84,73 +84,16 @@ void prepareProductionDisplayBootProfile() {
     if (g_prepared) return;
     g_prepared = true;
 
-#if NUMOS_PRODUCTION_DEMO_PROFILE
-    if (numos::demo::safeModeActive()) {
-        // General boot-health safe mode is independent from the display
-        // quarantine counter. Optional UI state is ignored, while its NVS
-        // evidence is left untouched for diagnostics.
-        g_activeProfile = kSafeDisplayProfile;
-        g_loadDecision = ProfileLoadDecision::SafeRollback;
-        g_resetClass = classifyReset(esp_reset_reason());
-        clearRtcAttempt();
-        publishBusFrequencies();
-        return;
-    }
-#endif
-
-    Preferences preferences;
-    if (!preferences.begin(kPreferencesNamespace, false)) {
-        clearRtcAttempt();
-        restoreSafeProductionDisplayProfile();
-        g_loadDecision = ProfileLoadDecision::SafeNoRecord;
-        return;
-    }
-
+    // Display fit (offsets/rotations) is intentionally ephemeral: the firmware
+    // always boots from the hardcoded safe profile below. Runtime adjustments
+    // made through the bring-up console or the Settings screen fit live only in
+    // RAM for the current session, so a sudden power loss can never leave a
+    // corrupt display profile in NVS that would white-screen the next boot.
     g_resetClass = classifyReset(esp_reset_reason());
-    g_failureCount =
-        preferences.getUChar(kFailureCountKey, 0);
-    DisplayProfileRecord record{};
-    const std::size_t recordLength =
-        preferences.getBytesLength(kProfileKey);
-    const bool recordPresent = recordLength != 0;
-    const bool readableRecord =
-        recordLength == record.bytes.size() &&
-        preferences.getBytes(kProfileKey, record.bytes.data(),
-                             record.bytes.size()) == record.bytes.size();
-
-    const ProfileLoadDecision recordDecision =
-        resolveDisplayProfileRecord(
-            readableRecord ? &record : nullptr,
-            recordPresent,
-            g_activeProfile);
-    const uint32_t recordIdentity = readableRecord
-        ? displayRecordChecksum(record.bytes.data(), record.bytes.size())
-        : 0;
-    const bool matchingAttempt =
-        readableRecord && rtcAttemptMatches(recordIdentity);
+    g_activeProfile = kSafeDisplayProfile;
+    g_loadDecision = ProfileLoadDecision::SafeNoRecord;
+    g_failureCount = 0;
     clearRtcAttempt();
-
-    const DisplayBootRecoveryPlan recovery =
-        planDisplayBootRecovery(
-            recordDecision,
-            g_failureCount,
-            g_resetClass,
-            matchingAttempt);
-    g_loadDecision = recovery.decision;
-    g_failureCount = recovery.failureCount;
-    if (recovery.persistFailureCount) {
-        preferences.putUChar(kFailureCountKey, g_failureCount);
-    }
-    if (g_loadDecision != ProfileLoadDecision::Saved) {
-        g_activeProfile = kSafeDisplayProfile;
-    }
-    preferences.end();
-    if (recovery.armRtcAttempt) {
-        // WHY: RTC slow memory survives panic/watchdog/software reset without
-        // consuming NVS endurance. A power interruption loses or invalidates
-        // this marker and therefore never increments the failure counter.
-        armRtcAttempt(recordIdentity);
-    }
     publishBusFrequencies();
 }
 
@@ -186,30 +129,9 @@ void restoreSafeProductionDisplayProfile() {
 }
 
 bool saveActiveProductionDisplayProfile() {
-    // WHY: The opt-in BOARD A performance build may exercise the ESP32-S3
-    // peripheral's 80 MHz endpoint, but GPIO-matrix routing is only guaranteed
-    // through 40 MHz. Never allow an experimental rate to survive reboot.
-    if (usesUnvalidatedSpiRate(g_activeProfile) ||
-        validateDisplayProfile(g_activeProfile) != ProfileValidation::Ok) {
-        return false;
-    }
-    const DisplayProfileRecord record =
-        encodeDisplayProfileRecord(g_activeProfile);
-    Preferences preferences;
-    if (!preferences.begin(kPreferencesNamespace, false)) return false;
-    const bool stored =
-        preferences.putBytes(kProfileKey, record.bytes.data(),
-                             record.bytes.size()) == record.bytes.size();
-    if (stored) {
-        if (g_failureCount != 0) {
-            preferences.putUChar(kFailureCountKey, 0);
-        }
-        clearRtcAttempt();
-        g_failureCount = 0;
-        g_loadDecision = ProfileLoadDecision::Saved;
-    }
-    preferences.end();
-    return stored;
+    // Display fit is ephemeral by design: never persist to NVS, so a power
+    // loss cannot corrupt a stored profile. Runtime changes live in RAM only.
+    return false;
 }
 
 void markProductionDisplayBootUsable() {

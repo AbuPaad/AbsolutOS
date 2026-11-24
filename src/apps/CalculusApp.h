@@ -123,13 +123,13 @@ private:
     ui::StatusBar   _statusBar;
 
     // Mode tabs
-    lv_obj_t*       _modeRow;        ///< 18px row: label left, mode chip right
-    lv_obj_t*       _modeChip;       ///< transient chip: one glyph, sized to it
-    lv_timer_t*     _modeTimer;      ///< auto-hide timer for _modeChip
+    lv_obj_t*       _modeRow  = nullptr;  ///< 18px row: label left, mode chip right
+    lv_obj_t*       _modeChip = nullptr;  ///< transient chip: one glyph, sized to it
+    lv_timer_t*     _modeTimer = nullptr; ///< auto-hide timer for _modeChip
     static constexpr uint32_t MODE_CHIP_VISIBLE_MS = 1400;
     void            revealModeChip();
-    lv_obj_t*       _lblDeriv;       ///< "d/dx" set in type, not a mask
-    lv_obj_t*       _imgIntegral;    ///< integral A8 mask
+    lv_obj_t*       _lblDeriv    = nullptr;  ///< "d/dx" set in type, not a mask
+    lv_obj_t*       _imgIntegral = nullptr;  ///< integral A8 mask
     lv_obj_t*       _tabDerivative;  ///< chip cell 1 (derivative)
     lv_obj_t*       _tabIntegral;    ///< chip cell 2 (integral)
 

@@ -45,7 +45,7 @@
 #include <lvgl.h>
 #include "../Config.h"
 
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#if defined(ARDUINO)
 #include "ProductionDisplayProfile.h"
 #endif
 
@@ -79,15 +79,18 @@ public:
     bool applyCanvasPlacement(int16_t xOffset, int16_t yOffset, uint8_t rotation);
 #endif
 
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
-    /** Force the active-high production backlight fully off. */
+    // Backlight PWM is available on EVERY device build: both targets wire the
+    // panel's BL pin (TFT_BL, GPIO42). Only the product target persists the
+    // level through the settings record; the CAM bench build keeps it in RAM.
+    /** Force the panel backlight fully off. */
     void forceBacklightOff();
 
-    /** Apply a compile-time-bounded production backlight PWM level. */
+    /** Apply a bounded backlight PWM level. */
     void setBacklightLevel(uint8_t level);
 
     uint8_t backlightLevel() const { return _backlightLevel; }
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
     bool applyProductionDisplayProfile(
         const numos::display::ProductionDisplayProfile& profile,
         bool resetController);
@@ -165,7 +168,6 @@ private:
 #if NUMOS_BOARD_PROD_WROOM1U_N16R8
     int16_t     _xOffset             = 0;
     int16_t     _yOffset             = 0;
-    uint8_t     _backlightLevel      = 0;
 
     void resetProductionController(
         const numos::display::ProductionDisplayProfile& profile);
@@ -183,6 +185,11 @@ private:
     void invalidateLvglFrame();
 #endif
     #endif
+
+    /// Last PWM duty applied through setBacklightLevel()/forceBacklightOff().
+    /// Lives outside the ARDUINO block: backlightLevel() is declared for every
+    /// target so host code can include the header unchanged.
+    uint8_t     _backlightLevel      = 0;
 
     /** Puntero al display LVGL creado por initLvgl() */
     lv_display_t* _lvDisp = nullptr;

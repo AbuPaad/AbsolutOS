@@ -284,7 +284,7 @@ void SettingsApp::load() {
 #if NUMOS_SETTINGS_SCREEN_FIT
     else if (_view == View::Fit) closeFitView(true);
 #endif
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#if NUMOS_SETTINGS_BRIGHTNESS
     _brightnessSession.begin(setting_brightness);
     setting_brightness = _brightnessSession.runtimeBrightness();
     if (_display) _display->setBacklightLevel(setting_brightness);
@@ -304,7 +304,7 @@ void SettingsApp::prepareToLeave() {
     // also what hands the radio back to the STA so a freshly provisioned unit
     // joins the network without a power cycle.
     net::Portal::stop();
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#if NUMOS_SETTINGS_BRIGHTNESS
     if (!_brightnessSession.active()) return;
 
     const uint8_t before = setting_brightness;
@@ -314,6 +314,9 @@ void SettingsApp::prepareToLeave() {
         _display->setBacklightLevel(setting_brightness);
     }
 
+#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+    // Only the product target owns a settings record. The CAM bench build keeps
+    // brightness in RAM for the session, like the display fit.
     bool saved = false;
     if (decision.persist) {
         g_persistedBrightness =
@@ -326,6 +329,11 @@ void SettingsApp::prepareToLeave() {
         static_cast<unsigned>(before),
         static_cast<unsigned>(setting_brightness),
         decision.persist ? 1U : 0U, saved ? 1U : 0U);
+#else
+    Serial.printf("[SETTINGS] brightness-exit before=%u restored=%u\n",
+                  static_cast<unsigned>(before),
+                  static_cast<unsigned>(setting_brightness));
+#endif
 #endif
 }
 
@@ -378,7 +386,7 @@ void SettingsApp::createRows() {
         "Complex numbers",
         "Decimal precision",
         "Step-by-step mode",
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#if NUMOS_SETTINGS_BRIGHTNESS
         "Brightness",
 #endif
         "Theme",               // row THEME_ROW — calls ThemeManager::activate()
@@ -429,7 +437,7 @@ void SettingsApp::createRows() {
         lv_obj_align(_values[i], LV_ALIGN_RIGHT_MID, -12, 0);
     }
 
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#if NUMOS_SETTINGS_BRIGHTNESS
     _brightnessSlider = lv_slider_create(_rows[4]);
     lv_obj_set_size(_brightnessSlider, 112, 8);
     lv_obj_align(_brightnessSlider, LV_ALIGN_LEFT_MID, 96, 0);
@@ -497,7 +505,7 @@ void SettingsApp::updateValues() {
         lv_obj_set_style_text_color(_values[3], lv_color_hex(COL_VALUE_OFF), LV_PART_MAIN);
     }
 
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#if NUMOS_SETTINGS_BRIGHTNESS
     const unsigned percent =
         (static_cast<unsigned>(setting_brightness) * 100U +
          numos::display::kMaximumBacklight / 2U) /
@@ -1199,7 +1207,7 @@ void SettingsApp::update() {
 }
 
 void SettingsApp::adjustBrightness(const int delta) {
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#if NUMOS_SETTINGS_BRIGHTNESS
     const int maximum = numos::display::kMaximumBacklight;
     int next = static_cast<int>(setting_brightness) + delta;
     if (next < numos::display::kMinimumPersistedBacklight) {
@@ -1253,7 +1261,7 @@ void SettingsApp::toggleCurrent() {
             Serial.printf("[SETTINGS] eduSteps=%d\n", (int)setting_edu_steps);
             break;
 
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#if NUMOS_SETTINGS_BRIGHTNESS
         case 4:  // Minimum -> normal -> maximum -> minimum.
             if (setting_brightness ==
                 numos::display::kMinimumPersistedBacklight) {
@@ -1345,7 +1353,10 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
                                           phase == net::PortalPhase::Joining;
                     if (net::Portal::running() || starting) {
                         net::Portal::stop();
-                    } else if (!net::Portal::start()) {
+                    // An explicit press means "give me the hotspot": skip the
+                    // pre-scan so the AP comes up now instead of after a scan
+                    // plus a join attempt that can end with no AP at all.
+                    } else if (!net::Portal::start(/*forceAp=*/true)) {
                         Serial.printf("[SETTINGS] portal start failed: %s\n",
                                       net::Portal::state().lastError.c_str());
                     }
@@ -1456,7 +1467,7 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
                 savePersistentState();
 #endif
             }
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#if NUMOS_SETTINGS_BRIGHTNESS
             else if (_focus == 4) {
                 adjustBrightness(-8);
             }
@@ -1468,7 +1479,7 @@ void SettingsApp::handleKey(const KeyEvent& ev) {
             if (_focus == 2) {
                 toggleCurrent();
             }
-#if NUMOS_BOARD_PROD_WROOM1U_N16R8
+#if NUMOS_SETTINGS_BRIGHTNESS
             else if (_focus == 4) {
                 adjustBrightness(8);
             }

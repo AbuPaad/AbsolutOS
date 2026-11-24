@@ -297,14 +297,8 @@ void processDisplayCommand(const numos::display::DisplayCommand& command,
             (void)applyDisplayCandidate(display, candidate, false);
             return;
         case DisplayCommandKind::Save:
-            if (numos::display::saveActiveProductionDisplayProfile()) {
-                NUMOS_SERIAL.println(
-                    "[DISPLAY] SAVE OK version=2 crc32=valid failures=0");
-            } else {
-                display.restoreSafeProductionDisplayProfile();
-                NUMOS_SERIAL.println(
-                    "[DISPLAY] SAVE ERROR; immutable SAFE restored");
-            }
+            NUMOS_SERIAL.println(
+                "[DISPLAY] SAVE IGNORED: display fit is ephemeral (session-only)");
             return;
         case DisplayCommandKind::Reset:
             if (!display.applyProductionDisplayProfile(candidate, true)) {

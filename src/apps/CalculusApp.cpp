@@ -61,6 +61,11 @@ static constexpr int SCREEN_H  = SCREEN_HEIGHT;  // canvas (Config.h)
 static constexpr int BAR_H     = ui::StatusBar::HEIGHT + 1;
 static constexpr int PAD       = 6;
 static constexpr int MODE_ROW_H  = 18;   // row: label left, mode chip right
+static constexpr int CONTENT_Y   = BAR_H + MODE_ROW_H;
+static constexpr int CONTENT_H   = SCREEN_H - CONTENT_Y;
+// The hint owns the last 15px of the result container; the math canvas is capped
+// against it (buildResultDisplay) so a tall formula never paints over the hint.
+static constexpr int RESULT_HINT_Y = CONTENT_H - 15;
 static constexpr int MODE_CHIP_W = 40;   // two 20px cells
 static constexpr int MODE_CHIP_H = 26;   // taller than the row on purpose
 
@@ -475,46 +480,49 @@ void CalculusApp::createUI() {
 
     _resultTitle = lv_label_create(_resultContainer);
     lv_label_set_text(_resultTitle, "Result");
-    lv_obj_set_style_text_font(_resultTitle, &stix_math_18, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_resultTitle, ui::fontUiSmall(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_resultTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
-    lv_obj_set_pos(_resultTitle, PAD, 4);
+    lv_obj_set_pos(_resultTitle, PAD, 0);
 
     _originalLabel = lv_label_create(_resultContainer);
     lv_label_set_text(_originalLabel, "f(x) =");
     lv_obj_set_style_text_font(_originalLabel, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_originalLabel, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_originalLabel, PAD, 24);
+    lv_obj_set_pos(_originalLabel, PAD, 16);
 
     _originalCanvas.create(_resultContainer);
-    lv_obj_set_pos(_originalCanvas.obj(), PAD + 50, 20);
-    lv_obj_set_size(_originalCanvas.obj(), SCREEN_W - PAD - 54, 30);
+    lv_obj_set_pos(_originalCanvas.obj(), PAD + 50, 12);
+    lv_obj_set_size(_originalCanvas.obj(), SCREEN_W - PAD - 54, 32);
     lv_obj_add_flag(_originalCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
 
     _resultLabel = lv_label_create(_resultContainer);
     lv_label_set_text(_resultLabel, "f'(x) =");
     lv_obj_set_style_text_font(_resultLabel, &stix_math_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(_resultLabel, lv_color_hex(COL_RESULT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_resultLabel, PAD, 50);
+    lv_obj_set_pos(_resultLabel, PAD, 48);
 
     _resultCanvas.create(_resultContainer);
-    lv_obj_set_pos(_resultCanvas.obj(), PAD + 4, 70);
-    lv_obj_set_size(_resultCanvas.obj(), SCREEN_W - 2 * PAD - 4, 18);
+    lv_obj_set_pos(_resultCanvas.obj(), PAD + 50, 44);
+    lv_obj_set_size(_resultCanvas.obj(), SCREEN_W - PAD - 54, 18);
     lv_obj_add_flag(_resultCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
 
     _resultFallback = lv_label_create(_resultContainer);
-    lv_obj_set_pos(_resultFallback, PAD + 4, 70);
-    lv_obj_set_width(_resultFallback, SCREEN_W - 2 * PAD - 8);
+    lv_obj_set_pos(_resultFallback, PAD + 50, RESULT_HINT_Y - 40);
+    lv_obj_set_width(_resultFallback, SCREEN_W - PAD - 54);
     lv_label_set_long_mode(_resultFallback, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_font(_resultFallback, &stix_math_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(_resultFallback,
                                 lv_color_hex(COL_STEP_HEX), LV_PART_MAIN);
     lv_obj_add_flag(_resultFallback, LV_OBJ_FLAG_HIDDEN);
 
+    // WHY fontUiSmall: stix_math_18 has a 31px line box, so an 18pt hint in a
+    // 16px slot at the bottom of a 119px container was clipped in half. The hint
+    // is UI chrome, not a formula — it never belonged in the math face.
     _resultHint = lv_label_create(_resultContainer);
     lv_label_set_text(_resultHint, "STEPS: See steps    AC: New");
-    lv_obj_set_style_text_font(_resultHint, &stix_math_18, LV_PART_MAIN);
+    lv_obj_set_style_text_font(_resultHint, ui::fontUiSmall(), LV_PART_MAIN);
     lv_obj_set_style_text_color(_resultHint, lv_color_hex(COL_HINT_HEX), LV_PART_MAIN);
-    lv_obj_set_pos(_resultHint, PAD, contentH - 16);
+    lv_obj_set_pos(_resultHint, PAD, RESULT_HINT_Y);
 
     // ─────────────────────────────────────────────────────────────────
     // STEPS container (scrollable)
@@ -798,6 +806,15 @@ void CalculusApp::handleKeyResult(const KeyEvent& ev) {
             break;
         case KeyCode::AC:
             showInput();
+            break;
+        // WHY: a derivative of a product of logs is wider than 270px at 18pt.
+        // The canvas already carries a horizontal offset for exactly this; without
+        // a key bound to it the right-hand half of a real answer was unreadable.
+        case KeyCode::LEFT:
+            _resultCanvas.scrollBy(-24);
+            break;
+        case KeyCode::RIGHT:
+            _resultCanvas.scrollBy(24);
             break;
         default:
             break;
@@ -1154,6 +1171,7 @@ void CalculusApp::buildResultDisplay() {
     _resultNode.reset();
     _resultRow = nullptr;
     _resultKind = ResultKind::None;
+    _resultCanvas.resetScroll();   // every new answer starts at its left edge
 
     _originalCanvas.stopCursorBlink();
     lv_obj_add_flag(_originalCanvas.obj(), LV_OBJ_FLAG_HIDDEN);
@@ -1175,13 +1193,12 @@ void CalculusApp::buildResultDisplay() {
 
     lv_obj_set_style_text_color(
         _resultTitle, lv_color_hex(accentColor()), LV_PART_MAIN);
+    // The engine that answered is a diagnostic, not content: the status bar already
+    // says Derivative/Integral, and "Giac Symbolic Derivative" was 200px of chrome
+    // on one 119px screen. One word, and only the exception earns an extra word.
     lv_label_set_text(
         _resultTitle,
-        _calcMode == CalcMode::DERIVATIVE
-            ? "Giac Symbolic Derivative"
-            : (_giacResult.unevaluated
-                   ? "Unevaluated Giac Integral"
-                   : "Giac Symbolic Integral"));
+        _giacResult.unevaluated ? "Result (unevaluated)" : "Result");
     char resultLabel[24];
     snprintf(resultLabel, sizeof(resultLabel),
              _calcMode == CalcMode::DERIVATIVE ? "f'(%c) =" : "F(%c) =",
@@ -1194,7 +1211,7 @@ void CalculusApp::buildResultDisplay() {
             : "STEPS: Unavailable  AC: New");
 
     if (!_giacResult.ok()) {
-        lv_label_set_text(_resultTitle, "Giac Calculus Error");
+        lv_label_set_text(_resultTitle, "Error");
         lv_label_set_text(_resultLabel, "");
         if (_resultFallback) {
             std::string visible = "Giac diagnostic: ";
@@ -1225,7 +1242,10 @@ void CalculusApp::buildResultDisplay() {
         {   // content-driven height (mirrors adjustInputHeight, :786-800)
             int h = mathObjectHeightPx(_resultRow->layout(), _resultCanvas.normalMetrics(), 0) + 16;
             if (h < 18) h = 18;
-            if (h > 64) h = 64;   // cap: box is ~112px tall now, hint bar is gone
+            // Cap against the hint row at the container's foot, not a constant:
+            // the canvas starts at y=66 and the hint owns the last 18px.
+            const int maxH = RESULT_HINT_Y - 44 - 2;
+            if (h > maxH) h = maxH;
             lv_obj_set_height(_resultCanvas.obj(), h);
         }
         _resultCanvas.invalidate();

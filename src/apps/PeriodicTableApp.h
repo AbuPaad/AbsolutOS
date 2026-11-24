@@ -87,7 +87,7 @@ private:
     lv_obj_t*       _detMass;        // atomic mass
     lv_obj_t*       _detConfig;      // electron configuration
     lv_obj_t*       _detEN;          // electronegativity
-    lv_obj_t*       _detCategory;    // category label (colored)
+    lv_obj_t*       _detCategory = nullptr;  // category label (colored)
 
     // Molar mass tab
     lv_obj_t*       _molarContainer;

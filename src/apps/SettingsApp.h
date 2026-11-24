@@ -22,7 +22,7 @@
  *   - Complex roots toggle (ON/OFF)
  *   - Decimal precision selector (6/8/10/12)
  *   - Step-by-step educational mode toggle (ON/OFF)
- *   - Brightness (production WROOM-1U target only)
+ *   - Brightness (device builds; PWM on the panel BL pin)
  *   - Web portal toggle — raises the provisioning AP + file/config portal
  *     (net/Portal.h). This is the ONLY way a blank unit can ever get Wi-Fi
  *     credentials or an API key, so the row is always last and always present.
@@ -50,6 +50,18 @@ class DisplayDriver;
 #define NUMOS_SETTINGS_SCREEN_FIT 1
 #else
 #define NUMOS_SETTINGS_SCREEN_FIT 0
+#endif
+
+// Brightness is device-only as well: the row drives DisplayDriver's PWM on the
+// panel's backlight pin. Both device targets wire TFT_BL (GPIO42) through
+// build_flags; the PC emulator has no backlight, so the row stays compiled out
+// there and the native captures keep matching the glass.
+#ifndef NUMOS_SETTINGS_BRIGHTNESS
+#if defined(ARDUINO) && defined(TFT_BL) && (TFT_BL >= 0)
+#define NUMOS_SETTINGS_BRIGHTNESS 1
+#else
+#define NUMOS_SETTINGS_BRIGHTNESS 0
+#endif
 #endif
 
 class SettingsApp {
@@ -85,7 +97,7 @@ private:
     // in after it and the Wi-Fi row is appended last on every target so
     // existing row indexes before it never shift.
     static constexpr int THEME_ROW =
-        NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 5 : 4;
+        NUMOS_SETTINGS_BRIGHTNESS ? 5 : 4;
     // Screen fit sits immediately after Theme and BEFORE the two appended
     // screens, so WIFI_ROW/UPDATE_ROW (defined relative to NUM_ITEMS below)
     // keep their meaning and every index above THEME_ROW simply shifts by one.
@@ -93,7 +105,7 @@ private:
     // A "System Update" row is appended AFTER Wi-Fi so Wi-Fi keeps its existing
     // index: closeWifiView() and the keymap both name WIFI_ROW explicitly.
     static constexpr int NUM_ITEMS =
-        (NUMOS_BOARD_PROD_WROOM1U_N16R8 ? 8 : 7) + NUMOS_SETTINGS_SCREEN_FIT;
+        (NUMOS_SETTINGS_BRIGHTNESS ? 8 : 7) + NUMOS_SETTINGS_SCREEN_FIT;
     static constexpr int WIFI_ROW = NUM_ITEMS - 2;
     static constexpr int UPDATE_ROW = NUM_ITEMS - 1;
     static constexpr int SCREEN_W  = 320;

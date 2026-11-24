@@ -127,19 +127,44 @@ size_t     g_uploadBytes = 0;
 
 // ── small helpers ───────────────────────────────────────────────────────────
 
-/** Per-unit AP credentials from the chip id: unique, no shared factory secret. */
-void makeCredentials() {
-    const uint64_t mac = ESP.getEfuseMac();
-    const uint32_t lo  = static_cast<uint32_t>(mac & 0xFFFFFFFFu);
-    const uint32_t hi  = static_cast<uint32_t>(mac >> 32);
-    const uint16_t tag = static_cast<uint16_t>((lo >> 8) ^ hi);
-    std::snprintf(g_apSsid, sizeof(g_apSsid), "NumOS-%04X", static_cast<unsigned>(tag));
+/**
+ * Provisioning AP credentials — HARDCODED, same on every unit.
+ *
+ * The per-unit derivation from ESP.getEfuseMac() is gone on purpose: one SSID
+ * and one password means a phone is told once and rejoins without reading a
+ * per-unit code off the calculator. Override per build rather than editing the
+ * tree:
+ *
+ *   '-DNUMOS_AP_SSID="NumOS-Setup"'  '-DNUMOS_AP_PASS="numos1234"'
+ *
+ * (single-quote the whole flag in platformio.ini, otherwise PlatformIO strips
+ * the quotes and the define does not compile — numos skill, build-flag pitfall).
+ *
+ * Constraints, from the WiFi library and field reports:
+ *  - WPA2 refuses a passphrase shorter than 8 or longer than 63 bytes, and
+ *    softAP() then fails outright — hence a 9-character fallback, not "numos".
+ *  - Keep spaces out of the SSID. Some Android builds fail to associate with
+ *    an SSID containing a space (documented in the CDFER captive-portal
+ *    reference implementation).
+ */
+#ifndef NUMOS_AP_SSID
+#define NUMOS_AP_SSID "NumOS-Setup"
+#endif
+#ifndef NUMOS_AP_PASS
+#define NUMOS_AP_PASS "numos1234"
+#endif
 
-    // 8 digits: WPA2 demands at least 8 characters, and this one is read off the
-    // calculator screen by the user, so decimal beats hex for typability.
-    uint32_t v = (lo ^ (hi * 2654435761u)) ^ (lo >> 13);
-    v %= 100000000u;
-    std::snprintf(g_apPass, sizeof(g_apPass), "%08u", static_cast<unsigned>(v));
+void makeCredentials() {
+    std::snprintf(g_apSsid, sizeof(g_apSsid), "%s", NUMOS_AP_SSID);
+    std::snprintf(g_apPass, sizeof(g_apPass), "%s", NUMOS_AP_PASS);
+    if (std::strlen(g_apPass) < 8 || std::strlen(g_apPass) > 63) {
+        Serial.println("[PORTAL] NUMOS_AP_PASS must be 8..63 chars; using the default");
+        std::snprintf(g_apPass, sizeof(g_apPass), "numos1234");
+    }
+    if (std::strlen(g_apSsid) == 0 || std::strlen(g_apSsid) > 32) {
+        Serial.println("[PORTAL] NUMOS_AP_SSID must be 1..32 chars; using the default");
+        std::snprintf(g_apSsid, sizeof(g_apSsid), "NumOS-Setup");
+    }
 }
 
 struct FsLock {
@@ -1161,16 +1186,56 @@ void handleUploadDone() {
 
 // ── captive: anything unknown goes to the page ──────────────────────────────
 
+/**
+ * 302 to the portal, keeping the request's own URL out of the answer.
+ *
+ * A blanket onNotFound() redirect alone does not make a portal "captive" on
+ * real phones. Each OS probes a specific URL and decides from the ANSWER:
+ *  - Android   /generate_204       -> expects 204/no body; any other answer and
+ *                                     no redirect means "has internet".
+ *  - iOS/macOS /hotspot-detect.html-> anything that is not the literal
+ *                                     "Success" body counts as a portal.
+ *  - Firefox   /canonical.html     -> redirected = portal.
+ *  - Firefox   /success.txt        -> must NOT return "success".
+ *  - Windows   /connecttest.txt    -> the captive window only opens when this is
+ *                                     redirected to a host that does NOT resolve.
+ *                                     Redirecting it to the AP's own IP is read
+ *                                     as "server offline" and nothing pops up,
+ *                                     so http://logout.net is used instead.
+ *  - Windows   /ncsi.txt, /redirect-> redirected = portal.
+ *  - Windows   /wpad.dat           -> hammered endlessly when proxy auto-detect
+ *                                     is on; a 404 stops the loop.
+ * These come from the CDFER Captive-Portal-ESP32 implementation, which is the
+ * one that survives current Android and Windows 11.
+ */
+void redirectToPortal() {
+    const std::string url = std::string("http://") + WiFi.softAPIP().toString().c_str() + "/";
+    g_server.sendHeader("Location", url.c_str(), true);
+    g_server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    g_server.send(302, "text/plain", url.c_str());
+}
+
+void handleCaptiveRedirect() { touch(); redirectToPortal(); }
+
+/** Windows 11: redirect to a dead host, not to the AP. See above. */
+void handleWindowsConnectTest() {
+    touch();
+    g_server.sendHeader("Location", "http://logout.net/", true);
+    g_server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    g_server.send(302, "text/plain", "");
+}
+
+/** /wpad.dat and /favicon.ico: answer 404 and stop being asked. */
+void handleNoContent() { touch(); g_server.send(404, "text/plain", ""); }
+
+/** Firefox: present, but never the word "success" — that means "no portal". */
+void handleSuccessTxt() { touch(); g_server.send(200, "text/plain", "numos"); }
+
 void handleNotFound() {
     touch();
     const std::string host = g_server.hostHeader().c_str();
-    const std::string url = std::string("http://") + WiFi.softAPIP().toString().c_str() + "/";
-    // Android/iOS captive probes (generate_204, hotspot-detect.html, …) get the
-    // redirect they interpret as "this network has a sign-in page".
-    g_server.sendHeader("Location", url.c_str(), true);
-    g_server.sendHeader("Cache-Control", "no-store");
-    g_server.send(302, "text/plain", "http://192.168.4.1/\n");
     (void)host;
+    redirectToPortal();
 }
 
 // ── task ────────────────────────────────────────────────────────────────────
@@ -1221,6 +1286,20 @@ void registerRoutes() {
     g_server.on("/api/wifi-list", HTTP_GET, handleWifiList);
     g_server.on("/api/wifi-forget", HTTP_POST, handleWifiForget);
     g_server.on("/upload", HTTP_POST, handleUploadDone, handleUploadWrite);
+
+    // ── captive-portal probes: one route per OS, see redirectToPortal() ────
+    g_server.on("/generate_204", HTTP_GET, handleCaptiveRedirect);          // Android
+    g_server.on("/gen_204", HTTP_GET, handleCaptiveRedirect);               // older Android
+    g_server.on("/hotspot-detect.html", HTTP_GET, handleCaptiveRedirect);   // iOS / macOS
+    g_server.on("/library/test/success.html", HTTP_GET, handleCaptiveRedirect);
+    g_server.on("/canonical.html", HTTP_GET, handleCaptiveRedirect);        // Firefox
+    g_server.on("/success.txt", HTTP_GET, handleSuccessTxt);                // Firefox
+    g_server.on("/ncsi.txt", HTTP_GET, handleCaptiveRedirect);              // Windows
+    g_server.on("/redirect", HTTP_GET, handleCaptiveRedirect);              // Windows
+    g_server.on("/connecttest.txt", HTTP_GET, handleWindowsConnectTest);    // Windows 11
+    g_server.on("/wpad.dat", HTTP_GET, handleNoContent);                    // proxy autodetect
+    g_server.on("/favicon.ico", HTTP_GET, handleNoContent);
+
     g_server.onNotFound(handleNotFound);
     // collectHeaders wants an array + count in this core (there is no
     // single-string overload).
@@ -1248,6 +1327,11 @@ bool raiseAp() {
     }
 
     makeCredentials();
+    // A scan owns the radio, and softAP() then fails outright — which surfaces as
+    // a portal that reports FAIL and never dresses its SSID. This is reachable:
+    // the Wi-Fi screen starts scans on RIGHT, and tick() gives up waiting for a
+    // scan after kPreScanMs even if it is still running.
+    net::Wifi::cancelScan();
     if (!net::Wifi::startProvisioningAp(g_apSsid, g_apPass)) {
         char why[96];
         std::snprintf(why, sizeof(why),
@@ -1346,10 +1430,20 @@ void startJoin() {
 
 // ── public API ──────────────────────────────────────────────────────────────
 
-bool Portal::start() {
+bool Portal::start(bool forceAp) {
     if (g_running) return true;
     if (g_phase == PortalPhase::Preparing || g_phase == PortalPhase::Joining) return true;
     g_lastError.clear();
+
+    // An explicit request (the Settings toggle) goes straight to the AP. The
+    // pre-scan below exists to spare the user a hotspot when a saved network
+    // works — but answering "turn the hotspot on" with a silent STA join means
+    // the hotspot never appears, and a PC/phone has nothing to connect to. The
+    // join order is unchanged for every other caller.
+    if (forceAp) {
+        Serial.println("[PORTAL] explicit start: raising the AP without a pre-scan");
+        return raiseAp();
+    }
 
     // Pre-scan path: with anything saved, look for a reachable network BEFORE
     // raising the AP. If one joins, no hotspot is needed at all — and, just as
@@ -1503,7 +1597,7 @@ namespace net {
 const char* kPortalStubReason =
     "the web portal is firmware-only (it needs the Wi-Fi AP and the filesystem)";
 
-bool Portal::start() { return false; }
+bool Portal::start(bool) { return false; }
 void Portal::stop() {}
 bool Portal::running() { return false; }
 PortalState Portal::state() { PortalState s; s.lastError = kPortalStubReason; return s; }

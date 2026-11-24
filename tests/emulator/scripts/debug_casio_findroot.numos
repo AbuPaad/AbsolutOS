@@ -1,0 +1,42 @@
+# debug_casio_findroot.numos — same Find Root intent, but on the Casio theme.
+#
+# 1. Switch Settings -> Theme to Casio (the profile sets splitGraph, so the
+#    Grapher runs its two-pane Casio key map: handleCasioKey).
+# 2. y = x^2 - 4 into slot 1, EXE to plot.
+# 3. Press EXE again on the graph — the NumOS grapher opens the Calculate menu
+#    here. Record what the Casio key map actually does.
+wait 200
+open_app Settings
+wait 80
+key down
+key down
+key down
+key down
+key enter
+wait 80
+screenshot out/casio_00_settings.ppm
+key home
+wait 80
+
+open_app Grapher
+wait 80
+screenshot out/casio_01_grapher.ppm
+key 1
+key x
+key ^
+key 2
+key right
+key -
+key 4
+key exe
+wait 120
+screenshot out/casio_02_graph.ppm
+key exe
+wait 120
+screenshot out/casio_03_exe.ppm
+key right
+wait 80
+key down
+wait 80
+screenshot out/casio_04_nav.ppm
+assert_app Grapher

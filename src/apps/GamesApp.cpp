@@ -22,6 +22,7 @@
 #include "../ui/ThemeFonts.h"
 #include "../ui/ThemeManager.h"
 #include "../pico8/NumosHost.h"
+#include "../games/BuiltinRoms.h"
 #include "../ui/games/GamesIcons.h"
 
 using numos::emulation::GameBoyCore;
@@ -108,6 +109,10 @@ void GamesApp::load() {
     _p8.end();
     _p8tried = false;
     _p8img = nullptr;
+
+    // Celeste and Tetris travel inside the app image: write them to LittleFS
+    // before the scan so a freshly flashed unit has something to play.
+    numos::games::materializeBuiltinRoms();
 
     scan();
     buildFrame();

@@ -140,7 +140,7 @@ const Theme kNUMOS = {
     /* cornerRadius  */ 6,          // modern rounded chrome (Settings rows use 6)
     /* borderWidth   */ 0,
     /* shadows       */ true,
-    /* graphLineWidth*/ 1,          // numos: hairline curves (unchanged)
+    /* graphLineWidth*/ 2,          // curves read as a stroke, not a hairline (owner call 2026-11-22)
 
     /* fontUi        */ &lv_font_montserrat_11,
     /* fontUiSmall   */ &lv_font_montserrat_10,
@@ -185,7 +185,7 @@ const Theme kCASIO = {
     /* cornerRadius  */ 0,          // crude per doc 02
     /* borderWidth   */ 1,
     /* shadows       */ false,
-    /* graphLineWidth*/ 2,          // thicker: the fitted canvas is ~1/2 the OEM area
+    /* graphLineWidth*/ 3,          // thicker again: the fitted canvas is ~1/2 the OEM area
 
     /* fontUi        */ &casio_math_18,  // one face everywhere (operator call 2026-10-05):
     /* fontUiSmall   */ &casio_math_12,  // the CC-BY-SA math face replaces the retracted

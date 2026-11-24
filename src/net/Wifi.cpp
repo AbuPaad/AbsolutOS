@@ -35,6 +35,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Preferences.h>
+#include <esp_wifi.h>   // esp_wifi_get_channel: the AP must follow the STA's channel
 
 #include <cstdio>
 
@@ -61,11 +62,12 @@ constexpr uint32_t kRetryMaxMs = 60000;
 /// until the clock is actually plausible.
 constexpr uint32_t kTimeSyncRetryMs = 5000;
 
-/// Fixed channel + client cap for the provisioning AP. Pinning the channel is
-/// half the "authenticating forever" fix: in AP_STA the AP otherwise follows
-/// the STA, so a client that associated while the STA searched loses the AP.
-/// With the radio-ownership guard (tick() below) the STA is quiet, so the AP
-/// stays put. Channel 1 is the ESP-IDF softAP default and universally usable.
+/// Fixed channel + client cap for the provisioning AP. Channel 1 is the ESP-IDF
+/// softAP default and universally usable — but it is only a STARTING channel:
+/// in AP_STA the soft-AP always ends up on the STA's channel (ESP-IDF
+/// esp_wifi_set_channel() note: "the soft-AP will adjust its channel
+/// automatically to be the same as the channel of the station"). See
+/// startProvisioningAp(), which pins to the STA's live channel for that reason.
 constexpr uint8_t kApChannel   = 1;
 constexpr uint8_t kApMaxClients = 4;
 
@@ -122,6 +124,35 @@ void slotKeys(uint8_t index, char* ssidKey, size_t n, char* passKey, size_t m) {
 }
 
 /**
+ * Credentials baked into the image from platformio.ini
+ * (-DNUMOS_WIFI_SSID / -DNUMOS_WIFI_PASS, single-quoted or PlatformIO eats the
+ * quotes). They are a READ fallback only: nothing is written to NVS, the portal
+ * still owns the saved list, and a unit that never sees the network just keeps
+ * retrying the slots it has.
+ */
+size_t readBuiltinCredentials(WifiNetwork* out, size_t maxOut) {
+#if defined(NUMOS_WIFI_SSID) && defined(NUMOS_WIFI_PASS)
+    if (!out || maxOut == 0) return 0;
+    const char* ssid = NUMOS_WIFI_SSID;
+    const char* pass = NUMOS_WIFI_PASS;
+    if (!ssid || !*ssid) return 0;
+    out[0].ssid = ssid;
+    out[0].pass = pass ? pass : "";
+    static bool logged = false;
+    if (!logged) {
+        logged = true;
+        Serial.printf("[NET] no saved network: using built-in credentials for %s\n",
+                      ssid);
+    }
+    return 1;
+#else
+    (void)out;
+    (void)maxOut;
+    return 0;
+#endif
+}
+
+/**
  * Read the whole list in priority order.
  *
  * Legacy compatibility is a fallback, not a migration: a unit flashed before
@@ -150,6 +181,7 @@ size_t readNetworkList(WifiNetwork* out, size_t maxOut) {
         n = out[0].ssid.empty() ? 0 : 1;
     }
     p.end();
+    if (n == 0) n = readBuiltinCredentials(out, maxOut);
     return n;
 }
 
@@ -507,7 +539,49 @@ bool Wifi::startProvisioningAp(const char* ssid, const char* pass) {
     // the STA will not auto-retry/failover, so the AP keeps its channel.
     s_apOwnsRadio = true;
 
-    if (WiFi.softAP(ssid, pass, kApChannel, /*hidden=*/false, kApMaxClients)) return true;
+    // ── AP and STA share ONE radio and ONE channel ──────────────────────────
+    // ESP-IDF, "Wi-Fi" API reference, esp_wifi_set_channel():
+    //   "ESP devices are limited to only one channel, so when in the
+    //    soft-AP+station mode, the soft-AP will adjust its channel
+    //    automatically to be the same as the channel of the station."
+    // So kApChannel is only the channel the AP STARTS on. The moment the STA
+    // associates somewhere else the AP silently moves with it, and a phone that
+    // latched onto the AP on the old channel never finishes DHCP — it sits at
+    // "obtaining IP address" and the portal URL never answers. Two consequences:
+    //
+    //  1. Raise the AP on the channel the STA is already on, when there is one.
+    //     That removes the hop entirely instead of hoping the phone follows.
+    //  2. Stop the STA starting new associations while the AP is up.
+    //     s_apOwnsRadio alone does NOT do that: arduino-esp32's WiFiGeneric.cpp
+    //     calls WiFi.begin() from the Wi-Fi event task on a disconnect whenever
+    //     auto-reconnect is on, behind tick()'s back. A client mid-association
+    //     then loses the AP to a channel change it never asked for.
+    uint8_t channel = kApChannel;
+    uint8_t primary = 0;
+    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+    if (WiFi.isConnected() && esp_wifi_get_channel(&primary, &second) == ESP_OK) {
+        // Channels 12/13 are legal in AU/EU and a phone or PC set to a US/GLOBAL
+        // regulatory domain cannot join an AP that sits there: the hotspot comes
+        // up, the row reads ON, and every client fails. Follow the STA only onto
+        // the universally usable 1..11; the driver still forces the AP onto the
+        // STA's channel when they differ, so say so instead of pretending.
+        if (primary >= 1 && primary <= 11) {
+            channel = primary;
+            Serial.printf("[WIFI] AP follows the STA onto channel %u\n", (unsigned)channel);
+        } else if (primary > 11) {
+            Serial.printf("[WIFI] STA is on channel %u: the AP would follow it there and"
+                          " many phones/PCs cannot join channels 12-13\n", (unsigned)primary);
+        }
+    }
+
+    WiFi.setAutoReconnect(false);
+    if (!WiFi.isConnected()) {
+        // Deliberate disconnect => reason ASSOC_LEAVE, which the library's own
+        // event handler explicitly does not reconnect from.
+        WiFi.disconnect(/*wifioff=*/false, /*eraseap=*/false);
+    }
+
+    if (WiFi.softAP(ssid, pass, channel, /*hidden=*/false, kApMaxClients)) return true;
 
     // softAP() can report false when an AP is already serving (a re-toggle, or a
     // retained AP config). A live softAPIP means the AP interface is genuinely
@@ -516,6 +590,7 @@ bool Wifi::startProvisioningAp(const char* ssid, const char* pass) {
     if (WiFi.softAPIP() != IPAddress(0, 0, 0, 0)) return true;
 
     s_apOwnsRadio = false;   // the AP never came up; release the STA
+    WiFi.setAutoReconnect(true);
     return false;
 }
 
@@ -523,6 +598,7 @@ void Wifi::stopProvisioningAp() {
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
     s_apOwnsRadio = false;
+    WiFi.setAutoReconnect(true);   // begin() re-arms it too; this covers a stop with no join
 }
 
 bool Wifi::saveCredentials(const std::string& ssid, const std::string& pass) {
@@ -555,9 +631,14 @@ bool Wifi::provisioned() {
 bool Wifi::enabled() {
     Preferences p;
     if (!p.begin(kNvsNamespace, true)) return false;
-    const bool intent = p.getBool(kKeyEnabled, false);
+    const bool hasIntent = p.isKey(kKeyEnabled);
+    const bool intent     = p.getBool(kKeyEnabled, false);
     p.end();
-    return intent;
+    if (hasIntent) return intent;
+    // No explicit intent yet (the header documents this default): a unit that has
+    // a network — saved, or the one baked into the image — may use the radio. This
+    // is what lets a freshly flashed board join without ever opening the portal.
+    return provisioned();
 }
 
 // ── saved-network list ──────────────────────────────────────────────────────
@@ -653,6 +734,18 @@ bool Wifi::startScan() {
 
 bool Wifi::scanRunning() { return s_scanRunning; }
 
+void Wifi::cancelScan() {
+    if (!s_scanRunning) return;
+    // esp_wifi_scan_stop() returns ESP_ERR_WIFI_STATE when no scan is running,
+    // which is harmless here: the flag is the authority for our own bookkeeping.
+    esp_wifi_scan_stop();
+    WiFi.scanDelete();
+    s_scanRunning = false;
+    s_scanFailed  = true;   // the result set is gone, not "zero networks"
+    s_scanCount   = 0;
+    Serial.println("[WIFI] scan cancelled (the AP needs the radio)");
+}
+
 size_t Wifi::scanCount() {
     const int n = s_scanCount;
     return n < 0 ? 0u : static_cast<size_t>(n);
@@ -714,6 +807,7 @@ bool      Wifi::forgetNetwork(const std::string&)                               
 int       Wifi::activeNetworkIndex()                                                { return -1; }
 bool      Wifi::startScan()                                                        { return false; }
 bool      Wifi::scanRunning()                                                      { return false; }
+void      Wifi::cancelScan()                                                       {}
 size_t    Wifi::scanCount()                                                        { return 0; }
 bool      Wifi::scanAt(size_t, WifiScanEntry&)                                      { return false; }
 int       Wifi::signalFor(const std::string&)                                       { return 0; }
